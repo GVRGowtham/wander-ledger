@@ -15,6 +15,7 @@ import * as Sharing from 'expo-sharing';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
+import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
 import { DistanceUnit } from '../types/models';
 
@@ -37,6 +38,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     trips,
     allFlights,
     allTransports,
+    allStops,
     allExpenses,
     loyaltyAccounts,
     fxSource,
@@ -47,20 +49,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const [renameModal, setRenameModal] = useState(false);
   const [draftName, setDraftName] = useState('');
 
-  // Deduplicate countries for passport ink stamps
-  const countryStamps = Array.from(
-    new Map(
-      trips.map((t) => [
-        t.countryCode,
-        {
-          code: t.countryCode,
-          country: t.destinationCountry,
-          flag: t.flagEmoji,
-          date: t.startDate,
-        },
-      ])
-    ).values()
-  );
+  // Multi-country geography: counts visited countries across trips, stops & open-jaw legs,
+  // while keeping <24h airside airport layovers separate as Transit Hubs.
+  const geography = deriveGlobalTravelGeography(trips, allFlights, allTransports, allStops);
+  const countryStamps = geography.countryStamps;
+  const transitHubs = geography.transitHubs;
 
   const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
   const totalDistanceKm =
@@ -213,10 +206,30 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                   >
                     {s.flag} {s.country.toUpperCase()}
                   </Text>
-                  <Text style={[styles.stampDate, { color: st.text }]}>{s.date}</Text>
+                  <Text style={[styles.stampDate, { color: st.text }]} numberOfLines={1}>
+                    {s.cities.length > 0 ? `${s.cities.slice(0, 2).join(', ')} • ${s.date}` : s.date}
+                  </Text>
                 </View>
               );
             })}
+          </View>
+        )}
+
+        {transitHubs.length > 0 && (
+          <View style={styles.transitBox}>
+            <Text style={styles.transitTitle}>✈️ Airport Transit Hubs (Not Counted)</Text>
+            <View style={styles.transitChipsRow}>
+              {transitHubs.map((hub) => (
+                <View key={hub.iata} style={styles.transitChip}>
+                  <Text style={styles.transitChipText}>
+                    {hub.flag} {hub.city} ({hub.iata})
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.transitHint}>
+              Airside layovers under 24h stay separate from visited countries — add a Trip Stop if you explored the city!
+            </Text>
           </View>
         )}
       </View>
@@ -499,4 +512,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveNameBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+  transitBox: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderSoft,
+    gap: 6,
+  },
+  transitTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.inkMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  transitChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  transitChip: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E1',
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  transitChipText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: COLORS.inkMuted,
+  },
+  transitHint: {
+    fontSize: 11,
+    color: COLORS.inkSoft,
+    lineHeight: 15,
+  },
 });

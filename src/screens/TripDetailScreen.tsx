@@ -52,6 +52,7 @@ import {
   matchStopForDate,
   suggestStopsFromBookings,
 } from '../services/distanceUtils';
+import { deriveTripGeography } from '../services/travelGeography';
 import { convertCurrency } from '../services/fxService';
 import { generateOfflineIgCaption } from '../services/igCaptionService';
 import {
@@ -298,6 +299,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const timelineItems = buildJourneyTimeline(flights, transports, stays);
   const routeTrail = buildJourneyRouteTrail(flights, transports, stops);
   const suggestedStops = suggestStopsFromBookings(flights, transports, stays, stops);
+  const tripGeo = deriveTripGeography(trip, flights, transports, stops);
 
   // Spend breakdown by category
   const catTotals: Record<string, number> = {};
@@ -1126,9 +1128,11 @@ export const TripDetailScreen: React.FC<Props> = ({
 
         <View style={styles.headerBottomText}>
           <Text style={styles.tripTitle} numberOfLines={1}>
-            {trip.title} {trip.flagEmoji}
+            {trip.title}{' '}
+            {tripGeo.visitedCountries.length > 1 ? tripGeo.flagsLabel : trip.flagEmoji}
           </Text>
           <Text style={styles.tripDates} numberOfLines={1}>
+            {tripGeo.visitedCountries.length > 1 ? `${tripGeo.countriesLabel} • ` : ''}
             {trip.startDate} → {trip.endDate} • {formatMoney(summary.totalSpentHome, trip.homeCurrency)} •{' '}
             {formatDistance(summary.totalDistanceKm, distanceUnit)}
           </Text>

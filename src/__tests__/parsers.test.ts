@@ -1113,3 +1113,78 @@ Total Calculated Fare  INR 69,422`;
   });
 });
 
+import {
+  deriveGlobalTravelGeography,
+  deriveTripGeography,
+} from '../services/travelGeography';
+
+describe('v0.4.6 Multi-Country Trip Geography (Visited Countries vs. Airport Transit Hubs)', () => {
+  const euroTrip: Trip = {
+    id: 'trip_euro',
+    ownerId: 'u1',
+    title: 'Europe Autumn',
+    destinationCity: 'Zurich',
+    destinationCountry: 'Switzerland',
+    countryCode: 'CH',
+    flagEmoji: '🇨🇭',
+    startDate: '2025-10-31',
+    endDate: '2025-11-09',
+    homeCurrency: 'INR',
+    budget: 0,
+    vibe: 'alpine',
+    isShared: false,
+    coTravelers: [],
+    lat: 47.4647,
+    lng: 8.5492,
+    createdAt: '',
+    updatedAt: '',
+  };
+
+  const openJawFlights: Flight[] = [
+    {
+      id: 'f1', tripId: 'trip_euro', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 217',
+      originIata: 'BLR', originCity: 'Bengaluru', destIata: 'AUH', destCity: 'Abu Dhabi',
+      departureTime: '2025-10-31T22:00:00', arrivalTime: '2025-11-01T00:50:00',
+      durationMinutes: 260, status: 'scheduled', distanceMiles: 1690, milesEarned: 1690,
+      enrichedOnline: false, createdAt: '',
+    },
+    {
+      id: 'f2', tripId: 'trip_euro', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 73',
+      originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'ZRH', destCity: 'Zurich',
+      departureTime: '2025-11-01T02:25:00', arrivalTime: '2025-11-01T06:40:00',
+      durationMinutes: 435, status: 'scheduled', distanceMiles: 2970, milesEarned: 2970,
+      enrichedOnline: false, createdAt: '',
+    },
+    {
+      id: 'f3', tripId: 'trip_euro', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 122',
+      originIata: 'FRA', originCity: 'Frankfurt', destIata: 'AUH', destCity: 'Abu Dhabi',
+      departureTime: '2025-11-08T10:45:00', arrivalTime: '2025-11-08T19:55:00',
+      durationMinutes: 370, status: 'scheduled', distanceMiles: 3010, milesEarned: 3010,
+      enrichedOnline: false, createdAt: '',
+    },
+    {
+      id: 'f4', tripId: 'trip_euro', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 216',
+      originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'BLR', destCity: 'Bengaluru',
+      departureTime: '2025-11-08T21:20:00', arrivalTime: '2025-11-09T03:00:00',
+      durationMinutes: 250, status: 'scheduled', distanceMiles: 1690, milesEarned: 1690,
+      enrichedOnline: false, createdAt: '',
+    },
+  ];
+
+  it('counts Switzerland & Germany as visited countries, skips home BLR, and marks <24h AUH connection as a Transit Hub', () => {
+    const geo = deriveTripGeography(euroTrip, openJawFlights, [], []);
+    expect(geo.visitedCountries.map((c) => c.code)).toEqual(['CH', 'DE']);
+    expect(geo.countriesLabel).toBe('Switzerland • Germany');
+    expect(geo.transitHubs.map((h) => h.iata)).toEqual(['AUH']);
+  });
+
+  it('adds extra countries from Trip Stops & promotes AUH out of Transit Hubs if added as a real Stop', () => {
+    const stops: TripStop[] = [
+      { id: 's1', tripId: 'trip_euro', cityName: 'Strasbourg', startDate: '2025-11-05', sortOrder: 0, createdAt: '' },
+      { id: 's2', tripId: 'trip_euro', cityName: 'Abu Dhabi', startDate: '2025-11-08', sortOrder: 1, createdAt: '' },
+    ];
+    const global = deriveGlobalTravelGeography([euroTrip], openJawFlights, [], stops);
+    expect(global.countryStamps.map((c) => c.code)).toEqual(['CH', 'FR', 'AE', 'DE']);
+    expect(global.transitHubs).toHaveLength(0);
+  });
+});

@@ -12,10 +12,17 @@ import Svg, {
 } from 'react-native-svg';
 import { lookupAirport } from '../../db/airportsData';
 import { Flight, Trip } from '../../types/models';
+import { GeoPlace, TransitHubSummary } from '../../services/travelGeography';
+
+export interface MapVisitedPin extends GeoPlace {
+  tripId: string;
+}
 
 interface Props {
   trips: Trip[];
   flights: Flight[];
+  visitedPins?: MapVisitedPin[];
+  transitHubs?: TransitHubSummary[];
   selectedTripId: string | null;
   onSelectTrip: (tripId: string) => void;
 }
@@ -41,9 +48,29 @@ const PIN_COLORS = ['#F97316', '#0EA5E9', '#8B5CF6', '#10B981', '#EC4899'];
 export const WorldMapSvg: React.FC<Props> = ({
   trips,
   flights,
+  visitedPins,
+  transitHubs = [],
   selectedTripId,
   onSelectTrip,
 }) => {
+  const tripColorById = new Map<string, string>();
+  trips.forEach((t, idx) => {
+    tripColorById.set(t.id, PIN_COLORS[idx % PIN_COLORS.length]);
+  });
+
+  const effectivePins: MapVisitedPin[] =
+    visitedPins && visitedPins.length > 0
+      ? visitedPins
+      : trips.map((t) => ({
+          tripId: t.id,
+          city: t.destinationCity,
+          country: t.destinationCountry,
+          countryCode: t.countryCode,
+          flag: t.flagEmoji,
+          lat: t.lat,
+          lng: t.lng,
+        }));
+
   const arcs = flights
     .map((f, idx) => {
       const o = lookupAirport(f.originIata);
@@ -57,7 +84,7 @@ export const WorldMapSvg: React.FC<Props> = ({
       return {
         id: f.id,
         path: `M ${p1.x} ${p1.y} Q ${midX} ${midY} ${p2.x} ${p2.y}`,
-        color: PIN_COLORS[idx % PIN_COLORS.length],
+        color: tripColorById.get(f.tripId) ?? PIN_COLORS[idx % PIN_COLORS.length],
         originPt: p1,
       };
     })
@@ -135,36 +162,64 @@ export const WorldMapSvg: React.FC<Props> = ({
               strokeDasharray="5,4"
               opacity={0.9}
             />
-            <Circle cx={a.originPt.x} cy={a.originPt.y} r={3} fill="#FFFFFF" stroke={a.color} strokeWidth={1.5} />
+            <Circle cx={a.originPt.x} cy={a.originPt.y} r={2.8} fill="#FFFFFF" stroke={a.color} strokeWidth={1.4} />
           </G>
         ))}
 
-        {/* Tappable Destination Pins */}
-        {trips.map((t, idx) => {
-          const pt = project(t.lat, t.lng);
-          const isSelected = t.id === selectedTripId;
-          const color = PIN_COLORS[idx % PIN_COLORS.length];
+        {/* Airside Transit Hubs (<24h layovers): subtle hollow rings distinct from visited pins */}
+        {transitHubs.map((hub) => {
+          const pt = project(hub.lat, hub.lng);
           return (
-            <G key={t.id} onPress={() => onSelectTrip(t.id)}>
-              {isSelected && <Circle cx={pt.x} cy={pt.y} r={14} fill={color} opacity={0.25} />}
+            <G key={`transit_${hub.iata}`}>
               <Circle
                 cx={pt.x}
                 cy={pt.y}
-                r={isSelected ? 7.5 : 5.5}
+                r={4}
+                fill="#FFFFFF"
+                stroke="#64748B"
+                strokeWidth={1.6}
+                strokeDasharray="2,1.5"
+              />
+              <SvgText
+                x={pt.x}
+                y={pt.y + 11}
+                fontSize={7.5}
+                fontWeight="bold"
+                fill="#475569"
+                textAnchor="middle"
+              >
+                {hub.iata}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {/* Tappable Visited Destination Pins (supports multiple countries & cities per trip!) */}
+        {effectivePins.map((pin, idx) => {
+          const pt = project(pin.lat, pin.lng);
+          const isSelected = pin.tripId === selectedTripId;
+          const color = tripColorById.get(pin.tripId) ?? PIN_COLORS[idx % PIN_COLORS.length];
+          return (
+            <G key={`${pin.tripId}_${pin.countryCode}_${pin.city}_${idx}`} onPress={() => onSelectTrip(pin.tripId)}>
+              {isSelected && <Circle cx={pt.x} cy={pt.y} r={12.5} fill={color} opacity={0.22} />}
+              <Circle
+                cx={pt.x}
+                cy={pt.y}
+                r={isSelected ? 6.5 : 5}
                 fill={color}
                 stroke="#FFFFFF"
-                strokeWidth={2}
+                strokeWidth={1.8}
               />
               {isSelected && (
                 <SvgText
                   x={pt.x}
-                  y={pt.y - 11}
-                  fontSize={10}
+                  y={pt.y - 10}
+                  fontSize={9}
                   fontWeight="bold"
                   fill="#1E293B"
                   textAnchor="middle"
                 >
-                  {t.destinationCity}
+                  {pin.city}
                 </SvgText>
               )}
             </G>

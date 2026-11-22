@@ -10,6 +10,7 @@ import { WorldMapSvg } from '../components/map/WorldMapSvg';
 import { useApp } from '../context/AppContext';
 import { getTripStatus } from '../db/database';
 import { formatDistance, formatDistanceValue, milesToKm } from '../services/distanceUtils';
+import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 
 interface Props {
@@ -17,12 +18,25 @@ interface Props {
 }
 
 export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
-  const { profile, trips, allFlights, allTransports, getSummaryForTrip, getMemoriesForTrip } = useApp();
+  const {
+    profile,
+    trips,
+    allFlights,
+    allTransports,
+    allStops,
+    getSummaryForTrip,
+    getMemoriesForTrip,
+  } = useApp();
   const [selectedId, setSelectedId] = useState<string | null>(trips[0]?.id ?? null);
 
   const selectedTrip = useMemo(
     () => trips.find((t) => t.id === selectedId) ?? trips[0] ?? null,
     [trips, selectedId]
+  );
+
+  const geography = useMemo(
+    () => deriveGlobalTravelGeography(trips, allFlights, allTransports, allStops),
+    [trips, allFlights, allTransports, allStops]
   );
 
   const distanceUnit = profile?.distanceUnit ?? 'km';
@@ -32,10 +46,13 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
   const totalDistanceDisplay = formatDistanceValue(totalDistanceKm, distanceUnit);
   const earthCircumferenceKm = 40075;
   const earthLaps = (totalDistanceKm / earthCircumferenceKm).toFixed(2);
-  const countriesCount = new Set(trips.map((t) => t.countryCode)).size;
-  const citiesCount = new Set(trips.map((t) => t.destinationCity)).size;
+  const countriesCount = geography.countryStamps.length;
+  const citiesCount = new Set(
+    geography.visitedCities.map((c) => `${c.countryCode}:${c.city.toLowerCase()}`)
+  ).size;
 
   const selectedSummary = selectedTrip ? getSummaryForTrip(selectedTrip.id) : null;
+  const selectedGeo = selectedTrip ? geography.byTripId[selectedTrip.id] : null;
   const selectedHighlight = selectedTrip
     ? getMemoriesForTrip(selectedTrip.id)[0]
     : undefined;
@@ -59,9 +76,20 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
       <WorldMapSvg
         trips={trips}
         flights={allFlights}
+        visitedPins={geography.visitedCities}
+        transitHubs={geography.transitHubs}
         selectedTripId={selectedTrip?.id ?? null}
         onSelectTrip={setSelectedId}
       />
+
+      {geography.transitHubs.length > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.inkSoft }}>
+            ◯ Transit hubs (not counted as countries):{' '}
+            {geography.transitHubs.map((h) => `${h.flag} ${h.iata}`).join('  •  ')}
+          </Text>
+        </View>
+      )}
 
       {/* Quick Destination Filter Chips */}
       <ScrollView
@@ -71,6 +99,12 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
       >
         {trips.map((t) => {
           const active = t.id === selectedTrip?.id;
+          const tGeo = geography.byTripId[t.id];
+          const chipFlags = tGeo?.flagsLabel || t.flagEmoji;
+          const chipLabel =
+            tGeo && tGeo.visitedCountries.length > 1
+              ? tGeo.visitedCountries.map((c) => c.country).join(' + ')
+              : t.destinationCity;
           return (
             <TouchableOpacity
               key={t.id}
@@ -78,7 +112,7 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
               style={[styles.chip, active && styles.chipActive]}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {t.flagEmoji} {t.destinationCity}
+                {chipFlags} {chipLabel}
               </Text>
             </TouchableOpacity>
           );
@@ -90,10 +124,13 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         <View style={styles.postcard}>
           <View style={styles.postcardTop}>
             <View style={styles.postcardLeft}>
-              <Text style={styles.flag}>{selectedTrip.flagEmoji}</Text>
+              <Text style={styles.flag}>{selectedGeo?.flagsLabel || selectedTrip.flagEmoji}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cityTitle}>{selectedTrip.title}</Text>
                 <Text style={styles.dateSub}>
+                  {selectedGeo && selectedGeo.visitedCountries.length > 1
+                    ? `${selectedGeo.countriesLabel} • `
+                    : ''}
                   {selectedTrip.startDate} → {selectedTrip.endDate} •{' '}
                   {getTripStatus(selectedTrip).toUpperCase()}
                 </Text>

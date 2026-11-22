@@ -11,6 +11,7 @@ import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
 import { getTripDayProgress, getTripStatus } from '../db/database';
 import { formatDistance, milesToKm } from '../services/distanceUtils';
+import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
 
@@ -27,7 +28,7 @@ export const TripsHubScreen: React.FC<Props> = ({
   onOpenScanner,
   onOpenPassport,
 }) => {
-  const { profile, trips, allFlights, allTransports, getSummaryForTrip } = useApp();
+  const { profile, trips, allFlights, allTransports, allStops, getSummaryForTrip } = useApp();
 
   const activeTrips = trips.filter((t) => getTripStatus(t) === 'active');
   const upcomingTrips = trips
@@ -36,7 +37,8 @@ export const TripsHubScreen: React.FC<Props> = ({
   const pastTrips = trips.filter((t) => getTripStatus(t) === 'past');
 
   const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
-  const uniqueCountries = new Set(trips.map((t) => t.countryCode)).size;
+  const geography = deriveGlobalTravelGeography(trips, allFlights, allTransports, allStops);
+  const uniqueCountries = geography.countryStamps.length;
   const totalDistanceKm =
     allFlights.reduce((s, f) => s + milesToKm(f.distanceMiles), 0) +
     allTransports.reduce((s, t) => s + (t.distanceKm ?? 0), 0);
