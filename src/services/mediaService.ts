@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -10,7 +10,7 @@ export interface ProcessedPhotoResult {
   lng?: number;
 }
 
-const BASE_DIR = (FileSystem as unknown as { documentDirectory?: string }).documentDirectory ?? '';
+const BASE_DIR = FileSystem.documentDirectory ?? '';
 
 async function ensureDir(subDir: string): Promise<string> {
   const dir = `${BASE_DIR}${subDir}/`;
@@ -74,6 +74,42 @@ export async function pickAndOptimizeMemoryPhoto(
 }
 
 /**
+ * Picks a crisp full-resolution document/screenshot from the photo library for OCR first.
+ */
+export async function pickRawDocumentFromLibrary(): Promise<string | null> {
+  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!perm.granted) return null;
+
+  const pickerResult = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+  });
+
+  if (pickerResult.canceled || !pickerResult.assets?.[0]) {
+    return null;
+  }
+  return pickerResult.assets[0].uri;
+}
+
+/**
+ * Compresses an already-captured/picked document photo into a compact private WebP
+ * saved strictly under `receipts/{tripId}/`.
+ */
+export async function compressAndSaveReceiptUri(
+  sourceUri: string,
+  tripId: string
+): Promise<string> {
+  const res = await optimizeAndPersistPhoto(
+    sourceUri,
+    `receipts/${tripId}`,
+    1200,
+    0.7,
+    false
+  );
+  return res.photoUri;
+}
+
+/**
  * Captures or picks a scanned receipt/hotel confirmation image and compresses it
  * into an ultra-compact (~60–90 KB) private WebP saved strictly under `receipts/`.
  */
@@ -97,14 +133,7 @@ export async function pickAndOptimizeReceiptPhoto(
     return null;
   }
 
-  const res = await optimizeAndPersistPhoto(
-    pickerResult.assets[0].uri,
-    `receipts/${tripId}`,
-    1200,
-    0.7,
-    false
-  );
-  return res.photoUri;
+  return compressAndSaveReceiptUri(pickerResult.assets[0].uri, tripId);
 }
 
 export async function optimizeAndPersistPhoto(

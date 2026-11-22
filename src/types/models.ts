@@ -154,6 +154,7 @@ export interface LoyaltyAccount {
 
 export interface ParsedBoardingPass {
   kind: 'boarding_pass';
+  source?: 'barcode' | 'ocr';
   passengerName: string;
   pnr: string;
   originIata: string;
@@ -170,6 +171,10 @@ export interface ParsedBoardingPass {
   estimatedDurationMin: number;
   loyaltyProgram: string;
   rawBarcode: string;
+  ticketAmount?: number;
+  ticketCurrency?: string;
+  rawText?: string;
+  imageUri?: string;
 }
 
 export interface ParsedReceipt {

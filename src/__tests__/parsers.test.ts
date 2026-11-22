@@ -196,3 +196,53 @@ describe('Manual Flight Builder (Lost / Missing Boarding Pass)', () => {
     expect(ret.departureTime).toBe('2026-08-14T00:00:00');
   });
 });
+
+describe('Flight Booking Confirmation OCR Parser (Offline)', () => {
+  it('detects IndiGo flight booking confirmation email and extracts PNR, route, date, seat & INR fare', () => {
+    const res = parseDocumentOcrText(SAMPLE_OCR_TEXTS.flightConfirmation, 'USD');
+    expect(res.kind).toBe('boarding_pass');
+    if (res.kind === 'boarding_pass') {
+      expect(res.source).toBe('ocr');
+      expect(res.airlineCode).toBe('6E');
+      expect(res.airlineName).toBe('IndiGo');
+      expect(res.flightNumber).toBe('6E 412');
+      expect(res.pnr).toBe('R8V2N4');
+      expect(res.originIata).toBe('BLR');
+      expect(res.destIata).toBe('GOI');
+      expect(res.flightDate).toBe('2026-10-14');
+      expect(res.seat).toBe('14C');
+      expect(res.ticketAmount).toBe(6450);
+      expect(res.ticketCurrency).toBe('INR');
+      expect(res.distanceMiles).toBeGreaterThan(280);
+    }
+  });
+
+  it('parses international flight confirmation with DD/MM/YYYY date and allows forceKind override', () => {
+    const raw = `United Airlines E-Ticket Itinerary
+Confirmation Code: XY98Z1
+Flight UA 875
+San Francisco (SFO) to Tokyo (HND)
+Departure Date: 18/11/2026
+Business Class • Seat 4A
+Total Paid: $2,480.00`;
+
+    const res = parseDocumentOcrText(raw, 'USD');
+    expect(res.kind).toBe('boarding_pass');
+    if (res.kind === 'boarding_pass') {
+      expect(res.airlineCode).toBe('UA');
+      expect(res.flightNumber).toBe('UA 875');
+      expect(res.pnr).toBe('XY98Z1');
+      expect(res.originIata).toBe('SFO');
+      expect(res.destIata).toBe('HND');
+      expect(res.flightDate).toBe('2026-11-18');
+      expect(res.cabinClass).toBe('Business');
+      expect(res.seat).toBe('4A');
+      expect(res.ticketAmount).toBe(2480);
+      expect(res.ticketCurrency).toBe('USD');
+    }
+
+    // Force-override as receipt works cleanly too
+    const asReceipt = parseDocumentOcrText(raw, 'USD', undefined, 'receipt');
+    expect(asReceipt.kind).toBe('receipt');
+  });
+});

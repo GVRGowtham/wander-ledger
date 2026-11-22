@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -13,16 +14,22 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../context/AppContext';
 import {
+  calculateDistanceMiles,
+  estimateFlightDurationMinutes,
   formatDuration,
   inferDestinationVibe,
+  lookupAirline,
   lookupAirport,
 } from '../db/airportsData';
 import { generateId } from '../db/database';
 import { parseIataBcbp, SAMPLE_BCBP_STRINGS } from '../services/bcbpParser';
 import { enrichFlightDetails, FlightEnrichmentResult } from '../services/flightEnricher';
 import { convertCurrency } from '../services/fxService';
-import { pickAndOptimizeReceiptPhoto } from '../services/mediaService';
-import { recognizeTextFromImage } from '../services/nativeOcr';
+import {
+  compressAndSaveReceiptUri,
+  pickRawDocumentFromLibrary,
+} from '../services/mediaService';
+import { recognizeTextWithDiagnostics } from '../services/nativeOcr';
 import { parseDocumentOcrText, SAMPLE_OCR_TEXTS } from '../services/ocrParser';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { ScanResult, Trip } from '../types/models';
@@ -45,9 +52,14 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
 
   const [processing, setProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [lastRawOcrText, setLastRawOcrText] = useState<string | null>(null);
+  const [lastImageUri, setLastImageUri] = useState<string | undefined>(undefined);
+  const [showRawText, setShowRawText] = useState(false);
   const [enrichment, setEnrichment] = useState<FlightEnrichmentResult | null>(null);
   const [destinationChoice, setDestinationChoice] = useState<'existing' | 'new'>(
     trips.length > 0 ? 'existing' : 'new'
@@ -61,26 +73,35 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     return exact ?? trips[0];
   };
 
-  const handleDecodedBcbp = async (rawData: string) => {
-    if (processing || scanResult) return;
-    const parsed = parseIataBcbp(rawData);
-    if (!parsed) return;
-
-    setProcessing(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-
-    const best = findBestMatchingTrip(parsed.flightDate);
+  const applyDestinationSuggestion = (isoDate: string) => {
+    const best = findBestMatchingTrip(isoDate);
     if (best) {
       setSelectedTripId(best.id);
       setDestinationChoice('existing');
     } else {
       setDestinationChoice('new');
     }
+  };
+
+  const handleDecodedBcbp = async (rawData: string) => {
+    if (processing || scanResult) return;
+    const parsed = parseIataBcbp(rawData);
+    if (!parsed) return;
+
+    setProcessing(true);
+    setStatusMessage('Decoding boarding pass barcode…');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+
+    applyDestinationSuggestion(parsed.flightDate);
 
     const enriched = await enrichFlightDetails(parsed);
+    setLastRawOcrText(null);
+    setLastImageUri(undefined);
+    setShowRawText(false);
     setEnrichment(enriched);
-    setScanResult(parsed);
+    setScanResult({ ...parsed, source: 'barcode' });
     setProcessing(false);
+    setStatusMessage('');
   };
 
   const handleBarcodeScanned = (event: BarcodeScanningResult) => {
@@ -89,73 +110,180 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     }
   };
 
-  const handleCaptureDocumentOcr = async (source: 'camera' | 'library') => {
-    setProcessing(true);
-    try {
-      const targetTripId = selectedTripId || 'unassigned';
-      const compressedUri = await pickAndOptimizeReceiptPhoto(targetTripId, source);
-      if (!compressedUri) {
-        setProcessing(false);
-        return;
-      }
+  const processOcrImageUri = async (rawUri: string) => {
+    setStatusMessage('Reading text on-device (ML Kit OCR)…');
+    const targetTripId = selectedTripId || 'unassigned';
 
-      const ocrText = await recognizeTextFromImage(compressedUri);
-      if (!ocrText) {
-        Alert.alert(
-          'Could Not Read Text Clearly',
-          'Try brighter lighting, hold steady over the bill/hotel page, or try one of the built-in test scans below.'
-        );
-        setProcessing(false);
-        return;
-      }
+    // Run ML Kit OCR directly on the crisp full-resolution capture BEFORE compressing for storage!
+    const [ocrRes, savedReceiptUri] = await Promise.all([
+      recognizeTextWithDiagnostics(rawUri),
+      compressAndSaveReceiptUri(rawUri, targetTripId),
+    ]);
 
-      // Check if OCR happened to read a BCBP string or standard receipt/hotel
-      const parsed = parseDocumentOcrText(ocrText, homeCurrency, compressedUri);
+    if (!ocrRes.text) {
+      const detail = ocrRes.error
+        ? `\n\nDetails: ${ocrRes.error}`
+        : '\n\nTip: Hold steady in bright lighting, fill the frame with the confirmation text, or try Pick Screenshot for email confirmations.';
+      Alert.alert('No Readable Text Found', `Could not read text clearly from this image.${detail}`);
+      return;
+    }
+
+    setStatusMessage('Extracting booking & spend details…');
+    const parsed = parseDocumentOcrText(ocrRes.text, homeCurrency, savedReceiptUri);
+    setLastRawOcrText(ocrRes.text);
+    setLastImageUri(savedReceiptUri);
+    setShowRawText(false);
+
+    if (parsed.kind === 'boarding_pass') {
+      applyDestinationSuggestion(parsed.flightDate);
+      const enriched = await enrichFlightDetails(parsed);
+      setEnrichment(enriched);
+      setScanResult(parsed);
+    } else {
       const scanDate =
-        parsed.kind === 'hotel'
-          ? parsed.checkIn
-          : parsed.kind === 'receipt'
-          ? parsed.date
-          : new Date().toISOString().slice(0, 10);
-
-      const best = findBestMatchingTrip(scanDate);
-      if (best) {
-        setSelectedTripId(best.id);
-        setDestinationChoice('existing');
-      } else {
-        setDestinationChoice('new');
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        parsed.kind === 'hotel' ? parsed.checkIn : parsed.date;
+      applyDestinationSuggestion(scanDate);
       setEnrichment(null);
       setScanResult(parsed);
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  };
+
+  /**
+   * Captures directly from the live in-app CameraView viewfinder — NO external camera app popup!
+   */
+  const handleSnapLiveCamera = async () => {
+    if (processing) return;
+    if (!permission?.granted) {
+      const perm = await requestPermission();
+      if (!perm.granted) return;
+    }
+    if (!cameraRef.current) {
+      Alert.alert('Camera Starting', 'Wait a moment for the live camera preview to load, then tap Snap again.');
+      return;
+    }
+
+    setProcessing(true);
+    setStatusMessage('Capturing document frame…');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.9,
+        exif: false,
+      });
+      if (!photo?.uri) {
+        Alert.alert('Capture Failed', 'Could not capture a photo from the live camera. Please try again.');
+        return;
+      }
+      await processOcrImageUri(photo.uri);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unexpected camera error';
+      Alert.alert('Scan Error', `Could not scan from camera: ${msg}`);
     } finally {
       setProcessing(false);
+      setStatusMessage('');
     }
   };
 
-  const triggerSampleScan = async (sample: 'flight' | 'receipt' | 'hotel') => {
+  /**
+   * Lets the user pick an existing booking confirmation screenshot or receipt photo from their gallery.
+   */
+  const handlePickFromGallery = async () => {
+    if (processing) return;
+    setProcessing(true);
+    setStatusMessage('Opening photo library…');
+    try {
+      const rawUri = await pickRawDocumentFromLibrary();
+      if (!rawUri) return;
+      await processOcrImageUri(rawUri);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unexpected gallery error';
+      Alert.alert('Import Error', `Could not read selected image: ${msg}`);
+    } finally {
+      setProcessing(false);
+      setStatusMessage('');
+    }
+  };
+
+  const handleSwitchParsedKind = async (kind: 'flight' | 'hotel' | 'receipt') => {
+    if (!lastRawOcrText) return;
+    const reparsed = parseDocumentOcrText(lastRawOcrText, homeCurrency, lastImageUri, kind);
+    if (reparsed.kind === 'boarding_pass') {
+      const enriched = await enrichFlightDetails(reparsed);
+      setEnrichment(enriched);
+    } else {
+      setEnrichment(null);
+    }
+    setScanResult(reparsed);
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  const triggerSampleScan = async (sample: 'flight' | 'booking' | 'receipt' | 'hotel') => {
     if (sample === 'flight') {
       await handleDecodedBcbp(SAMPLE_BCBP_STRINGS.tokyo);
       return;
     }
     setProcessing(true);
+    setStatusMessage('Running offline OCR parser…');
     const raw =
-      sample === 'receipt'
+      sample === 'booking'
+        ? SAMPLE_OCR_TEXTS.flightConfirmation
+        : sample === 'receipt'
         ? SAMPLE_OCR_TEXTS.ramenReceipt
         : SAMPLE_OCR_TEXTS.hotelConfirmation;
+
     const parsed = parseDocumentOcrText(raw, homeCurrency);
-    const best = findBestMatchingTrip(
-      parsed.kind === 'hotel' ? parsed.checkIn : parsed.kind === 'receipt' ? parsed.date : ''
-    );
-    if (best) {
-      setSelectedTripId(best.id);
-      setDestinationChoice('existing');
+    setLastRawOcrText(raw);
+    setLastImageUri(undefined);
+    setShowRawText(false);
+
+    if (parsed.kind === 'boarding_pass') {
+      applyDestinationSuggestion(parsed.flightDate);
+      const enriched = await enrichFlightDetails(parsed);
+      setEnrichment(enriched);
+    } else {
+      applyDestinationSuggestion(parsed.kind === 'hotel' ? parsed.checkIn : parsed.date);
+      setEnrichment(null);
     }
-    setEnrichment(null);
     setScanResult(parsed);
     setProcessing(false);
+    setStatusMessage('');
     Haptics.selectionAsync().catch(() => {});
+  };
+
+  const updateFlightField = (patch: Partial<Extract<ScanResult, { kind: 'boarding_pass' }>>) => {
+    setScanResult((prev) => {
+      if (!prev || prev.kind !== 'boarding_pass') return prev;
+      const next = { ...prev, ...patch };
+      if (patch.originIata !== undefined || patch.destIata !== undefined) {
+        const o = lookupAirport(next.originIata);
+        const d = lookupAirport(next.destIata);
+        if (o && d) {
+          next.distanceMiles = calculateDistanceMiles(o.lat, o.lng, d.lat, d.lng);
+          next.estimatedDurationMin = estimateFlightDurationMinutes(next.distanceMiles);
+        }
+      }
+      if (patch.flightNumber !== undefined) {
+        const m = patch.flightNumber.trim().toUpperCase().match(/^([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})/);
+        if (m) {
+          const al = lookupAirline(m[1]);
+          next.airlineCode = al.code;
+          next.airlineName = al.name;
+          next.loyaltyProgram = al.loyaltyProgram;
+        }
+      }
+      return next;
+    });
+  };
+
+  const updateHotelField = (patch: Partial<Extract<ScanResult, { kind: 'hotel' }>>) => {
+    setScanResult((prev) => (prev && prev.kind === 'hotel' ? { ...prev, ...patch } : prev));
+  };
+
+  const updateReceiptField = (patch: Partial<Extract<ScanResult, { kind: 'receipt' }>>) => {
+    setScanResult((prev) => (prev && prev.kind === 'receipt' ? { ...prev, ...patch } : prev));
   };
 
   const getAutoTripSuggestion = (): { title: string; city: string; dateStart: string; dateEnd: string } => {
@@ -165,11 +293,11 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     }
     if (scanResult.kind === 'boarding_pass') {
       const destAp = lookupAirport(scanResult.destIata);
-      const city = destAp?.city ?? scanResult.destIata;
+      const city = destAp?.city ?? (scanResult.destIata !== 'TBD' ? scanResult.destIata : scanResult.flightNumber);
       const start = scanResult.flightDate;
       const end = addDays(start, 5);
       return {
-        title: `${city} Getaway ${destAp?.flag ?? '✈️'}`,
+        title: `${city} Trip ${destAp?.flag ?? '✈️'}`,
         city,
         dateStart: start,
         dateEnd: end,
@@ -216,7 +344,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
         startDate: auto.dateStart,
         endDate: auto.dateEnd,
         homeCurrency,
-        budget: 2000,
+        budget: 0,
         vibe: inferred.vibe,
         isShared: false,
         coTravelers: [],
@@ -236,16 +364,16 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
         airlineCode: scanResult.airlineCode,
         airlineName: scanResult.airlineName,
         flightNumber: scanResult.flightNumber,
-        pnr: scanResult.pnr,
-        originIata: scanResult.originIata,
+        pnr: scanResult.pnr || undefined,
+        originIata: scanResult.originIata.toUpperCase(),
         originCity: originAp?.city ?? scanResult.originIata,
-        destIata: scanResult.destIata,
+        destIata: scanResult.destIata.toUpperCase(),
         destCity: destAp?.city ?? scanResult.destIata,
         departureTime: enrichment?.departureTime ?? `${scanResult.flightDate}T10:30:00Z`,
         arrivalTime: enrichment?.arrivalTime ?? `${scanResult.flightDate}T16:30:00Z`,
         durationMinutes: enrichment?.durationMinutes ?? scanResult.estimatedDurationMin,
-        seat: scanResult.seat,
-        cabinClass: scanResult.cabinClass,
+        seat: scanResult.seat || undefined,
+        cabinClass: scanResult.cabinClass || undefined,
         terminal: enrichment?.terminal,
         gate: enrichment?.gate,
         aircraft: enrichment?.aircraft,
@@ -255,9 +383,35 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
         loyaltyProgram: scanResult.loyaltyProgram,
         frequentFlyerNumber: scanResult.frequentFlyerNumber,
         enrichedOnline: Boolean(enrichment?.enrichedOnline),
-        rawBarcode: scanResult.rawBarcode,
+        rawBarcode: scanResult.rawBarcode || undefined,
         createdAt: now,
       });
+
+      // If OCR also captured the ticket fare paid on a flight confirmation, log it privately in Spend!
+      if (scanResult.ticketAmount && scanResult.ticketAmount > 0) {
+        const curr = scanResult.ticketCurrency || homeCurrency;
+        const { converted, rate } = convertCurrency(
+          scanResult.ticketAmount,
+          curr,
+          homeCurrency,
+          fxRates
+        );
+        addExpense({
+          id: generateId('exp'),
+          tripId: finalTripId,
+          merchant: `${scanResult.airlineName} (${scanResult.flightNumber})`,
+          category: 'flights',
+          localAmount: scanResult.ticketAmount,
+          localCurrency: curr,
+          homeAmount: converted,
+          homeCurrency,
+          fxRateUsed: rate,
+          expenseDate: scanResult.flightDate,
+          receiptUri: scanResult.imageUri,
+          receiptRawText: scanResult.rawText,
+          createdAt: now,
+        });
+      }
     } else if (scanResult.kind === 'hotel') {
       const { converted } = convertCurrency(
         scanResult.totalAmount,
@@ -325,34 +479,42 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* STEP 1: LIVE CAMERA VIEWFINDER (when no scan result pending review) */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* STEP 1: LIVE CAMERA VIEWFINDER */}
         {!scanResult ? (
           <>
             <View style={styles.cameraCard}>
               {permission?.granted ? (
-                <CameraView
-                  ref={cameraRef}
-                  style={styles.camera}
-                  facing="back"
-                  barcodeScannerSettings={{
-                    barcodeTypes: ['pdf417', 'aztec', 'qr', 'datamatrix'],
-                  }}
-                  onBarcodeScanned={handleBarcodeScanned}
-                >
-                  <View style={styles.reticleWrap}>
+                <View style={styles.camera}>
+                  <CameraView
+                    ref={cameraRef}
+                    style={StyleSheet.absoluteFill}
+                    facing="back"
+                    onCameraReady={() => setCameraReady(true)}
+                    barcodeScannerSettings={{
+                      barcodeTypes: ['pdf417', 'aztec', 'qr', 'datamatrix'],
+                    }}
+                    onBarcodeScanned={processing ? undefined : handleBarcodeScanned}
+                  />
+                  {/* Sibling overlay (not CameraView child) */}
+                  <View style={styles.reticleWrap} pointerEvents="none">
                     <View style={styles.reticle} />
                     <Text style={styles.reticleHint}>
-                      Point at any Boarding Pass barcode — auto-detects offline! ✈️
+                      Boarding pass barcodes auto-scan ✈️{'\n'}
+                      For booking confirmations or bills, tap Snap below!
                     </Text>
                   </View>
-                </CameraView>
+                </View>
               ) : (
                 <View style={styles.permBox}>
                   <Text style={{ fontSize: 34 }}>📷</Text>
                   <Text style={styles.permTitle}>Camera Permission Needed</Text>
                   <Text style={styles.permSub}>
-                    Scan airline boarding pass barcodes (PDF417/Aztec/QR) and capture hotel confirmations or restaurant bills offline.
+                    Auto-scan boarding pass barcodes and snap flight/hotel booking confirmations or receipts offline.
                   </Text>
                   <TouchableOpacity onPress={requestPermission} style={styles.permBtn}>
                     <Text style={styles.permBtnText}>Enable Camera</Text>
@@ -361,86 +523,148 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
               )}
             </View>
 
-            {/* Capture Receipt / Hotel OCR Buttons */}
+            {/* Direct Live-Snap & Gallery Screenshot OCR Buttons */}
             <View style={styles.ocrActionsRow}>
               <TouchableOpacity
-                onPress={() => handleCaptureDocumentOcr('camera')}
-                style={{ flex: 1 }}
-                disabled={processing}
+                onPress={handleSnapLiveCamera}
+                style={{ flex: 1.25 }}
+                disabled={processing || (Boolean(permission?.granted) && !cameraReady)}
+                activeOpacity={0.9}
               >
                 <LinearGradient
                   colors={['#F97316', '#F43F5E']}
-                  style={styles.ocrPrimaryBtn}
+                  style={[
+                    styles.ocrPrimaryBtn,
+                    processing && { opacity: 0.7 },
+                  ]}
                 >
-                  <Text style={styles.ocrPrimaryText}>🧾 Snap Bill / Hotel</Text>
+                  <Text style={styles.ocrPrimaryText}>
+                    {processing ? '⏳ Scanning…' : '📸 Snap & Scan Document'}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => handleCaptureDocumentOcr('library')}
+                onPress={handlePickFromGallery}
                 style={styles.ocrSecondaryBtn}
                 disabled={processing}
+                activeOpacity={0.85}
               >
-                <Text style={styles.ocrSecondaryText}>🖼️ Pick Photo</Text>
+                <Text style={styles.ocrSecondaryText}>🖼️ Screenshot</Text>
               </TouchableOpacity>
             </View>
 
             {processing && (
               <View style={styles.loadingBanner}>
                 <ActivityIndicator color={COLORS.coral} />
-                <Text style={styles.loadingText}>Reading & enriching travel details…</Text>
+                <Text style={styles.loadingText}>
+                  {statusMessage || 'Reading & enriching travel details…'}
+                </Text>
               </View>
             )}
 
+            {/* How It Works Helper */}
+            <View style={styles.howItWorksCard}>
+              <Text style={styles.howTitle}>✨ What you can scan</Text>
+              <Text style={styles.howLine}>
+                • <Text style={styles.bold}>Boarding Pass Barcode</Text>: Auto-detects live in viewfinder (no tap needed).
+              </Text>
+              <Text style={styles.howLine}>
+                • <Text style={styles.bold}>Flight / Hotel Booking Confirmation</Text>: Point camera & tap <Text style={styles.bold}>Snap & Scan</Text>, or pick an email <Text style={styles.bold}>Screenshot</Text>.
+              </Text>
+              <Text style={styles.howLine}>
+                • <Text style={styles.bold}>Restaurant / Store Receipts</Text>: Snap directly to auto-convert currency & tuck privately in Spend.
+              </Text>
+            </View>
+
             {/* 1-Tap Instant Demo Test Scans */}
             <View style={styles.demoCard}>
-              <Text style={styles.demoTitle}>🧪 Quick Test Scans (No Paper Ticket Needed!)</Text>
-              <Text style={styles.demoSub}>
-                Tap any sample below to test the exact offline BCBP & OCR parsing pipeline right now:
-              </Text>
+              <Text style={styles.demoTitle}>🧪 Quick Test Scans (No Paper Ticket Needed)</Text>
               <View style={styles.demoRow}>
                 <TouchableOpacity
                   onPress={() => triggerSampleScan('flight')}
                   style={styles.demoChip}
                 >
-                  <Text style={styles.demoChipText}>✈️ ANA Pass</Text>
+                  <Text style={styles.demoChipText}>✈️ BCBP</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => triggerSampleScan('receipt')}
+                  onPress={() => triggerSampleScan('booking')}
                   style={styles.demoChip}
                 >
-                  <Text style={styles.demoChipText}>🍜 Kyoto Bill</Text>
+                  <Text style={styles.demoChipText}>📩 Flight Email</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => triggerSampleScan('hotel')}
                   style={styles.demoChip}
                 >
-                  <Text style={styles.demoChipText}>🏨 Kyoto Hotel</Text>
+                  <Text style={styles.demoChipText}>🏨 Hotel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => triggerSampleScan('receipt')}
+                  style={styles.demoChip}
+                >
+                  <Text style={styles.demoChipText}>🍜 Bill</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </>
         ) : (
-          /* STEP 2: 1-TAP REVIEW SHEET + USER CHOICE (AUTO-CREATE VS EXISTING TRIP) */
+          /* STEP 2: EDITABLE 1-TAP REVIEW SHEET + USER CHOICE */
           <View style={styles.reviewWrap}>
             <View style={styles.detectedCard}>
               <View style={styles.rowBetween}>
                 <Text style={styles.detectedBadge}>
                   {scanResult.kind === 'boarding_pass'
-                    ? '✈️ BOARDING PASS DECODED'
+                    ? scanResult.source === 'ocr'
+                      ? '✈️ FLIGHT BOOKING READ (OCR)'
+                      : '✈️ BOARDING PASS DECODED'
                     : scanResult.kind === 'hotel'
                     ? '🏨 HOTEL CONFIRMATION READ'
-                    : '🍜 RECEIPT READ (ON-DEVICE OCR)'}
+                    : '🧾 RECEIPT READ (OCR)'}
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
                     setScanResult(null);
                     setEnrichment(null);
+                    setLastRawOcrText(null);
+                    setShowRawText(false);
                   }}
                 >
                   <Text style={styles.rescanLink}>↺ Re-scan</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* 1-tap document type override for OCR scans */}
+              {lastRawOcrText && (
+                <View style={styles.typeSwitchRow}>
+                  <Text style={styles.typeSwitchLbl}>Type:</Text>
+                  {(
+                    [
+                      { id: 'flight', label: '✈️ Flight', active: scanResult.kind === 'boarding_pass' },
+                      { id: 'hotel', label: '🏨 Hotel', active: scanResult.kind === 'hotel' },
+                      { id: 'receipt', label: '🧾 Expense', active: scanResult.kind === 'receipt' },
+                    ] as const
+                  ).map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleSwitchParsedKind(item.id)}
+                      style={[
+                        styles.typeSwitchChip,
+                        item.active && styles.typeSwitchChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeSwitchText,
+                          item.active && { color: '#FFFFFF' },
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               {scanResult.kind === 'boarding_pass' && (
                 <View style={{ gap: 8 }}>
@@ -448,24 +672,67 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                     {scanResult.airlineName.split(' ')[0]} {scanResult.flightNumber} ({scanResult.originIata} →{' '}
                     {scanResult.destIata})
                   </Text>
-                  <View style={styles.gridTwo}>
-                    <InfoPair label="Date" value={scanResult.flightDate} />
-                    <InfoPair label="Seat / Cabin" value={`${scanResult.seat} • ${scanResult.cabinClass}`} />
-                    <InfoPair
-                      label="Distance & Time"
-                      value={`${scanResult.distanceMiles.toLocaleString()} mi (${formatDuration(
-                        enrichment?.durationMinutes ?? scanResult.estimatedDurationMin
-                      )})`}
+
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label="Flight #"
+                      value={scanResult.flightNumber}
+                      onChangeText={(v) => updateFlightField({ flightNumber: v.toUpperCase() })}
                     />
-                    <InfoPair
-                      label="Loyalty Miles"
-                      value={`+${scanResult.distanceMiles.toLocaleString()} mi ✨`}
+                    <EditableField
+                      label="PNR / Ref"
+                      value={scanResult.pnr}
+                      placeholder="Optional"
+                      onChangeText={(v) => updateFlightField({ pnr: v.toUpperCase() })}
                     />
                   </View>
+
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label="From (IATA)"
+                      value={scanResult.originIata}
+                      onChangeText={(v) => updateFlightField({ originIata: v.toUpperCase().slice(0, 3) })}
+                    />
+                    <EditableField
+                      label="To (IATA)"
+                      value={scanResult.destIata}
+                      onChangeText={(v) => updateFlightField({ destIata: v.toUpperCase().slice(0, 3) })}
+                    />
+                    <EditableField
+                      label="Date"
+                      value={scanResult.flightDate}
+                      onChangeText={(v) => updateFlightField({ flightDate: v })}
+                    />
+                  </View>
+
+                  <View style={styles.gridTwo}>
+                    <InfoPair
+                      label="Distance & Time"
+                      value={
+                        scanResult.distanceMiles > 0
+                          ? `${scanResult.distanceMiles.toLocaleString()} mi (${formatDuration(
+                              enrichment?.durationMinutes ?? scanResult.estimatedDurationMin
+                            )})`
+                          : 'Enter IATA codes for miles'
+                      }
+                    />
+                    <InfoPair
+                      label={scanResult.ticketAmount ? 'Fare Detected' : 'Loyalty Miles'}
+                      value={
+                        scanResult.ticketAmount
+                          ? formatMoney(
+                              scanResult.ticketAmount,
+                              scanResult.ticketCurrency || homeCurrency
+                            )
+                          : `+${scanResult.distanceMiles.toLocaleString()} mi ✨`
+                      }
+                    />
+                  </View>
+
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
-                      ✓ Adds to Bookings tab, draws arc on World Map & credits {scanResult.loyaltyProgram}
-                      {enrichment?.enrichedOnline ? ' • Live flight API enriched!' : ' • Offline airport DB'}
+                      ✓ Adds to Bookings tab, World Map & {scanResult.loyaltyProgram}
+                      {scanResult.ticketAmount ? ' + logs fare to Spend' : ''}
                     </Text>
                   </View>
                 </View>
@@ -473,12 +740,34 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 
               {scanResult.kind === 'receipt' && (
                 <View style={{ gap: 8 }}>
-                  <Text style={styles.detectedTitle}>{scanResult.merchant}</Text>
-                  <View style={styles.gridTwo}>
-                    <InfoPair
-                      label="Local Bill"
-                      value={formatMoney(scanResult.amount, scanResult.currency)}
+                  <EditableField
+                    label="Merchant"
+                    value={scanResult.merchant}
+                    onChangeText={(v) => updateReceiptField({ merchant: v })}
+                  />
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label="Amount"
+                      value={String(scanResult.amount || '')}
+                      keyboardType="decimal-pad"
+                      onChangeText={(v) =>
+                        updateReceiptField({ amount: parseFloat(v) || 0 })
+                      }
                     />
+                    <EditableField
+                      label="Currency"
+                      value={scanResult.currency}
+                      onChangeText={(v) =>
+                        updateReceiptField({ currency: v.toUpperCase().slice(0, 3) })
+                      }
+                    />
+                    <EditableField
+                      label="Date"
+                      value={scanResult.date}
+                      onChangeText={(v) => updateReceiptField({ date: v })}
+                    />
+                  </View>
+                  <View style={styles.gridTwo}>
                     <InfoPair
                       label={`In ${homeCurrency}`}
                       value={formatMoney(
@@ -487,12 +776,11 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                         homeCurrency
                       )}
                     />
-                    <InfoPair label="Date" value={scanResult.date} />
                     <InfoPair label="Category" value={scanResult.category.toUpperCase()} />
                   </View>
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
-                      🔒 Tucked safely inside the Spend tab (keeps your Polaroid Memories timeline clean!)
+                      🔒 Tucked safely inside the Spend tab (keeps Polaroid Memories clean!)
                     </Text>
                   </View>
                 </View>
@@ -500,24 +788,70 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 
               {scanResult.kind === 'hotel' && (
                 <View style={{ gap: 8 }}>
-                  <Text style={styles.detectedTitle}>{scanResult.hotelName}</Text>
-                  <View style={styles.gridTwo}>
-                    <InfoPair
-                      label="Dates"
-                      value={`${scanResult.checkIn} → ${scanResult.checkOut}`}
+                  <EditableField
+                    label="Hotel / Stay Name"
+                    value={scanResult.hotelName}
+                    onChangeText={(v) => updateHotelField({ hotelName: v })}
+                  />
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label="Check-in"
+                      value={scanResult.checkIn}
+                      onChangeText={(v) => updateHotelField({ checkIn: v })}
                     />
-                    <InfoPair label="Duration" value={`${scanResult.nights} Nights`} />
-                    <InfoPair
+                    <EditableField
+                      label="Check-out"
+                      value={scanResult.checkOut}
+                      onChangeText={(v) => updateHotelField({ checkOut: v })}
+                    />
+                  </View>
+                  <View style={styles.editRow}>
+                    <EditableField
                       label="Total Paid"
-                      value={formatMoney(scanResult.totalAmount, scanResult.currency)}
+                      value={String(scanResult.totalAmount || '')}
+                      keyboardType="decimal-pad"
+                      onChangeText={(v) =>
+                        updateHotelField({ totalAmount: parseFloat(v) || 0 })
+                      }
                     />
-                    <InfoPair label="Confirmation" value={scanResult.confirmationCode || 'Saved'} />
+                    <EditableField
+                      label="Currency"
+                      value={scanResult.currency}
+                      onChangeText={(v) =>
+                        updateHotelField({ currency: v.toUpperCase().slice(0, 3) })
+                      }
+                    />
+                    <EditableField
+                      label="Conf #"
+                      value={scanResult.confirmationCode || ''}
+                      placeholder="Optional"
+                      onChangeText={(v) => updateHotelField({ confirmationCode: v })}
+                    />
                   </View>
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
-                      ✓ Adds to Bookings tab with offline address & Spend breakdown
+                      ✓ Adds to Bookings tab ({scanResult.nights} nights) & Spend breakdown
                     </Text>
                   </View>
+                </View>
+              )}
+
+              {/* Collapsible raw OCR text viewer */}
+              {lastRawOcrText && (
+                <View>
+                  <TouchableOpacity
+                    onPress={() => setShowRawText(!showRawText)}
+                    style={styles.rawToggle}
+                  >
+                    <Text style={styles.rawToggleText}>
+                      {showRawText ? '▲ Hide Raw Scanned Text' : '📄 View Raw Scanned Text'}
+                    </Text>
+                  </TouchableOpacity>
+                  {showRawText && (
+                    <View style={styles.rawBox}>
+                      <Text style={styles.rawText}>{lastRawOcrText}</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -538,7 +872,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                 >
                   <Text style={styles.choiceHead}>📎 Existing Trip</Text>
                   <Text style={styles.choiceSub} numberOfLines={1}>
-                    {trips.find((t) => t.id === selectedTripId)?.title || 'Pick a trip'}
+                    {trips.find((t) => t.id === selectedTripId)?.title || 'No trips yet'}
                   </Text>
                 </TouchableOpacity>
 
@@ -607,15 +941,43 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 };
 
 const InfoPair = ({ label, value }: { label: string; value: string }) => (
-  <View style={{ width: '48%' }}>
-    <Text style={styles.pairLabel}>{label}</Text>
-    <Text style={styles.pairValue}>{value}</Text>
+  <View style={styles.infoPair}>
+    <Text style={styles.infoLabel}>{label}</Text>
+    <Text style={styles.infoValue} numberOfLines={1}>
+      {value}
+    </Text>
+  </View>
+);
+
+const EditableField = ({
+  label,
+  value,
+  placeholder,
+  keyboardType,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  keyboardType?: 'default' | 'decimal-pad';
+  onChangeText: (v: string) => void;
+}) => (
+  <View style={{ flex: 1 }}>
+    <Text style={styles.editLabel}>{label}</Text>
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={COLORS.inkSoft}
+      keyboardType={keyboardType}
+      style={styles.editInput}
+    />
   </View>
 );
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return isoDate;
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
@@ -627,8 +989,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingVertical: 12,
   },
   closeBtn: {
     backgroundColor: COLORS.card,
@@ -639,50 +1000,56 @@ const styles = StyleSheet.create({
     borderRadius: 99,
   },
   closeBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  headerTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
   offlineTag: {
     backgroundColor: COLORS.emeraldSoft,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 99,
   },
-  offlineTagText: { fontSize: 11, fontWeight: '800', color: '#047857' },
+  offlineTagText: { fontSize: 10, fontWeight: '900', color: '#047857' },
 
-  content: { padding: 16, paddingBottom: 36, gap: 14 },
+  content: { padding: 16, paddingBottom: 40, gap: 14 },
   cameraCard: {
-    height: 290,
     borderRadius: 24,
     overflow: 'hidden',
-    backgroundColor: '#1C1917',
     borderWidth: 2,
-    borderColor: '#FB923C',
+    borderColor: '#FED7AA',
+    backgroundColor: '#1C1917',
+    height: 290,
+    ...SHADOWS.card,
   },
-  camera: { flex: 1 },
+  camera: { flex: 1, position: 'relative' },
   reticleWrap: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    padding: 18,
+    gap: 12,
   },
   reticle: {
-    width: '86%',
-    height: 130,
+    width: '88%',
+    height: 155,
     borderRadius: 18,
     borderWidth: 2.5,
     borderColor: '#FDE047',
     borderStyle: 'dashed',
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   reticleHint: {
+    backgroundColor: 'rgba(28,25,23,0.75)',
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 14,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 99,
+    borderRadius: 14,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   permBox: {
     flex: 1,
@@ -690,33 +1057,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
     gap: 8,
+    backgroundColor: '#FFF7ED',
   },
-  permTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  permSub: { color: '#D6D3D1', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  permTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
+  permSub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
   permBtn: {
-    marginTop: 6,
     backgroundColor: COLORS.coral,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     borderRadius: 99,
+    marginTop: 6,
   },
   permBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
   ocrActionsRow: { flexDirection: 'row', gap: 10 },
   ocrPrimaryBtn: {
     paddingVertical: 14,
-    borderRadius: 16,
+    borderRadius: 18,
     alignItems: 'center',
     ...SHADOWS.card,
   },
   ocrPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
   ocrSecondaryBtn: {
     backgroundColor: COLORS.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   ocrSecondaryText: { color: COLORS.ink, fontWeight: '800', fontSize: 13 },
@@ -726,81 +1094,143 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    padding: 12,
     backgroundColor: COLORS.amberSoft,
+    paddingVertical: 12,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
-  loadingText: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  loadingText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+
+  howItWorksCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 13,
+    gap: 5,
+  },
+  howTitle: { fontSize: 12, fontWeight: '900', color: COLORS.ink, marginBottom: 2 },
+  howLine: { fontSize: 11, color: COLORS.inkMuted, lineHeight: 16 },
+  bold: { fontWeight: '800', color: COLORS.ink },
 
   demoCard: {
     backgroundColor: COLORS.card,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 15,
+    padding: 14,
     gap: 8,
   },
-  demoTitle: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
-  demoSub: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
-  demoRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  demoTitle: { fontSize: 12, fontWeight: '900', color: COLORS.ink },
+  demoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   demoChip: {
-    flex: 1,
-    backgroundColor: COLORS.coralSoft,
-    paddingVertical: 10,
+    backgroundColor: COLORS.skySoft,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingVertical: 8,
+    paddingHorizontal: 11,
     borderRadius: 12,
-    alignItems: 'center',
   },
-  demoChipText: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
+  demoChipText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
 
-  // Review Sheet
   reviewWrap: { gap: 14 },
   detectedCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    padding: 16,
+    gap: 10,
+    ...SHADOWS.card,
+  },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  detectedBadge: { fontSize: 11, fontWeight: '900', color: '#047857', letterSpacing: 0.4 },
+  rescanLink: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
+  detectedTitle: { fontSize: 17, fontWeight: '900', color: COLORS.ink },
+
+  typeSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  typeSwitchLbl: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
+  typeSwitchChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  typeSwitchChipActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+  typeSwitchText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
+
+  editRow: { flexDirection: 'row', gap: 8 },
+  editLabel: { fontSize: 10, fontWeight: '800', color: COLORS.inkSoft, marginBottom: 3 },
+  editInput: {
+    backgroundColor: COLORS.canvas,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.ink,
+  },
+
+  gridTwo: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  infoPair: {
+    width: '48%',
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    padding: 9,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  infoLabel: { fontSize: 10, fontWeight: '700', color: COLORS.inkSoft },
+  infoValue: { fontSize: 12, fontWeight: '800', color: COLORS.ink, marginTop: 2 },
+  routeNoteBox: {
+    backgroundColor: COLORS.emeraldSoft,
+    borderRadius: 12,
+    padding: 10,
+  },
+  routeNoteText: { fontSize: 11, fontWeight: '700', color: '#047857', lineHeight: 16 },
+
+  rawToggle: { paddingTop: 4, alignSelf: 'flex-start' },
+  rawToggleText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
+  rawBox: {
+    marginTop: 6,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  rawText: { fontSize: 11, fontFamily: 'monospace', color: COLORS.inkMuted, lineHeight: 16 },
+
+  choiceCard: {
     backgroundColor: COLORS.card,
     borderRadius: 22,
     borderWidth: 1.5,
     borderColor: '#FED7AA',
     padding: 16,
     gap: 10,
-    ...SHADOWS.card,
-  },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  detectedBadge: { fontSize: 11, fontWeight: '900', color: COLORS.coralDark, letterSpacing: 0.4 },
-  rescanLink: { fontSize: 12, fontWeight: '800', color: COLORS.sky },
-  detectedTitle: { fontSize: 17, fontWeight: '900', color: COLORS.ink },
-  gridTwo: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  pairLabel: { fontSize: 10, fontWeight: '700', color: COLORS.inkSoft, textTransform: 'uppercase' },
-  pairValue: { fontSize: 13, fontWeight: '800', color: COLORS.ink, marginTop: 2 },
-  routeNoteBox: {
-    backgroundColor: COLORS.emeraldSoft,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 2,
-  },
-  routeNoteText: { fontSize: 11, fontWeight: '700', color: '#047857', lineHeight: 16 },
-
-  choiceCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 15,
-    gap: 10,
   },
   choiceTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
   choiceGrid: { flexDirection: 'row', gap: 10 },
   choiceBox: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: COLORS.borderSoft,
     backgroundColor: COLORS.canvas,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     padding: 12,
-    gap: 3,
   },
-  choiceBoxActive: { borderColor: COLORS.coral, backgroundColor: '#FFF7ED' },
+  choiceBoxActive: {
+    backgroundColor: COLORS.coralSoft,
+    borderColor: COLORS.coral,
+    borderWidth: 2,
+  },
   choiceHead: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
-  choiceSub: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
+  choiceSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 3 },
   tripChip: {
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
@@ -809,14 +1239,14 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 99,
   },
-  tripChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  tripChipText: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+  tripChipActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+  tripChipText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
 
   confirmBtn: {
     paddingVertical: 15,
     borderRadius: 18,
     alignItems: 'center',
-    ...SHADOWS.fab,
+    ...SHADOWS.card,
   },
   confirmBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
 });
