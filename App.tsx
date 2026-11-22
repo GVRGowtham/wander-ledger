@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useIncomingShare } from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from './src/context/AppContext';
@@ -22,6 +23,7 @@ import { TripsHubScreen } from './src/screens/TripsHubScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { WorldMapScreen } from './src/screens/WorldMapScreen';
 import { COLORS, SHADOWS } from './src/theme/tokens';
+import { IncomingSharePayload } from './src/types/models';
 
 type MainTab = 'trips' | 'map' | 'shared' | 'passport';
 type OverlayRoute =
@@ -29,13 +31,57 @@ type OverlayRoute =
   | { name: 'trip'; tripId: string }
   | { name: 'ig_studio'; tripId: string }
   | { name: 'new_trip' }
-  | { name: 'scanner' }
+  | { name: 'scanner'; incomingShare?: IncomingSharePayload | null }
   | { name: 'welcome' };
 
 const MainShell: React.FC = () => {
   const { ready, profile } = useApp();
   const [activeTab, setActiveTab] = useState<MainTab>('trips');
   const [overlay, setOverlay] = useState<OverlayRoute>({ name: 'none' });
+  const { resolvedSharedPayloads, clearSharedPayloads } = useIncomingShare();
+
+  // Route incoming Android Share -> Wanderer's Ledger payloads (PDF, screenshots, confirmation text)
+  // straight into Smart Scan for 1-tap zero-typing extraction!
+  useEffect(() => {
+    if (!ready || !profile || !resolvedSharedPayloads || resolvedSharedPayloads.length === 0) {
+      return;
+    }
+
+    const imageUris: string[] = [];
+    let pdfUri: string | undefined;
+    let fileName: string | undefined;
+    const textParts: string[] = [];
+
+    for (const payload of resolvedSharedPayloads) {
+      const mime = (payload.contentMimeType || payload.mimeType || '').toLowerCase();
+      const origName = payload.originalName || '';
+      const uri = 'contentUri' in payload ? payload.contentUri : null;
+
+      if (uri && (mime === 'application/pdf' || origName.toLowerCase().endsWith('.pdf') || uri.toLowerCase().endsWith('.pdf'))) {
+        pdfUri = uri;
+        fileName = origName || undefined;
+      } else if (uri && (payload.contentType === 'image' || mime.startsWith('image/'))) {
+        imageUris.push(uri);
+      } else if (payload.value && payload.value.trim().length > 0 && (payload.contentType === 'text' || payload.shareType === 'text')) {
+        textParts.push(payload.value.trim());
+      }
+    }
+
+    clearSharedPayloads();
+
+    if (pdfUri || imageUris.length > 0 || textParts.length > 0) {
+      setOverlay({
+        name: 'scanner',
+        incomingShare: {
+          id: `share_${Date.now()}`,
+          imageUris: imageUris.slice(0, 3),
+          pdfUri,
+          text: textParts.length > 0 ? textParts.join('\n') : undefined,
+          fileName,
+        },
+      });
+    }
+  }, [ready, profile, resolvedSharedPayloads, clearSharedPayloads]);
 
   // Handle Android hardware Back button gracefully
   useEffect(() => {
@@ -87,6 +133,7 @@ const MainShell: React.FC = () => {
     if (overlay.name === 'scanner') {
       return (
         <ScannerScreen
+          incomingShare={overlay.incomingShare}
           onClose={() => setOverlay({ name: 'none' })}
           onSavedToTrip={(tripId) => setOverlay({ name: 'trip', tripId })}
         />

@@ -19,13 +19,17 @@ const CURRENCY_PATTERNS: Array<{ regex: RegExp; code: string }> = [
   { regex: /€|EUR/i, code: 'EUR' },
   { regex: /£|GBP/i, code: 'GBP' },
   { regex: /₹|\bINR\b|\bRS\.?\s*\d/i, code: 'INR' },
-  { regex: /\bCHF\b/i, code: 'CHF' },
+  { regex: /\bCHF\b|\bSFr\.?/i, code: 'CHF' },
   { regex: /₩|\bKRW\b/i, code: 'KRW' },
   { regex: /฿|\bTHB\b/i, code: 'THB' },
   { regex: /S\$|\bSGD\b/i, code: 'SGD' },
   { regex: /A\$|\bAUD\b/i, code: 'AUD' },
   { regex: /C\$|\bCAD\b/i, code: 'CAD' },
+  { regex: /NZ\$|\bNZD\b/i, code: 'NZD' },
+  { regex: /HK\$|\bHKD\b/i, code: 'HKD' },
   { regex: /\bAED\b/i, code: 'AED' },
+  { regex: /\bMYR\b|\bRM\s*\d/i, code: 'MYR' },
+  { regex: /\bMXN\b/i, code: 'MXN' },
   { regex: /\$|\bUSD\b/i, code: 'USD' },
 ];
 
@@ -38,32 +42,71 @@ export function detectCurrency(text: string, fallback = 'USD'): string {
   return fallback;
 }
 
+/**
+ * Handles US/UK ('1,450.50'), Swiss ("1'450.50"), and European ('1.450,50' or '18,50') number formats.
+ */
 function parseNumber(numStr: string): number {
-  const cleaned = numStr.replace(/,/g, '').trim();
+  let cleaned = numStr.replace(/['’\s]/g, '').trim();
+  // European format: e.g. 1.450,50 or 18,50
+  if (/,\d{2}$/.test(cleaned) && (!cleaned.includes('.') || cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.'))) {
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  } else {
+    cleaned = cleaned.replace(/,/g, '');
+  }
   const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 
+const CURRENCY_TOKEN =
+  '(?:INR|USD|EUR|GBP|JPY|CHF|SFr\\.?|SGD|AUD|CAD|NZD|HKD|AED|THB|KRW|MYR|MXN|RS\\.?)';
+const AMOUNT_TOKEN = "([\\d,.'’]+(?:[.,]\\d{1,2})?)";
+
 export function extractTotalAmount(text: string): number {
-  const lines = text.split(/\r?\n/);
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
-  // 1. Prioritize lines mentioning TOTAL / AMOUNT PAID / GRAND TOTAL / BALANCE DUE / FARE
-  const totalRegex =
-    /(?:grand\s*total|total\s*paid|total\s*fare|amount\s*paid|total\s*amount|total|sum|balance\s*due|合計)[^\d¥$€£₹]*[¥$€£₹]?\s*(?:INR|USD|EUR|GBP|JPY|RS\.?)?\s*([\d,]+(?:\.\d{1,2})?)/i;
+  // 1. Prioritize lines mentioning TOTAL / AMOUNT PAID / GRAND TOTAL / BALANCE DUE / FARE / TOTAL CHARGES / GESAMT
+  const totalRegex = new RegExp(
+    `(?:grand\\s*total|total\\s*paid|total\\s*price|total\\s*charges|total\\s*stay|total\\s*fare|amount\\s*paid|amount\\s*charged|total\\s*amount|net\\s*payable|balance\\s*due|total\\s*incl\\.?[^\\d]*|total\\s*ttc|gesamt(?:betrag)?|total|sum|合計)[^\\d¥$€£₹₩฿]*[¥$€£₹₩฿]?\\s*${CURRENCY_TOKEN}?\\s*${AMOUNT_TOKEN}`,
+    'i'
+  );
 
+  // Check from bottom up (grand total is typically near the bottom of receipts & folios)
   for (let i = lines.length - 1; i >= 0; i--) {
     const m = lines[i].match(totalRegex);
     if (m && m[1]) {
       const val = parseNumber(m[1]);
       if (val > 0) return val;
     }
+    // Two-column PDF / Booking.com screenshot layout: label on line i, amount on line i+1
+    if (
+      i + 1 < lines.length &&
+      /^(?:grand\s*total|total\s*paid|total\s*price|total\s*charges|amount\s*paid|total\s*amount|balance\s*due|total\s*\(?.*\)?|gesamt)/i.test(
+        lines[i]
+      )
+    ) {
+      const nextValMatch = lines[i + 1].match(
+        new RegExp(`(?:[¥$€£₹₩฿]|${CURRENCY_TOKEN})?\\s*${AMOUNT_TOKEN}`, 'i')
+      );
+      if (nextValMatch && nextValMatch[1]) {
+        const val = parseNumber(nextValMatch[1]);
+        if (val > 0) return val;
+      }
+    }
   }
 
-  // 2. Fallback: largest currency-prefixed number in the document
-  const moneyMatches = text.matchAll(/(?:[¥$€£₹]|Rs\.?|INR|USD|EUR|GBP)\s*([\d,]+(?:\.\d{1,2})?)/gi);
+  // 2. Fallback: largest currency-prefixed or currency-suffixed number in the document
+  const moneyRegex = new RegExp(
+    `(?:(?:[¥$€£₹₩฿]|${CURRENCY_TOKEN})\\s*${AMOUNT_TOKEN}|${AMOUNT_TOKEN}\\s*${CURRENCY_TOKEN})`,
+    'gi'
+  );
   let maxVal = 0;
-  for (const m of moneyMatches) {
-    const val = parseNumber(m[1]);
+  for (const m of text.matchAll(moneyRegex)) {
+    const rawNum = m[1] || m[2];
+    if (!rawNum) continue;
+    const val = parseNumber(rawNum);
     if (val > maxVal) maxVal = val;
   }
   return maxVal;
@@ -104,7 +147,6 @@ export function parseDateFromString(text: string): string | null {
   if (dmy) {
     const a = parseInt(dmy[1], 10);
     const b = parseInt(dmy[2], 10);
-    // If first part > 12, it's definitely DD/MM/YYYY; if second > 12, MM/DD/YYYY; else assume DD/MM/YYYY
     const day = b > 12 ? b : a;
     const month = b > 12 ? a : b;
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
@@ -113,6 +155,58 @@ export function parseDateFromString(text: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * Extracts compact date ranges like 'Nov 1 – 5, 2025' or '1 - 5 Nov 2025' from booking emails.
+ */
+export function parseDateRangeFromString(text: string): { start: string; end: string } | null {
+  // e.g. Nov 1 - 5, 2025 or Nov 1 - Nov 5, 2025
+  const m1 = text.match(
+    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\s*(?:[-–—]|to)\s*(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?(\d{1,2}),?\s+(20\d{2})\b/i
+  );
+  if (m1) {
+    const mon1 = MONTH_MAP[m1[1].slice(0, 3).toLowerCase()];
+    const mon2 = m1[3] ? MONTH_MAP[m1[3].slice(0, 3).toLowerCase()] : mon1;
+    return {
+      start: `${m1[5]}-${mon1}-${m1[2].padStart(2, '0')}`,
+      end: `${m1[5]}-${mon2}-${m1[4].padStart(2, '0')}`,
+    };
+  }
+
+  // e.g. 1 - 5 Nov 2025
+  const m2 = text.match(
+    /\b(\d{1,2})\s*(?:[-–—]|to)\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(20\d{2})\b/i
+  );
+  if (m2) {
+    const mon = MONTH_MAP[m2[3].slice(0, 3).toLowerCase()];
+    return {
+      start: `${m2[4]}-${mon}-${m2[1].padStart(2, '0')}`,
+      end: `${m2[4]}-${mon}-${m2[2].padStart(2, '0')}`,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Merges OCR text from multiple screenshots, PDF pages, or top/bottom halves of a long receipt.
+ */
+export function mergeOcrTexts(pages: string[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const page of pages) {
+    for (const rawLine of page.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      // Avoid duplicate overlap lines when snapping top + bottom half of the same paper receipt
+      const key = line.toLowerCase();
+      if (line.length > 10 && seen.has(key)) continue;
+      seen.add(key);
+      out.push(line);
+    }
+  }
+  return out.join('\n');
 }
 
 export function inferExpenseCategory(text: string): ExpenseCategory {
@@ -352,10 +446,41 @@ export function parseDocumentOcrText(
   }
 
   if (isHotel) {
-    const checkInLine = lines.find((l) => /check[\s-]?in/i.test(l)) ?? '';
-    const checkOutLine = lines.find((l) => /check[\s-]?out/i.test(l)) ?? '';
-    const checkIn = parseDateFromString(checkInLine) ?? parseDateFromString(rawText) ?? today;
-    const checkOut = parseDateFromString(checkOutLine) ?? addDays(checkIn, 2);
+    // Support both single-line ("Check-in: Oct 17, 2026") and 2-line ("Check-in\nSat, Oct 17, 2026") Booking.com/Airbnb formats
+    const findLabeledDate = (labelRx: RegExp): string | null => {
+      for (let i = 0; i < lines.length; i++) {
+        if (labelRx.test(lines[i])) {
+          const sameLine = parseDateFromString(lines[i]);
+          if (sameLine) return sameLine;
+          if (i + 1 < lines.length) {
+            const nextLine = parseDateFromString(lines[i + 1]);
+            if (nextLine) return nextLine;
+          }
+          if (i + 2 < lines.length) {
+            const next2 = parseDateFromString(lines[i + 2]);
+            if (next2) return next2;
+          }
+        }
+      }
+      return null;
+    };
+
+    const dateRange = parseDateRangeFromString(rawText);
+    const labeledIn = findLabeledDate(/check[\s-]?in|arrival\s*date/i);
+    const labeledOut = findLabeledDate(/check[\s-]?out|departure\s*date/i);
+
+    // Fallback: collect all distinct dates in document order
+    const allDates: string[] = [];
+    for (const line of lines) {
+      const d = parseDateFromString(line);
+      if (d && !allDates.includes(d)) allDates.push(d);
+    }
+
+    const checkIn = labeledIn ?? dateRange?.start ?? allDates[0] ?? today;
+    const checkOut =
+      labeledOut ??
+      dateRange?.end ??
+      (allDates.find((d) => d > checkIn) ?? addDays(checkIn, 2));
 
     const nightsMatch = rawText.match(/(\d+)\s*nights?/i);
     const computedNights = Math.max(
@@ -370,21 +495,39 @@ export function parseDocumentOcrText(
     const confMatch =
       rawText.match(/#([A-Z0-9-]{4,14})\b/i) ??
       rawText.match(
-        /(?:confirmation|booking(?:\s+confirmed)?|ref(?:erence)?)\s*(?:no\.?|number|id|code|#|:)*\s*#?([A-Z0-9-]*\d[A-Z0-9-]{2,13})\b/i
+        /(?:confirmation|booking(?:\s+confirmed)?|reservation|pin\s*code|ref(?:erence)?)\s*(?:no\.?|number|id|code|#|:)*\s*#?([A-Z0-9-]*\d[A-Z0-9-]{2,13})\b/i
       );
     const hotelNameLine =
       lines.find(
         (l) =>
-          /(hotel|resort|ryokan|inn|suites|thousand|marriott|hilton|hyatt|airbnb|villa|house|taj|oberoi|radisson)/i.test(
+          /(hotel|resort|ryokan|inn|suites|thousand|marriott|hilton|hyatt|airbnb|villa|house|taj|oberoi|radisson|sheraton|westin|ibis|novotel|accor|chalet|lodge)/i.test(
             l
-          ) && !/booking\s*confirmed/i.test(l)
+          ) && !/booking\s*confirmed|reservation\s*confirmed|booking\.com/i.test(l)
       ) ??
-      lines.find((l) => !/booking\s*confirmed|confirmation/i.test(l)) ??
+      lines.find((l) => !/booking\s*confirmed|confirmation|itinerary|booking\.com/i.test(l)) ??
       'Scanned Stay';
 
     const addressLine = lines.find((l) =>
-      /(ward|street|st\.|ave|road|rd\.|ku,|kyoto|tokyo|lisbon|rome|address|bengaluru|mumbai|goa|delhi)/i.test(l)
+      /(ward|street|st\.|strasse|straße|ave|road|rd\.|ku,|kyoto|tokyo|lisbon|rome|paris|zurich|lucerne|interlaken|geneva|zermatt|address|bengaluru|mumbai|goa|delhi|london|new york)/i.test(l)
     );
+
+    // Infer destination city from known travel cities for clean auto-trip creation
+    const lowerAll = rawText.toLowerCase();
+    let cityHint: string | undefined;
+    for (const ap of Object.values(AIRPORTS)) {
+      if (ap.city.length >= 4 && lowerAll.includes(ap.city.toLowerCase())) {
+        cityHint = ap.city;
+        break;
+      }
+    }
+    if (!cityHint) {
+      for (const ap of Object.values(AIRPORTS)) {
+        if (ap.country.length >= 4 && lowerAll.includes(ap.country.toLowerCase())) {
+          cityHint = ap.country;
+          break;
+        }
+      }
+    }
 
     const parsed: ParsedHotelConfirmation = {
       kind: 'hotel',
@@ -396,6 +539,7 @@ export function parseDocumentOcrText(
       totalAmount,
       currency,
       address: addressLine,
+      cityHint,
       rawText,
       imageUri,
     };

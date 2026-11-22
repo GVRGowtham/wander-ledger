@@ -34,7 +34,16 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-sharing",
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["image/*", "application/pdf", "text/plain"],
+            "multipleShareMimeTypes": ["image/*"]
+          }
+        }
+      ],
       "expo-web-browser",
       [
         "expo-camera",

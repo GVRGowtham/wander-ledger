@@ -510,5 +510,99 @@ describe('IG Studio Helpers (Layouts, Framing Math, Editorial Formatting)', () =
   });
 });
 
+import { mapAiJsonToScanResult } from '../services/aiDocumentExtractor';
+import {
+  mergeOcrTexts,
+  parseDateRangeFromString,
+} from '../services/ocrParser';
+
+describe('Smart Scan v2 (CHF/European Totals, Multi-line Hotel PDFs, Stitching & AI Schema)', () => {
+  it('extracts CHF Swiss totals and European comma decimals cleanly', () => {
+    const swissBill = `ALPINE CHALET RESTAURANT
+2025-11-02
+Cheese Fondue       CHF 38.00
+Hot Chocolate x2    CHF 14.50
+Gesamtbetrag        CHF 52.50`;
+    const parsed = parseDocumentOcrText(swissBill, 'USD');
+    expect(parsed.kind).toBe('receipt');
+    if (parsed.kind === 'receipt') {
+      expect(parsed.currency).toBe('CHF');
+      expect(parsed.amount).toBeCloseTo(52.5, 2);
+    }
+
+    const euroBill = `CAFE ZURICH
+Total TTC
+€ 18,50`;
+    const parsedEu = parseDocumentOcrText(euroBill, 'USD');
+    expect(parsedEu.kind).toBe('receipt');
+    if (parsedEu.kind === 'receipt') {
+      expect(parsedEu.currency).toBe('EUR');
+      expect(parsedEu.amount).toBeCloseTo(18.5, 2);
+    }
+  });
+
+  it('parses Booking.com 2-line Check-in/Check-out hotel confirmations and infers cityHint', () => {
+    const bookingEmail = `Booking.com
+Reservation confirmed
+Hotel Schweizerhof Zurich
+Bahnhofplatz 7, Zurich, Switzerland
+Check-in
+Sat, Nov 1, 2025
+Check-out
+Wed, Nov 5, 2025
+Confirmation number: 4829104421
+Total price
+CHF 1,240.00`;
+
+    const parsed = parseDocumentOcrText(bookingEmail, 'USD');
+    expect(parsed.kind).toBe('hotel');
+    if (parsed.kind === 'hotel') {
+      expect(parsed.hotelName).toContain('Schweizerhof');
+      expect(parsed.checkIn).toBe('2025-11-01');
+      expect(parsed.checkOut).toBe('2025-11-05');
+      expect(parsed.nights).toBe(4);
+      expect(parsed.currency).toBe('CHF');
+      expect(parsed.totalAmount).toBe(1240);
+      expect(parsed.cityHint).toBe('Zurich');
+    }
+
+    expect(parseDateRangeFromString('Stay dates: Nov 1 – 5, 2025')).toEqual({
+      start: '2025-11-01',
+      end: '2025-11-05',
+    });
+  });
+
+  it('merges overlapping top/bottom receipt scans without duplicating header lines and validates AI JSON', () => {
+    const merged = mergeOcrTexts([
+      'GRAND HOTEL FOLIO\nRoom 402 • Nov 1, 2025\nBreakfast CHF 24.00',
+      'Room 402 • Nov 1, 2025\nDinner CHF 68.00\nGrand Total CHF 92.00',
+    ]);
+    expect(merged.match(/Room 402/g)?.length).toBe(1);
+    expect(merged).toContain('Grand Total CHF 92.00');
+
+    const aiMapped = mapAiJsonToScanResult(
+      {
+        kind: 'hotel',
+        hotelName: 'Badrutt Palace',
+        confirmationCode: 'BP-7788',
+        checkIn: '2025-11-01',
+        checkOut: '2025-11-04',
+        totalAmount: 980,
+        currency: 'chf',
+        cityHint: 'Zurich',
+      },
+      'raw text',
+      'USD'
+    );
+    expect(aiMapped?.kind).toBe('hotel');
+    if (aiMapped?.kind === 'hotel') {
+      expect(aiMapped.nights).toBe(3);
+      expect(aiMapped.currency).toBe('CHF');
+      expect(aiMapped.cityHint).toBe('Zurich');
+    }
+  });
+});
+
+
 
 

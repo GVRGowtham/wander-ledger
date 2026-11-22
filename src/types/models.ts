@@ -198,6 +198,7 @@ export interface ParsedHotelConfirmation {
   totalAmount: number;
   currency: string;
   address?: string;
+  cityHint?: string;
   rawText: string;
   imageUri?: string;
 }
@@ -206,6 +207,14 @@ export type ScanResult =
   | ParsedBoardingPass
   | ParsedReceipt
   | ParsedHotelConfirmation;
+
+export interface IncomingSharePayload {
+  id: string;
+  imageUris: string[];
+  pdfUri?: string;
+  text?: string;
+  fileName?: string;
+}
 
 export interface TripSummaryStats {
   totalSpentHome: number;
