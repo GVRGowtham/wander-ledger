@@ -842,7 +842,67 @@ Grand Total: ₹3,340.00`;
   });
 });
 
+describe('v0.4.2 Airline E-Ticket PDF OCR Accuracy (Etihad / Emirates / Multi-page PDFs)', () => {
+  it('classifies Etihad e-ticket PDF as flight (not hotel), skips issue date & baggage kg, and extracts INR fare', () => {
+    const etihadPdf = `ETIHAD AIRWAYS
+Electronic Ticket Itinerary & Receipt
+Date of issue: 12 Sep 2025
+Booking reference: 7CHIQH
+Ticket number: 607-2418392014
+Passenger: SRUTHY SANKARANARAYANAN
 
+Flight EY 217
+Departure
+Fri, 31 Oct
+22:00 Bengaluru (BLR) -> 00:50 Abu Dhabi (AUH)
+Total duration: 4h 25m
+Baggage allowance: Total 30 KG
+Online Check-in opens 48 hours before departure.
+Abu Dhabi Stopover: enjoy a free hotel stay on eligible routes.
 
+Fare Details
+Base Fare: INR 46,000
+Taxes & Fees: INR 8,280
+Total Fare: INR 54,280
 
+Conditions & European Union passenger rights:
+Change fee: USD 100
+No-show penalty: USD 200`;
 
+    const parsed = parseDocumentOcrText(etihadPdf, 'USD');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.airlineCode).toBe('EY');
+      expect(parsed.flightNumber).toBe('EY 217');
+      expect(parsed.pnr).toBe('7CHIQH');
+      expect(parsed.originIata).toBe('BLR');
+      expect(parsed.destIata).toBe('AUH');
+      expect(parsed.flightDate).toBe('2025-10-31');
+      expect(parsed.ticketAmount).toBe(54280);
+      expect(parsed.ticketCurrency).toBe('INR');
+      expect(parsed.distanceMiles).toBeGreaterThan(1600);
+    }
+  });
+
+  it('handles compact airline dates (10JAN / 31OCT25) with year rollover past booking date and AED fare', () => {
+    const emiratesPdf = `EMIRATES E-TICKET ITINERARY
+Booking date: 18 Nov 2025
+PNR: K9M4P2
+EK 569 10JAN BLR - DXB
+Online Check-in available 48h prior. Rent a car with Sixt for your trip.
+Total baggage: 30 kg
+Grand Total: AED 1,890.50`;
+
+    const parsed = parseDocumentOcrText(emiratesPdf, 'USD');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.flightNumber).toBe('EK 569');
+      expect(parsed.pnr).toBe('K9M4P2');
+      expect(parsed.originIata).toBe('BLR');
+      expect(parsed.destIata).toBe('DXB');
+      expect(parsed.flightDate).toBe('2026-01-10');
+      expect(parsed.ticketAmount).toBeCloseTo(1890.5, 2);
+      expect(parsed.ticketCurrency).toBe('AED');
+    }
+  });
+});

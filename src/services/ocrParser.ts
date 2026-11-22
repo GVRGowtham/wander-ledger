@@ -16,22 +16,24 @@ import {
 } from '../types/models';
 
 const CURRENCY_PATTERNS: Array<{ regex: RegExp; code: string }> = [
-  { regex: /¥|JPY/i, code: 'JPY' },
-  { regex: /€|EUR/i, code: 'EUR' },
-  { regex: /£|GBP/i, code: 'GBP' },
-  { regex: /₹|\bINR\b|\bRS\.?\s*\d/i, code: 'INR' },
-  { regex: /\bCHF\b|\bSFr\.?/i, code: 'CHF' },
-  { regex: /₩|\bKRW\b/i, code: 'KRW' },
-  { regex: /฿|\bTHB\b/i, code: 'THB' },
-  { regex: /S\$|\bSGD\b/i, code: 'SGD' },
-  { regex: /A\$|\bAUD\b/i, code: 'AUD' },
-  { regex: /C\$|\bCAD\b/i, code: 'CAD' },
-  { regex: /NZ\$|\bNZD\b/i, code: 'NZD' },
-  { regex: /HK\$|\bHKD\b/i, code: 'HKD' },
-  { regex: /\bAED\b/i, code: 'AED' },
-  { regex: /\bMYR\b|\bRM\s*\d/i, code: 'MYR' },
-  { regex: /\bMXN\b/i, code: 'MXN' },
-  { regex: /\$|\bUSD\b/i, code: 'USD' },
+  { regex: /¥|\bJPY(?=\b|\d)/i, code: 'JPY' },
+  { regex: /€|\bEUR(?=\b|\d)/i, code: 'EUR' },
+  { regex: /£|\bGBP(?=\b|\d)/i, code: 'GBP' },
+  { regex: /₹|\bINR(?=\b|\d)|\bRS\.?\s*\d/i, code: 'INR' },
+  { regex: /\bCHF(?=\b|\d)|\bSFr\.?/i, code: 'CHF' },
+  { regex: /₩|\bKRW(?=\b|\d)/i, code: 'KRW' },
+  { regex: /฿|\bTHB(?=\b|\d)/i, code: 'THB' },
+  { regex: /S\$|\bSGD(?=\b|\d)/i, code: 'SGD' },
+  { regex: /A\$|\bAUD(?=\b|\d)/i, code: 'AUD' },
+  { regex: /C\$|\bCAD(?=\b|\d)/i, code: 'CAD' },
+  { regex: /NZ\$|\bNZD(?=\b|\d)/i, code: 'NZD' },
+  { regex: /HK\$|\bHKD(?=\b|\d)/i, code: 'HKD' },
+  { regex: /\bAED(?=\b|\d)|\bDHS\.?\s*\d/i, code: 'AED' },
+  { regex: /\bQAR(?=\b|\d)/i, code: 'QAR' },
+  { regex: /\bSAR(?=\b|\d)/i, code: 'SAR' },
+  { regex: /\bMYR(?=\b|\d)|\bRM\s*\d/i, code: 'MYR' },
+  { regex: /\bMXN(?=\b|\d)/i, code: 'MXN' },
+  { regex: /\$|\bUSD(?=\b|\d)/i, code: 'USD' },
 ];
 
 export function detectCurrency(text: string, fallback = 'USD'): string {
@@ -59,58 +61,184 @@ function parseNumber(numStr: string): number {
 }
 
 const CURRENCY_TOKEN =
-  '(?:INR|USD|EUR|GBP|JPY|CHF|SFr\\.?|SGD|AUD|CAD|NZD|HKD|AED|THB|KRW|MYR|MXN|RS\\.?)';
+  '(?:INR|USD|EUR|GBP|JPY|CHF|SFr\\.?|SGD|AUD|CAD|NZD|HKD|AED|DHS\\.?|QAR|SAR|THB|KRW|MYR|MXN|RS\\.?)';
 const AMOUNT_TOKEN = "([\\d,.'’]+(?:[.,]\\d{1,2})?)";
 
-export function extractTotalAmount(text: string): number {
+const NON_MONEY_LINE_RX =
+  /\b(?:baggage|luggage|checked\s*bag|cabin\s*bag|carry[\s-]?on|weight|allowance|duration|flying\s*time|flight\s*time|travel\s*time|layover|transit\s*time|stops?|passengers?|guests?|adults?|children|infants?|pieces?|terminal|gate|ticket\s*(?:no\.?|number)|e-?ticket\s*(?:no\.?|number)|frequent\s*flyer|membership|tier\s*miles|guest\s*miles|distance|kilometers?|miles)\b/i;
+
+const FEE_PENALTY_LINE_RX =
+  /\b(?:change\s*fee|cancellation\s*fee|cancel\s*fee|no[\s-]?show|penalty|refund\s*fee|rebooking\s*fee|baggage\s*fee|excess\s*baggage|upgrade\s*fee)\b/i;
+
+const NON_MONEY_UNIT_FOLLOW_RX =
+  /^\s*(?:kg|kgs|lb|lbs|gm|cm|mm|km|mi|hrs?|hours?|mins?|minutes?|sec|%|pieces?|pcs|bags?|nights?|days?|pax|passengers?|stops?)\b/i;
+
+const MONETARY_HINT_RX = new RegExp(
+  `(?:[¥$€£₹₩฿]|\\b(?:${CURRENCY_TOKEN}|fare|price|amount|paid|payable|payment|charged|cost|charges|invoice|receipt)\\b)`,
+  'i'
+);
+
+function isPlausibleMoneyToken(rawToken: string, trailingText: string): boolean {
+  if (!rawToken || !/\d/.test(rawToken)) return false;
+  // Reject dotted dates/versions like 31.10.2025 or 1.2.3
+  if (/\d\.\d{1,2}\.\d/.test(rawToken)) return false;
+  // Reject values immediately followed by physical/time/count units (e.g. "30 kg", "4 hrs", "2 bags")
+  if (NON_MONEY_UNIT_FOLLOW_RX.test(trailingText)) return false;
+  const val = parseNumber(rawToken);
+  if (val <= 0 || val > 9_999_999) return false;
+  // Reject >7 integer digits (e.g. 10-digit phone numbers, 13-digit e-ticket numbers)
+  const intDigits = String(Math.floor(val)).length;
+  if (intDigits > 7) return false;
+  return true;
+}
+
+function matchAmountOnLine(
+  line: string,
+  prefixPattern: string
+): { amount: number; currency: string | null } | null {
+  // Pattern A: Label ... [CurrencySymbol/Code] Amount [optional CurrencyCode]
+  const rxA = new RegExp(
+    `(?:${prefixPattern})[^\\d¥$€£₹₩฿]*?(?:([¥$€£₹₩฿])|(${CURRENCY_TOKEN}))?\\s*${AMOUNT_TOKEN}(?:\\s*(${CURRENCY_TOKEN}))?`,
+    'i'
+  );
+  const m = line.match(rxA);
+  if (m && m[3]) {
+    const rawNum = m[3];
+    const matchEnd = (m.index ?? 0) + m[0].length;
+    const trailing = line.slice(matchEnd);
+    if (isPlausibleMoneyToken(rawNum, trailing)) {
+      const currencyToken = m[1] || m[2] || m[4] || '';
+      const lineCurrency = currencyToken
+        ? detectCurrency(currencyToken, '')
+        : detectCurrency(line, '');
+      return {
+        amount: parseNumber(rawNum),
+        currency: lineCurrency || null,
+      };
+    }
+  }
+  return null;
+}
+
+function matchStandaloneMoneyLine(line: string): { amount: number; currency: string | null } | null {
+  const rx = new RegExp(
+    `(?:([¥$€£₹₩฿])|(${CURRENCY_TOKEN}))?\\s*${AMOUNT_TOKEN}(?:\\s*(${CURRENCY_TOKEN}))?`,
+    'i'
+  );
+  const m = line.match(rx);
+  if (m && m[3]) {
+    const matchEnd = (m.index ?? 0) + m[0].length;
+    if (isPlausibleMoneyToken(m[3], line.slice(matchEnd))) {
+      const currStr = m[1] || m[2] || m[4] || line;
+      return {
+        amount: parseNumber(m[3]),
+        currency: detectCurrency(currStr, '') || null,
+      };
+    }
+  }
+  return null;
+}
+
+export function extractTotalWithCurrency(
+  text: string,
+  defaultCurrency = 'USD'
+): { amount: number; currency: string } {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // 1. Prioritize lines mentioning TOTAL / AMOUNT PAID / GRAND TOTAL / BALANCE DUE / FARE / TOTAL CHARGES / GESAMT
-  const totalRegex = new RegExp(
-    `(?:grand\\s*total|total\\s*paid|total\\s*price|total\\s*charges|total\\s*stay|total\\s*fare|amount\\s*paid|amount\\s*charged|total\\s*amount|net\\s*payable|balance\\s*due|total\\s*incl\\.?[^\\d]*|total\\s*ttc|gesamt(?:betrag)?|total|sum|合計)[^\\d¥$€£₹₩฿]*[¥$€£₹₩฿]?\\s*${CURRENCY_TOKEN}?\\s*${AMOUNT_TOKEN}`,
-    'i'
-  );
+  const fallbackCurrency = detectCurrency(text, defaultCurrency);
 
-  // Check from bottom up (grand total is typically near the bottom of receipts & folios)
+  // 1. High-priority explicit monetary total labels (checked bottom-up)
+  const strongTotalLabels =
+    'grand\\s*total|total\\s*fare(?:\\s*paid)?|airfare\\s*total|ticket\\s*total|total\\s*paid|total\\s*price|total\\s*charges|total\\s*stay|amount\\s*paid|amount\\s*charged|total\\s*amount(?:\\s*paid)?|net\\s*payable|balance\\s*due|total\\s*\\(?tax\\s*incl\\.?\\)?|total\\s*incl\\.?[^\\d]*|total\\s*ttc|gesamt(?:betrag)?|合計';
+
+  const strongHeaderOnlyRx =
+    /^(?:grand\s*total|total\s*fare(?:\s*paid)?|ticket\s*total|total\s*paid|total\s*price|total\s*charges|total\s*stay|amount\s*paid|total\s*amount(?:\s*paid)?|net\s*payable|balance\s*due|total\s*ttc|gesamt(?:betrag)?)(?:\s*\([^)]*\))?[:\s-]*$/i;
+
   for (let i = lines.length - 1; i >= 0; i--) {
-    const m = lines[i].match(totalRegex);
-    if (m && m[1]) {
-      const val = parseNumber(m[1]);
-      if (val > 0) return val;
+    const line = lines[i];
+    if (NON_MONEY_LINE_RX.test(line) && !MONETARY_HINT_RX.test(line)) continue;
+    if (FEE_PENALTY_LINE_RX.test(line)) continue;
+
+    const hit = matchAmountOnLine(line, strongTotalLabels);
+    if (hit) {
+      return { amount: hit.amount, currency: hit.currency ?? fallbackCurrency };
     }
+
     // Two-column PDF / Booking.com screenshot layout: label on line i, amount on line i+1
-    if (
-      i + 1 < lines.length &&
-      /^(?:grand\s*total|total\s*paid|total\s*price|total\s*charges|amount\s*paid|total\s*amount|balance\s*due|total\s*\(?.*\)?|gesamt)/i.test(
-        lines[i]
-      )
-    ) {
-      const nextValMatch = lines[i + 1].match(
-        new RegExp(`(?:[¥$€£₹₩฿]|${CURRENCY_TOKEN})?\\s*${AMOUNT_TOKEN}`, 'i')
-      );
-      if (nextValMatch && nextValMatch[1]) {
-        const val = parseNumber(nextValMatch[1]);
-        if (val > 0) return val;
+    if (i + 1 < lines.length && strongHeaderOnlyRx.test(line)) {
+      const nextLine = lines[i + 1];
+      if (!NON_MONEY_LINE_RX.test(nextLine)) {
+        const nextHit = matchStandaloneMoneyLine(nextLine);
+        if (nextHit) {
+          return {
+            amount: nextHit.amount,
+            currency: nextHit.currency ?? (detectCurrency(line, '') || fallbackCurrency),
+          };
+        }
       }
     }
   }
 
-  // 2. Fallback: largest currency-prefixed or currency-suffixed number in the document
+  // 2. Generic TOTAL / SUM lines (strictly skipping baggage/duration/stops/penalty lines)
+  const genericTotalHeaderRx = /^(?:total|sum)(?:\s*\([^)]*\))?[:\s-]*$/i;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (NON_MONEY_LINE_RX.test(line) || FEE_PENALTY_LINE_RX.test(line)) continue;
+
+    const hit = matchAmountOnLine(line, '\\btotal\\b|\\bsum\\b');
+    if (hit) {
+      return { amount: hit.amount, currency: hit.currency ?? fallbackCurrency };
+    }
+
+    if (i + 1 < lines.length && genericTotalHeaderRx.test(line)) {
+      const nextLine = lines[i + 1];
+      if (!NON_MONEY_LINE_RX.test(nextLine)) {
+        const nextHit = matchStandaloneMoneyLine(nextLine);
+        if (nextHit) {
+          return {
+            amount: nextHit.amount,
+            currency: nextHit.currency ?? (detectCurrency(line, '') || fallbackCurrency),
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: largest currency-prefixed or currency-suffixed number on non-penalty lines
   const moneyRegex = new RegExp(
-    `(?:(?:[¥$€£₹₩฿]|${CURRENCY_TOKEN})\\s*${AMOUNT_TOKEN}|${AMOUNT_TOKEN}\\s*${CURRENCY_TOKEN})`,
+    `(?:(?:([¥$€£₹₩฿])|(${CURRENCY_TOKEN}))\\s*${AMOUNT_TOKEN}|${AMOUNT_TOKEN}\\s*(${CURRENCY_TOKEN}))`,
     'gi'
   );
   let maxVal = 0;
-  for (const m of text.matchAll(moneyRegex)) {
-    const rawNum = m[1] || m[2];
-    if (!rawNum) continue;
-    const val = parseNumber(rawNum);
-    if (val > maxVal) maxVal = val;
+  let maxCurrency: string | null = null;
+
+  for (const line of lines) {
+    if (NON_MONEY_LINE_RX.test(line) || FEE_PENALTY_LINE_RX.test(line)) continue;
+    for (const m of line.matchAll(moneyRegex)) {
+      const rawNum = m[3] || m[4];
+      if (!rawNum) continue;
+      const matchEnd = (m.index ?? 0) + m[0].length;
+      if (!isPlausibleMoneyToken(rawNum, line.slice(matchEnd))) continue;
+      const val = parseNumber(rawNum);
+      if (val > maxVal) {
+        maxVal = val;
+        const currStr = m[1] || m[2] || m[5] || '';
+        maxCurrency = detectCurrency(currStr, '') || null;
+      }
+    }
   }
-  return maxVal;
+
+  return {
+    amount: maxVal,
+    currency: maxCurrency ?? fallbackCurrency,
+  };
+}
+
+export function extractTotalAmount(text: string): number {
+  return extractTotalWithCurrency(text, 'USD').amount;
 }
 
 const MONTH_MAP: Record<string, string> = {
@@ -118,11 +246,19 @@ const MONTH_MAP: Record<string, string> = {
   jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
 };
 
+function isValidDayMonth(day: number, month: number): boolean {
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
 export function parseDateFromString(text: string): string | null {
   // YYYY-MM-DD or YYYY/MM/DD
   const iso = text.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
   if (iso) {
-    return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+    const mon = parseInt(iso[2], 10);
+    const day = parseInt(iso[3], 10);
+    if (isValidDayMonth(day, mon)) {
+      return `${iso[1]}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
   }
 
   // Oct 17, 2026 or Oct 17 2026
@@ -131,16 +267,22 @@ export function parseDateFromString(text: string): string | null {
   );
   if (namedFirst) {
     const mon = MONTH_MAP[namedFirst[1].slice(0, 3).toLowerCase()];
-    return `${namedFirst[3]}-${mon}-${namedFirst[2].padStart(2, '0')}`;
+    const day = parseInt(namedFirst[2], 10);
+    if (isValidDayMonth(day, parseInt(mon, 10))) {
+      return `${namedFirst[3]}-${mon}-${String(day).padStart(2, '0')}`;
+    }
   }
 
-  // 17 Oct 2026 or 17 Oct, 2026
+  // 17 Oct 2026, 17-Oct-2026, 31OCT2025, or 17 Oct, 2026
   const dayFirst = text.match(
-    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+(20\d{2})\b/i
+    /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?[\s-]*(20\d{2})\b/i
   );
   if (dayFirst) {
     const mon = MONTH_MAP[dayFirst[2].slice(0, 3).toLowerCase()];
-    return `${dayFirst[3]}-${mon}-${dayFirst[1].padStart(2, '0')}`;
+    const day = parseInt(dayFirst[1], 10);
+    if (isValidDayMonth(day, parseInt(mon, 10))) {
+      return `${dayFirst[3]}-${mon}-${String(day).padStart(2, '0')}`;
+    }
   }
 
   // DD/MM/YYYY or DD-MM-YYYY (common in India/Europe confirmations)
@@ -150,21 +292,61 @@ export function parseDateFromString(text: string): string | null {
     const b = parseInt(dmy[2], 10);
     const day = b > 12 ? b : a;
     const month = b > 12 ? a : b;
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (isValidDayMonth(day, month)) {
       return `${dmy[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
 
-  // 17 Oct '26 or 17 Oct 26 (common on MakeMyTrip / Goibibo / Ixigo cards)
+  // 17 Oct '26, 17 Oct 26, 31OCT25, or 31-OCT-25 (MakeMyTrip / Goibibo / airline e-tickets)
   const dayFirstShortYr = text.match(
-    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+['’]?(\d{2})\b/i
+    /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?[\s-]*['’]?(\d{2})\b/i
   );
   if (dayFirstShortYr) {
     const mon = MONTH_MAP[dayFirstShortYr[2].slice(0, 3).toLowerCase()];
-    return `20${dayFirstShortYr[3]}-${mon}-${dayFirstShortYr[1].padStart(2, '0')}`;
+    const day = parseInt(dayFirstShortYr[1], 10);
+    if (isValidDayMonth(day, parseInt(mon, 10))) {
+      return `20${dayFirstShortYr[3]}-${mon}-${String(day).padStart(2, '0')}`;
+    }
   }
 
   return null;
+}
+
+/**
+ * Parses year-less airline dates like "31 Oct", "31OCT", or "Oct 31" using a reference year
+ * (and optional issueDate so a flight booked in Nov 2025 for Jan 2026 rolls forward cleanly).
+ */
+function parseDayMonthWithYear(
+  text: string,
+  referenceYear: number,
+  minIsoDate?: string | null
+): string | null {
+  let day = 0;
+  let monStr = '';
+
+  const mDayFirst = text.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b/i
+  );
+  if (mDayFirst) {
+    day = parseInt(mDayFirst[1], 10);
+    monStr = MONTH_MAP[mDayFirst[2].slice(0, 3).toLowerCase()];
+  } else {
+    const mMonFirst = text.match(
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i
+    );
+    if (mMonFirst) {
+      monStr = MONTH_MAP[mMonFirst[1].slice(0, 3).toLowerCase()];
+      day = parseInt(mMonFirst[2], 10);
+    }
+  }
+
+  if (!monStr || !isValidDayMonth(day, parseInt(monStr, 10))) return null;
+
+  let candidate = `${referenceYear}-${monStr}-${String(day).padStart(2, '0')}`;
+  if (minIsoDate && candidate < minIsoDate) {
+    candidate = `${referenceYear + 1}-${monStr}-${String(day).padStart(2, '0')}`;
+  }
+  return candidate;
 }
 
 /**
@@ -400,14 +582,34 @@ function parseTransportConfirmationOcr(
 
 export function isHotelConfirmationText(text: string): boolean {
   const q = text.toLowerCase();
-  const hits = [
-    /check[\s-]?in/,
-    /check[\s-]?out/,
-    /\b\d+\s*nights?\b/,
-    /reservation|booking\s*confirmed|booking\s*id|hotel\s*voucher|confirmation\s*#?|itinerary/,
-    /hotel|resort|ryokan|suites|airbnb|hostel|villa|homestay|guesthouse|chalet|lodge|marriott|hilton|hyatt|taj|oberoi|radisson|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|agoda|makemytrip|goibibo|ixigo|cleartrip|booking\.com|expedia/,
-  ].filter((r) => r.test(q)).length;
-  return hits >= 2;
+  const hasCheckIn = /check[\s-]?in/.test(q);
+  const hasCheckOut = /check[\s-]?out/.test(q);
+  const hasNights = /\b\d+\s*nights?\b/.test(q);
+  const hasBookingKeyword =
+    /reservation|booking\s*confirmed|booking\s*id|hotel\s*voucher|confirmation\s*#?|itinerary/.test(
+      q
+    );
+  const hasRoomType =
+    /\b(?:room\s*type|deluxe\s*room|twin\s*room|king\s*room|queen\s*room|double\s*room|single\s*room|breakfast\s*included|property\s*address|hotel\s*voucher|stay\s*summary|number\s*of\s*rooms)\b/.test(
+      q
+    );
+  const hasLodgingProperty =
+    /\b(?:hotel|resort|ryokan|suites|airbnb|hostel|villa|homestay|guesthouse|chalet|lodge|marriott|hilton|hyatt|taj|oberoi|radisson|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|agoda|makemytrip|goibibo|ixigo|cleartrip|booking\.com|expedia)\b/.test(
+      q
+    );
+
+  // Require at least one true lodging-only signal (check-out, nights count, or room-type/voucher)
+  // so airline e-tickets mentioning airport "Check-in" + "Itinerary" (or stopover hotel ads) never qualify.
+  if (hasCheckOut && (hasCheckIn || hasNights || hasLodgingProperty || hasBookingKeyword)) {
+    return true;
+  }
+  if (hasNights && (hasLodgingProperty || hasBookingKeyword)) {
+    return true;
+  }
+  if (hasRoomType && hasLodgingProperty) {
+    return true;
+  }
+  return false;
 }
 
 interface ExtractedRoute {
@@ -510,6 +712,119 @@ export function isFlightConfirmationText(text: string): boolean {
   return false;
 }
 
+const ISSUE_METADATA_DATE_RX =
+  /\b(?:date\s*of\s*issue|issue\s*date|issued\s*(?:on|date|at)?|booking\s*date|booked\s*on|date\s*booked|printed\s*(?:on)?|print\s*date|invoice\s*date|receipt\s*date|created\s*(?:on)?|date\s*of\s*birth|dob|passport\s*expir|valid\s*(?:until|thru|through))\b/i;
+
+function extractFlightDepartureDate(
+  rawText: string,
+  lines: string[],
+  flightNumber: string,
+  originIata: string,
+  today: string
+): string {
+  // 1. Identify any PDF issue / booking / print metadata date so we skip it (and use its year as reference)
+  let issueDate: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (ISSUE_METADATA_DATE_RX.test(lines[i])) {
+      issueDate =
+        parseDateFromString(lines[i]) ??
+        (i + 1 < lines.length ? parseDateFromString(lines[i + 1]) : null);
+      if (issueDate) break;
+    }
+  }
+
+  const yearMatch = issueDate?.slice(0, 4) ?? rawText.match(/\b(20\d{2})\b/)?.[1];
+  const referenceYear = yearMatch ? parseInt(yearMatch, 10) : parseInt(today.slice(0, 4), 10);
+
+  const isMetadataLine = (idx: number): boolean => {
+    if (idx < 0 || idx >= lines.length) return true;
+    if (ISSUE_METADATA_DATE_RX.test(lines[idx])) return true;
+    // Also skip the value line right after a bare "Date of issue" header
+    if (
+      idx > 0 &&
+      ISSUE_METADATA_DATE_RX.test(lines[idx - 1]) &&
+      !parseDateFromString(lines[idx - 1])
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  const scanWindow = (indices: number[], allowYearless: boolean): string | null => {
+    for (const idx of indices) {
+      if (isMetadataLine(idx)) continue;
+      const full = parseDateFromString(lines[idx]);
+      if (full) return full;
+    }
+    if (allowYearless) {
+      for (const idx of indices) {
+        if (isMetadataLine(idx)) continue;
+        const dm = parseDayMonthWithYear(lines[idx], referenceYear, issueDate);
+        if (dm) return dm;
+      }
+    }
+    return null;
+  };
+
+  // Priority 1: Explicit Departure / Outbound / Onward / Flight Date label (same line or next 2 lines)
+  const depLabelRx =
+    /\b(?:depart(?:ure|ing)?(?:\s*date)?|flight\s*date|travel\s*date|journey\s*date|onward|outbound)\b/i;
+  for (let i = 0; i < lines.length; i++) {
+    if (isMetadataLine(i)) continue;
+    if (depLabelRx.test(lines[i])) {
+      const hit = scanWindow([i, i + 1, i + 2], true);
+      if (hit) return hit;
+    }
+  }
+
+  // Priority 2: Lines containing the flight number (e.g. "EY 217" / "EY217") or origin IATA (e.g. "BLR")
+  const compactFlt = flightNumber.replace(/\s+/g, '');
+  const fltRx =
+    compactFlt.length >= 3 && !flightNumber.endsWith('Flight')
+      ? new RegExp(
+          `\\b${flightNumber
+            .trim()
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/\s+/g, '\\s*[-]?\\s*')}\\b`,
+          'i'
+        )
+      : null;
+  const originRx =
+    originIata && originIata !== 'TBD' ? new RegExp(`\\b${originIata}\\b`) : null;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (isMetadataLine(i)) continue;
+    if ((fltRx && fltRx.test(lines[i])) || (originRx && originRx.test(lines[i]))) {
+      const hit = scanWindow([i, i - 1, i + 1, i + 2], true);
+      if (hit) return hit;
+    }
+  }
+
+  // Priority 3: First non-metadata full date in the document (preferring one >= issueDate)
+  const nonMetaDates: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isMetadataLine(i)) continue;
+    const d = parseDateFromString(lines[i]);
+    if (d && !nonMetaDates.includes(d)) nonMetaDates.push(d);
+  }
+  if (nonMetaDates.length > 0) {
+    if (issueDate) {
+      const afterIssue = nonMetaDates.find((d) => d >= issueDate);
+      if (afterIssue) return afterIssue;
+    }
+    return nonMetaDates[0];
+  }
+
+  // Priority 4: First non-metadata year-less date (e.g. "31 Oct" / "31OCT")
+  for (let i = 0; i < lines.length; i++) {
+    if (isMetadataLine(i)) continue;
+    const dm = parseDayMonthWithYear(lines[i], referenceYear, issueDate);
+    if (dm) return dm;
+  }
+
+  return issueDate ?? today;
+}
+
 function parseFlightConfirmationOcr(
   rawText: string,
   currency: string,
@@ -559,10 +874,8 @@ function parseFlightConfirmationOcr(
   );
   const passengerName = paxMatch ? paxMatch[1].trim() : 'Traveler';
 
-  // Prefer date on a line mentioning departure / flight / date, else first date in doc
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const depLine = lines.find((l) => /(?:depart|flight\s*date|travel\s*date|onward|outbound|date)/i.test(l)) ?? '';
-  const flightDate = parseDateFromString(depLine) ?? parseDateFromString(rawText) ?? today;
+  const flightDate = extractFlightDepartureDate(rawText, lines, flightNumber, originIata, today);
 
   return {
     kind: 'boarding_pass',
@@ -599,21 +912,32 @@ export function parseDocumentOcrText(
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const currency = detectCurrency(rawText, defaultCurrency);
-  const totalAmount = extractTotalAmount(rawText);
+  const { amount: totalAmount, currency } = extractTotalWithCurrency(rawText, defaultCurrency);
   const today = new Date().toISOString().slice(0, 10);
+
+  const hasExplicitHotelStay =
+    /check[\s-]?out/i.test(rawText) && /\b\d+\s*nights?\b/i.test(rawText);
+  const hasExplicitRailOrCarHeader =
+    /\b(?:irctc|indian\s*railways|sbb\s*cff|train\s*no\.?|train\s*number|car\s*rental|rental\s*agreement|pick[\s-]?up\s*location)\b/i.test(
+      rawText
+    );
+
+  // Evaluate Flight BEFORE Hotel/Transport when strong aviation signals exist
+  // (unless the document is clearly a hotel stay with Check-out + Nights or an explicit train/car rental).
+  const isFlight =
+    forceKind === 'flight' ||
+    (!forceKind &&
+      !hasExplicitHotelStay &&
+      !hasExplicitRailOrCarHeader &&
+      isFlightConfirmationText(rawText));
 
   const isHotel =
     forceKind === 'hotel' ||
-    (!forceKind && isHotelConfirmationText(rawText));
+    (!forceKind && !isFlight && isHotelConfirmationText(rawText));
 
   const isTransport =
     forceKind === 'transport' ||
-    (!forceKind && !isHotel && isTransportConfirmationText(rawText));
-
-  const isFlight =
-    forceKind === 'flight' ||
-    (!forceKind && !isHotel && !isTransport && isFlightConfirmationText(rawText));
+    (!forceKind && !isFlight && !isHotel && isTransportConfirmationText(rawText));
 
   if (isTransport) {
     return parseTransportConfirmationOcr(rawText, currency, totalAmount, imageUri);

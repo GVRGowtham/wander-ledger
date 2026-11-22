@@ -631,7 +631,8 @@ export const ScannerScreen: React.FC<Props> = ({
       });
 
       if (scanResult.ticketAmount && scanResult.ticketAmount > 0) {
-        const curr = scanResult.ticketCurrency || homeCurrency;
+        const cleanCurr = (scanResult.ticketCurrency || '').trim().toUpperCase();
+        const curr = cleanCurr.length === 3 ? cleanCurr : homeCurrency;
         const { converted, rate } = convertCurrency(
           scanResult.ticketAmount,
           curr,
@@ -655,9 +656,11 @@ export const ScannerScreen: React.FC<Props> = ({
         });
       }
     } else if (scanResult.kind === 'transport') {
+      const cleanCurr = (scanResult.currency || '').trim().toUpperCase();
+      const curr = cleanCurr.length === 3 ? cleanCurr : homeCurrency;
       const { converted: homeCost } =
         scanResult.totalAmount > 0
-          ? convertCurrency(scanResult.totalAmount, scanResult.currency, homeCurrency, fxRates)
+          ? convertCurrency(scanResult.totalAmount, curr, homeCurrency, fxRates)
           : { converted: 0 };
       const modeLabel = TRANSPORT_MODE_META[scanResult.mode].label;
       addTransport({
@@ -677,14 +680,16 @@ export const ScannerScreen: React.FC<Props> = ({
         endDate: scanResult.endDate || undefined,
         seatOrVehicle: scanResult.seatOrVehicle || undefined,
         costAmount: scanResult.totalAmount > 0 ? scanResult.totalAmount : undefined,
-        currency: scanResult.totalAmount > 0 ? scanResult.currency : undefined,
+        currency: scanResult.totalAmount > 0 ? curr : undefined,
         homeCost: scanResult.totalAmount > 0 ? homeCost : undefined,
         createdAt: now,
       });
     } else if (scanResult.kind === 'hotel') {
+      const cleanCurr = (scanResult.currency || '').trim().toUpperCase();
+      const curr = cleanCurr.length === 3 ? cleanCurr : homeCurrency;
       const { converted } = convertCurrency(
         scanResult.totalAmount,
-        scanResult.currency,
+        curr,
         homeCurrency,
         fxRates
       );
@@ -699,16 +704,18 @@ export const ScannerScreen: React.FC<Props> = ({
         checkOut: scanResult.checkOut,
         nights: scanResult.nights,
         costCash: scanResult.totalAmount,
-        currency: scanResult.currency,
+        currency: curr,
         homeCost: converted,
         pointsRedeemed: 0,
         receiptUri: scanResult.imageUri,
         createdAt: now,
       });
     } else {
+      const cleanCurr = (scanResult.currency || '').trim().toUpperCase();
+      const curr = cleanCurr.length === 3 ? cleanCurr : homeCurrency;
       const { converted, rate } = convertCurrency(
         scanResult.amount,
-        scanResult.currency,
+        curr,
         homeCurrency,
         fxRates
       );
@@ -718,7 +725,7 @@ export const ScannerScreen: React.FC<Props> = ({
         merchant: scanResult.merchant,
         category: scanResult.category,
         localAmount: scanResult.amount,
-        localCurrency: scanResult.currency,
+        localCurrency: curr,
         homeAmount: converted,
         homeCurrency,
         fxRateUsed: rate,
@@ -1094,12 +1101,14 @@ export const ScannerScreen: React.FC<Props> = ({
                     <EditableField
                       label="Flight #"
                       value={scanResult.flightNumber}
+                      autoCapitalize="characters"
                       onChangeText={(v) => updateFlightField({ flightNumber: v.toUpperCase() })}
                     />
                     <EditableField
                       label="PNR / Ref"
                       value={scanResult.pnr}
                       placeholder="Optional"
+                      autoCapitalize="characters"
                       onChangeText={(v) => updateFlightField({ pnr: v.toUpperCase() })}
                     />
                   </View>
@@ -1108,11 +1117,13 @@ export const ScannerScreen: React.FC<Props> = ({
                     <EditableField
                       label="From (IATA)"
                       value={scanResult.originIata}
+                      autoCapitalize="characters"
                       onChangeText={(v) => updateFlightField({ originIata: v.toUpperCase().slice(0, 3) })}
                     />
                     <EditableField
                       label="To (IATA)"
                       value={scanResult.destIata}
+                      autoCapitalize="characters"
                       onChangeText={(v) => updateFlightField({ destIata: v.toUpperCase().slice(0, 3) })}
                     />
                   </View>
@@ -1123,6 +1134,34 @@ export const ScannerScreen: React.FC<Props> = ({
                     onChange={(v) => updateFlightField({ flightDate: v })}
                     compact
                   />
+
+                  <View style={styles.editRow}>
+                    <DecimalAmountField
+                      label="Fare Paid (Optional)"
+                      value={scanResult.ticketAmount}
+                      placeholder="Leave blank to skip"
+                      onChangeValue={(amt) =>
+                        updateFlightField({
+                          ticketAmount: amt > 0 ? amt : undefined,
+                          ticketCurrency:
+                            amt > 0
+                              ? scanResult.ticketCurrency || homeCurrency
+                              : scanResult.ticketCurrency,
+                        })
+                      }
+                    />
+                    <EditableField
+                      label="Currency"
+                      value={scanResult.ticketCurrency ?? homeCurrency}
+                      placeholder={homeCurrency}
+                      autoCapitalize="characters"
+                      onChangeText={(v) =>
+                        updateFlightField({
+                          ticketCurrency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
+                        })
+                      }
+                    />
+                  </View>
 
                   <View style={styles.gridTwo}>
                     <InfoPair
@@ -1136,12 +1175,27 @@ export const ScannerScreen: React.FC<Props> = ({
                       }
                     />
                     <InfoPair
-                      label={scanResult.ticketAmount ? 'Fare Detected' : 'Loyalty Miles'}
+                      label={
+                        scanResult.ticketAmount &&
+                        scanResult.ticketAmount > 0 &&
+                        (scanResult.ticketCurrency || homeCurrency) !== homeCurrency
+                          ? `Fare in ${homeCurrency}`
+                          : 'Loyalty Miles'
+                      }
                       value={
-                        scanResult.ticketAmount
+                        scanResult.ticketAmount &&
+                        scanResult.ticketAmount > 0 &&
+                        (scanResult.ticketCurrency || homeCurrency) !== homeCurrency
                           ? formatMoney(
-                              scanResult.ticketAmount,
-                              scanResult.ticketCurrency || homeCurrency
+                              convertCurrency(
+                                scanResult.ticketAmount,
+                                (scanResult.ticketCurrency || '').length === 3
+                                  ? scanResult.ticketCurrency!
+                                  : homeCurrency,
+                                homeCurrency,
+                                fxRates
+                              ).converted,
+                              homeCurrency
                             )
                           : `+${scanResult.distanceMiles.toLocaleString()} mi ✨`
                       }
@@ -1151,7 +1205,14 @@ export const ScannerScreen: React.FC<Props> = ({
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
                       ✓ Adds to Bookings timeline, World Map & {scanResult.loyaltyProgram}
-                      {scanResult.ticketAmount ? ' + logs fare to Spend' : ''}
+                      {scanResult.ticketAmount && scanResult.ticketAmount > 0
+                        ? ` + logs ${formatMoney(
+                            scanResult.ticketAmount,
+                            (scanResult.ticketCurrency || '').length === 3
+                              ? scanResult.ticketCurrency!
+                              : homeCurrency
+                          )} fare to Spend`
+                        : ''}
                     </Text>
                   </View>
                 </View>
@@ -1220,25 +1281,26 @@ export const ScannerScreen: React.FC<Props> = ({
                   </View>
 
                   <View style={styles.editRow}>
-                    <EditableField
+                    <DecimalAmountField
                       label="Total Paid"
-                      value={String(scanResult.totalAmount || '')}
-                      keyboardType="decimal-pad"
-                      onChangeText={(v) =>
-                        updateTransportField({ totalAmount: parseFloat(v) || 0 })
-                      }
+                      value={scanResult.totalAmount}
+                      onChangeValue={(amt) => updateTransportField({ totalAmount: amt })}
                     />
                     <EditableField
                       label="Currency"
                       value={scanResult.currency}
+                      autoCapitalize="characters"
                       onChangeText={(v) =>
-                        updateTransportField({ currency: v.toUpperCase().slice(0, 3) })
+                        updateTransportField({
+                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
+                        })
                       }
                     />
                     <EditableField
                       label="PNR / Ref"
                       value={scanResult.referenceCode || ''}
                       placeholder="Optional"
+                      autoCapitalize="characters"
                       onChangeText={(v) =>
                         updateTransportField({ referenceCode: v.toUpperCase() })
                       }
@@ -1268,19 +1330,19 @@ export const ScannerScreen: React.FC<Props> = ({
                     onChangeText={(v) => updateReceiptField({ merchant: v })}
                   />
                   <View style={styles.editRow}>
-                    <EditableField
+                    <DecimalAmountField
                       label="Amount"
-                      value={String(scanResult.amount || '')}
-                      keyboardType="decimal-pad"
-                      onChangeText={(v) =>
-                        updateReceiptField({ amount: parseFloat(v) || 0 })
-                      }
+                      value={scanResult.amount}
+                      onChangeValue={(amt) => updateReceiptField({ amount: amt })}
                     />
                     <EditableField
                       label="Currency"
                       value={scanResult.currency}
+                      autoCapitalize="characters"
                       onChangeText={(v) =>
-                        updateReceiptField({ currency: v.toUpperCase().slice(0, 3) })
+                        updateReceiptField({
+                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
+                        })
                       }
                     />
                   </View>
@@ -1294,8 +1356,12 @@ export const ScannerScreen: React.FC<Props> = ({
                     <InfoPair
                       label={`In ${homeCurrency}`}
                       value={formatMoney(
-                        convertCurrency(scanResult.amount, scanResult.currency, homeCurrency, fxRates)
-                          .converted,
+                        convertCurrency(
+                          scanResult.amount,
+                          scanResult.currency.length === 3 ? scanResult.currency : homeCurrency,
+                          homeCurrency,
+                          fxRates
+                        ).converted,
                         homeCurrency
                       )}
                     />
@@ -1363,25 +1429,26 @@ export const ScannerScreen: React.FC<Props> = ({
                     />
                   </View>
                   <View style={styles.editRow}>
-                    <EditableField
+                    <DecimalAmountField
                       label="Total Paid"
-                      value={String(scanResult.totalAmount || '')}
-                      keyboardType="decimal-pad"
-                      onChangeText={(v) =>
-                        updateHotelField({ totalAmount: parseFloat(v) || 0 })
-                      }
+                      value={scanResult.totalAmount}
+                      onChangeValue={(amt) => updateHotelField({ totalAmount: amt })}
                     />
                     <EditableField
                       label="Currency"
                       value={scanResult.currency}
+                      autoCapitalize="characters"
                       onChangeText={(v) =>
-                        updateHotelField({ currency: v.toUpperCase().slice(0, 3) })
+                        updateHotelField({
+                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
+                        })
                       }
                     />
                     <EditableField
                       label="Conf #"
                       value={scanResult.confirmationCode || ''}
                       placeholder="Optional"
+                      autoCapitalize="characters"
                       onChangeText={(v) => updateHotelField({ confirmationCode: v })}
                     />
                   </View>
@@ -1558,12 +1625,14 @@ const EditableField = ({
   value,
   placeholder,
   keyboardType,
+  autoCapitalize,
   onChangeText,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   keyboardType?: 'default' | 'decimal-pad';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   onChangeText: (val: string) => void;
 }) => (
   <View style={styles.editField}>
@@ -1574,10 +1643,49 @@ const EditableField = ({
       placeholder={placeholder}
       placeholderTextColor={COLORS.inkSoft}
       keyboardType={keyboardType}
+      autoCapitalize={autoCapitalize}
       style={styles.editInput}
     />
   </View>
 );
+
+const DecimalAmountField = ({
+  label,
+  value,
+  placeholder,
+  onChangeValue,
+}: {
+  label: string;
+  value: number | undefined;
+  placeholder?: string;
+  onChangeValue: (val: number) => void;
+}) => {
+  const [draft, setDraft] = useState(value && value > 0 ? String(value) : '');
+
+  useEffect(() => {
+    const numericDraft = parseFloat(draft.replace(/,/g, ''));
+    const propVal = value && value > 0 ? value : 0;
+    const currentNum = Number.isFinite(numericDraft) && numericDraft > 0 ? numericDraft : 0;
+    if (currentNum !== propVal) {
+      setDraft(propVal > 0 ? String(propVal) : '');
+    }
+  }, [value]);
+
+  return (
+    <EditableField
+      label={label}
+      value={draft}
+      placeholder={placeholder ?? '0.00'}
+      keyboardType="decimal-pad"
+      onChangeText={(raw) => {
+        const cleaned = raw.replace(/[^0-9.,]/g, '');
+        setDraft(cleaned);
+        const parsed = parseFloat(cleaned.replace(/,/g, ''));
+        onChangeValue(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+      }}
+    />
+  );
+};
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`);
