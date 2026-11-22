@@ -197,7 +197,14 @@ const NavButton = ({
 }) => (
   <TouchableOpacity onPress={onPress} style={styles.navBtn} activeOpacity={0.75}>
     <Text style={styles.navEmoji}>{emoji}</Text>
-    <Text style={[styles.navLabel, active && styles.navLabelActive]}>{label}</Text>
+    <Text
+      style={[styles.navLabel, active && styles.navLabelActive]}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.8}
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 );
 
@@ -241,8 +248,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#FDE68A',
     paddingTop: 8,
-    paddingBottom: 8,
-    paddingHorizontal: 6,
+    paddingBottom: 10,
+    paddingHorizontal: 8,
     shadowColor: '#EA580C',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
@@ -253,6 +260,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 2,
     gap: 2,
   },
   navEmoji: { fontSize: 20 },

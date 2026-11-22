@@ -139,11 +139,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 13,
+    flex: 1,
+    marginRight: 8,
   },
   badge: {
     backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 99,
   },
   badgeText: {
@@ -155,7 +157,7 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   routeRow: {
     flexDirection: 'row',
@@ -163,10 +165,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   endpoint: {
-    width: 82,
+    minWidth: 74,
+    maxWidth: 96,
   },
   iata: {
-    fontSize: 24,
+    fontSize: 23,
     fontWeight: '900',
     color: COLORS.ink,
     letterSpacing: 0.5,
@@ -211,7 +214,9 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
+    gap: 12,
     marginTop: 14,
     paddingTop: 10,
     borderTopWidth: 1,

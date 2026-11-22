@@ -496,9 +496,16 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
           <Text style={styles.closeBtnText}>✕ Close</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>📷 Smart Magic Scan</Text>
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
+        >
+          📷 Smart Scan
+        </Text>
         <View style={styles.offlineTag}>
-          <Text style={styles.offlineTagText}>$0 On-Device</Text>
+          <Text style={styles.offlineTagText}>$0 Offline</Text>
         </View>
       </View>
 
@@ -551,7 +558,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
             <View style={styles.ocrActionsRow}>
               <TouchableOpacity
                 onPress={handleSnapLiveCamera}
-                style={{ flex: 1.25 }}
+                style={{ flex: 1.35 }}
                 disabled={processing || (Boolean(permission?.granted) && !cameraReady)}
                 activeOpacity={0.9}
               >
@@ -562,8 +569,13 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                     processing && { opacity: 0.7 },
                   ]}
                 >
-                  <Text style={styles.ocrPrimaryText}>
-                    {processing ? '⏳ Scanning…' : '📸 Snap & Scan Document'}
+                  <Text
+                    style={styles.ocrPrimaryText}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
+                    {processing ? '⏳ Scanning…' : '📸 Snap & Scan'}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -574,7 +586,14 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                 disabled={processing}
                 activeOpacity={0.85}
               >
-                <Text style={styles.ocrSecondaryText}>🖼️ Screenshot</Text>
+                <Text
+                  style={styles.ocrSecondaryText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                >
+                  🖼️ Screenshot
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -950,7 +969,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                 end={{ x: 1, y: 0 }}
                 style={styles.confirmBtn}
               >
-                <Text style={styles.confirmBtnText}>
+                <Text style={styles.confirmBtnText} numberOfLines={2}>
                   {destinationChoice === 'new'
                     ? `✨ Create "${autoSuggestion.title}" & Save`
                     : `📎 Add to ${trips.find((t) => t.id === selectedTripId)?.title || 'Trip'}`}
@@ -1012,6 +1031,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -1019,21 +1039,27 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
     borderRadius: 99,
   },
   closeBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.ink,
+    flex: 1,
+    textAlign: 'center',
+  },
   offlineTag: {
     backgroundColor: COLORS.emeraldSoft,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 99,
   },
   offlineTagText: { fontSize: 10, fontWeight: '900', color: '#047857' },
 
-  content: { padding: 16, paddingBottom: 40, gap: 14 },
+  content: { padding: 16, paddingBottom: 48, gap: 14 },
   cameraCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -1083,12 +1109,12 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#FFF7ED',
   },
-  permTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
+  permTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
   permSub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
   permBtn: {
     backgroundColor: COLORS.coral,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
     borderRadius: 99,
     marginTop: 6,
   },
@@ -1097,16 +1123,20 @@ const styles = StyleSheet.create({
   ocrActionsRow: { flexDirection: 'row', gap: 10 },
   ocrPrimaryBtn: {
     paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
     ...SHADOWS.card,
   },
   ocrPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
   ocrSecondaryBtn: {
+    flex: 0.9,
     backgroundColor: COLORS.card,
     borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1120,19 +1150,20 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: COLORS.amberSoft,
     paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
-  loadingText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+  loadingText: { fontSize: 12, fontWeight: '800', color: '#92400E', flexShrink: 1 },
 
   howItWorksCard: {
     backgroundColor: COLORS.card,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 13,
-    gap: 5,
+    padding: 15,
+    gap: 6,
   },
   howTitle: { fontSize: 12, fontWeight: '900', color: COLORS.ink, marginBottom: 2 },
   howLine: { fontSize: 11, color: COLORS.inkMuted, lineHeight: 16 },
@@ -1143,8 +1174,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 14,
-    gap: 8,
+    padding: 15,
+    gap: 10,
   },
   demoTitle: { fontSize: 12, fontWeight: '900', color: COLORS.ink },
   demoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -1152,11 +1183,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.skySoft,
     borderWidth: 1,
     borderColor: '#BAE6FD',
-    paddingVertical: 8,
-    paddingHorizontal: 11,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderRadius: 12,
   },
-  demoChipText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
+  demoChipText: { fontSize: 12, fontWeight: '800', color: '#0369A1' },
 
   reviewWrap: { gap: 14 },
   detectedCard: {
@@ -1164,20 +1195,20 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1.5,
     borderColor: '#A7F3D0',
-    padding: 16,
-    gap: 10,
+    padding: 18,
+    gap: 12,
     ...SHADOWS.card,
   },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  detectedBadge: { fontSize: 11, fontWeight: '900', color: '#047857', letterSpacing: 0.4 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  detectedBadge: { fontSize: 11, fontWeight: '900', color: '#047857', letterSpacing: 0.4, flex: 1 },
   rescanLink: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
   detectedTitle: { fontSize: 17, fontWeight: '900', color: COLORS.ink },
 
-  typeSwitchRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  typeSwitchRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   typeSwitchLbl: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
   typeSwitchChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 99,
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
@@ -1187,14 +1218,14 @@ const styles = StyleSheet.create({
   typeSwitchText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
 
   editRow: { flexDirection: 'row', gap: 8 },
-  editLabel: { fontSize: 10, fontWeight: '800', color: COLORS.inkSoft, marginBottom: 3 },
+  editLabel: { fontSize: 10, fontWeight: '800', color: COLORS.inkSoft, marginBottom: 4 },
   editInput: {
     backgroundColor: COLORS.canvas,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.ink,
@@ -1202,10 +1233,10 @@ const styles = StyleSheet.create({
 
   gridTwo: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   infoPair: {
-    width: '48%',
+    width: '47.5%',
     backgroundColor: COLORS.canvas,
     borderRadius: 12,
-    padding: 9,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
   },
@@ -1214,12 +1245,12 @@ const styles = StyleSheet.create({
   routeNoteBox: {
     backgroundColor: COLORS.emeraldSoft,
     borderRadius: 12,
-    padding: 10,
+    padding: 11,
   },
   routeNoteText: { fontSize: 11, fontWeight: '700', color: '#047857', lineHeight: 16 },
 
   rawToggle: { paddingTop: 4, alignSelf: 'flex-start' },
-  rawToggleText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
+  rawToggleText: { fontSize: 12, fontWeight: '800', color: '#0369A1' },
   rawBox: {
     marginTop: 6,
     backgroundColor: '#F8FAFC',
@@ -1235,7 +1266,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1.5,
     borderColor: '#FED7AA',
-    padding: 16,
+    padding: 18,
     gap: 10,
   },
   choiceTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
@@ -1259,8 +1290,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 99,
   },
   tripChipActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
@@ -1268,9 +1299,17 @@ const styles = StyleSheet.create({
 
   confirmBtn: {
     paddingVertical: 15,
+    paddingHorizontal: 18,
     borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
     ...SHADOWS.card,
   },
-  confirmBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+  confirmBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });

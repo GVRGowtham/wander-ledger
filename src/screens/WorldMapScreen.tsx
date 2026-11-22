@@ -214,9 +214,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
     paddingTop: 4,
   },
-  footerStat: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
+  footerStat: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', flex: 1 },
   footerSpend: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
   statsRow: { flexDirection: 'row', gap: 10 },
   statCard: {
@@ -226,8 +227,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   statNum: { fontSize: 18, fontWeight: '900' },
-  statLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 2 },
+  statLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
 });

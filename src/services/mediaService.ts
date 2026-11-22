@@ -199,3 +199,33 @@ function parseExifDate(exifDate?: string): string | undefined {
   if (!m) return undefined;
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`;
 }
+
+/**
+ * Permanently deletes one or more local app-storage photo/thumbnail files (memories or receipts).
+ */
+export async function deleteLocalPhotoFiles(uris: Array<string | undefined>): Promise<void> {
+  for (const uri of uris) {
+    if (!uri) continue;
+    // Only delete files inside local app storage (never remote URLs)
+    if (!uri.startsWith('file://') && !uri.startsWith('/')) continue;
+    try {
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+    } catch {
+      // Ignore already-deleted or inaccessible files
+    }
+  }
+}
+
+/**
+ * Removes all locally stored memory photos and private receipt files for a deleted trip.
+ */
+export async function deleteLocalTripMediaDir(tripId: string): Promise<void> {
+  if (!BASE_DIR) return;
+  for (const sub of [`memories/${tripId}`, `receipts/${tripId}`]) {
+    try {
+      await FileSystem.deleteAsync(`${BASE_DIR}${sub}`, { idempotent: true });
+    } catch {
+      // Ignore missing directory
+    }
+  }
+}

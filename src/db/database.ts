@@ -247,13 +247,75 @@ export function insertTrip(trip: Trip): void {
   );
 }
 
-export function updateTripCover(tripId: string, coverPhotoUri: string): void {
+export type TripEditablePatch = Partial<
+  Pick<
+    Trip,
+    | 'title'
+    | 'destinationCity'
+    | 'destinationCountry'
+    | 'countryCode'
+    | 'flagEmoji'
+    | 'startDate'
+    | 'endDate'
+    | 'homeCurrency'
+    | 'budget'
+    | 'vibe'
+    | 'coverPhotoUri'
+    | 'lat'
+    | 'lng'
+  >
+>;
+
+export function enqueueSyncMutation(
+  entity: string,
+  entityId: string,
+  action: 'upsert' | 'delete',
+  payload: Record<string, unknown> = {}
+): void {
+  const db = getDb();
+  db.runSync(
+    'INSERT OR REPLACE INTO sync_queue (id, entity, entity_id, action, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [
+      `${entity}_${entityId}_${action}`,
+      entity,
+      entityId,
+      action,
+      JSON.stringify(payload),
+      new Date().toISOString(),
+    ]
+  );
+}
+
+export function clearSyncMutation(
+  entity: string,
+  entityId: string,
+  action: 'upsert' | 'delete'
+): void {
+  const db = getDb();
+  db.runSync('DELETE FROM sync_queue WHERE id = ?', [`${entity}_${entityId}_${action}`]);
+}
+
+export function updateTrip(tripId: string, patch: TripEditablePatch): void {
+  const existing = getTripById(tripId);
+  if (!existing) return;
+
+  const updated: Trip = {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  insertTrip(updated);
+  enqueueSyncMutation('trips', tripId, 'upsert', { tripId });
+}
+
+export function updateTripCover(tripId: string, coverPhotoUri: string | null): void {
   const db = getDb();
   db.runSync('UPDATE trips SET cover_photo_uri = ?, updated_at = ? WHERE id = ?', [
     coverPhotoUri,
     new Date().toISOString(),
     tripId,
   ]);
+  enqueueSyncMutation('trips', tripId, 'upsert', { tripId });
 }
 
 export function updateTripSharing(
@@ -282,6 +344,7 @@ export function deleteTrip(tripId: string): void {
   db.runSync('DELETE FROM expenses WHERE trip_id = ?', [tripId]);
   db.runSync('DELETE FROM memories WHERE trip_id = ?', [tripId]);
   db.runSync('DELETE FROM trips WHERE id = ?', [tripId]);
+  enqueueSyncMutation('trips', tripId, 'delete', { tripId });
 }
 
 function mapTripRow(r: Record<string, unknown>): Trip {
@@ -584,6 +647,74 @@ export function insertMemory(m: Memory): void {
       m.createdAt,
     ]
   );
+}
+
+export function deleteMemory(memoryId: string): Memory | null {
+  const db = getDb();
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM memories WHERE id = ?',
+    [memoryId]
+  );
+  if (!row) return null;
+
+  const mem: Memory = {
+    id: String(row.id),
+    tripId: String(row.trip_id),
+    title: String(row.title),
+    note: String(row.note),
+    capturedAt: String(row.captured_at),
+    placeName: (row.place_name as string) || undefined,
+    lat: row.lat !== null && row.lat !== undefined ? Number(row.lat) : undefined,
+    lng: row.lng !== null && row.lng !== undefined ? Number(row.lng) : undefined,
+    photoUri: (row.photo_uri as string) || undefined,
+    thumbUri: (row.thumb_uri as string) || undefined,
+    illustrationKey: (row.illustration_key as Memory['illustrationKey']) || undefined,
+    moodSticker: String(row.mood_sticker || '🌅 Core Memory'),
+    isHighlight: Number(row.is_highlight) === 1,
+    authorName: (row.author_name as string) || undefined,
+    createdAt: String(row.created_at),
+  };
+
+  db.runSync('DELETE FROM memories WHERE id = ?', [memoryId]);
+
+  // If this memory's photo was the trip's cover photo, revert cleanly to the destination postcard banner
+  if (mem.photoUri) {
+    db.runSync(
+      'UPDATE trips SET cover_photo_uri = NULL, updated_at = ? WHERE id = ? AND cover_photo_uri = ?',
+      [new Date().toISOString(), mem.tripId, mem.photoUri]
+    );
+  }
+
+  enqueueSyncMutation('memories', memoryId, 'delete', {
+    tripId: mem.tripId,
+    photoUri: mem.photoUri ?? null,
+    thumbUri: mem.thumbUri ?? null,
+  });
+
+  return mem;
+}
+
+export function deleteFlight(flightId: string): void {
+  const db = getDb();
+  db.runSync('DELETE FROM flights WHERE id = ?', [flightId]);
+  enqueueSyncMutation('flights', flightId, 'delete', { flightId });
+}
+
+export function deleteStay(stayId: string): void {
+  const db = getDb();
+  db.runSync('DELETE FROM stays WHERE id = ?', [stayId]);
+  enqueueSyncMutation('stays', stayId, 'delete', { stayId });
+}
+
+export function deleteExpense(expenseId: string): { receiptUri?: string } {
+  const db = getDb();
+  const row = db.getFirstSync<{ receipt_uri?: string }>(
+    'SELECT receipt_uri FROM expenses WHERE id = ?',
+    [expenseId]
+  );
+  db.runSync('DELETE FROM expenses WHERE id = ?', [expenseId]);
+  enqueueSyncMutation('expenses', expenseId, 'delete', { expenseId });
+  return { receiptUri: row?.receipt_uri || undefined };
 }
 
 // --- LOYALTY VAULT ---

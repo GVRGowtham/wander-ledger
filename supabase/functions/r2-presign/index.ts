@@ -27,8 +27,9 @@ serve(async (req) => {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const { tripId, mediaKind, fileId } = await req.json();
+    const { tripId, mediaKind, fileId, action } = await req.json();
     const kind = mediaKind === 'receipt' ? 'receipt' : 'memory';
+    const isDelete = action === 'delete';
 
     // Verify user belongs to trip via RLS
     const { data: trip } = await supabase
@@ -41,10 +42,11 @@ serve(async (req) => {
       return new Response('Forbidden', { status: 403 });
     }
 
+    const cleanFileId = String(fileId || '').replace(/\.webp$/i, '');
     const key =
       kind === 'receipt'
-        ? `receipts/${tripId}/${userData.user.id}/${fileId}.webp`
-        : `memories/${tripId}/${fileId}.webp`;
+        ? `receipts/${tripId}/${userData.user.id}/${cleanFileId}.webp`
+        : `memories/${tripId}/${cleanFileId}.webp`;
 
     const r2AccountId = Deno.env.get('R2_ACCOUNT_ID')!;
     const r2Bucket = Deno.env.get('R2_BUCKET_NAME') || 'wanderledger-media';
@@ -58,14 +60,18 @@ serve(async (req) => {
     const url = `https://${r2AccountId}.r2.cloudflarestorage.com/${r2Bucket}/${key}`;
     const signed = await aws.sign(
       new Request(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/webp' },
+        method: isDelete ? 'DELETE' : 'PUT',
+        headers: isDelete ? undefined : { 'Content-Type': 'image/webp' },
       }),
       { aws: { signQuery: true } }
     );
 
     return new Response(
-      JSON.stringify({ uploadUrl: signed.url, objectKey: key }),
+      JSON.stringify(
+        isDelete
+          ? { deleteUrl: signed.url, objectKey: key }
+          : { uploadUrl: signed.url, objectKey: key }
+      ),
       { headers: { 'Content-Type': 'application/json' } }
     );
   } catch (err) {

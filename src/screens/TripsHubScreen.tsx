@@ -53,9 +53,11 @@ export const TripsHubScreen: React.FC<Props> = ({
           <LinearGradient colors={['#FBBF24', '#F43F5E']} style={styles.avatar}>
             <Text style={styles.avatarText}>{profile?.avatarInitials || 'WL'}</Text>
           </LinearGradient>
-          <View>
-            <Text style={styles.greeting}>Ready to wander, {firstName}? ✨</Text>
-            <Text style={styles.subGreeting}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              Ready to wander, {firstName}? ✨
+            </Text>
+            <Text style={styles.subGreeting} numberOfLines={1}>
               {uniqueCountries} {uniqueCountries === 1 ? 'country' : 'countries'} •{' '}
               {totalMiles.toLocaleString()} mi explored
             </Text>
@@ -89,11 +91,15 @@ export const TripsHubScreen: React.FC<Props> = ({
           <Text style={styles.emptySub}>
             Scan a boarding pass to auto-create your first trip, or dream one up manually!
           </Text>
-          <TouchableOpacity onPress={onOpenScanner} style={styles.emptyPrimaryBtn}>
-            <Text style={styles.emptyPrimaryText}>📷 Scan Boarding Pass to Start</Text>
+          <TouchableOpacity onPress={onOpenScanner} style={styles.emptyPrimaryBtn} activeOpacity={0.88}>
+            <Text style={styles.emptyPrimaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              📷 Scan Boarding Pass to Start
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onNewTrip} style={styles.emptySecondaryBtn}>
-            <Text style={styles.emptySecondaryText}>✨ Create My First Trip</Text>
+          <TouchableOpacity onPress={onNewTrip} style={styles.emptySecondaryBtn} activeOpacity={0.85}>
+            <Text style={styles.emptySecondaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              ✨ Create My First Trip
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -274,12 +280,26 @@ const ActiveHeroCard: React.FC<{
               end={{ x: 1, y: 0 }}
               style={styles.heroActionPrimary}
             >
-              <Text style={styles.heroActionPrimaryText}>📷 Scan Pass / Bill</Text>
+              <Text
+                style={styles.heroActionPrimaryText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                📷 Scan Pass / Bill
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={onOpen} style={styles.heroActionSecondary} activeOpacity={0.85}>
-            <Text style={styles.heroActionSecondaryText}>📸 Add Memory</Text>
+            <Text
+              style={styles.heroActionSecondaryText}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+            >
+              📸 Add Memory
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -313,11 +333,15 @@ const CountdownHeroCard: React.FC<{
           {trip.destinationCity}, {trip.destinationCountry} • {trip.startDate}
         </Text>
         <View style={styles.heroActions}>
-          <TouchableOpacity onPress={onScan} style={styles.cdBtnWhite}>
-            <Text style={styles.cdBtnWhiteText}>📷 Scan Booking</Text>
+          <TouchableOpacity onPress={onScan} style={styles.cdBtnWhite} activeOpacity={0.88}>
+            <Text style={styles.cdBtnWhiteText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+              📷 Scan Booking
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onNewTrip} style={styles.cdBtnGhost}>
-            <Text style={styles.cdBtnGhostText}>+ Plan Another</Text>
+          <TouchableOpacity onPress={onNewTrip} style={styles.cdBtnGhost} activeOpacity={0.85}>
+            <Text style={styles.cdBtnGhostText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+              + Plan Another
+            </Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -327,11 +351,12 @@ const CountdownHeroCard: React.FC<{
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 36, gap: 18 },
+  content: { padding: 16, paddingBottom: 48, gap: 18 },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
   },
   userRow: {
     flexDirection: 'row',
@@ -353,9 +378,11 @@ const styles = StyleSheet.create({
   subGreeting: { fontSize: 12, color: COLORS.inkMuted, marginTop: 1 },
   newTripPill: {
     backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
     borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
   },
   newTripPillText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 13 },
 
@@ -376,22 +403,23 @@ const styles = StyleSheet.create({
     right: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 8,
   },
   dayPill: {
     backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 99,
   },
   dayPillText: { fontSize: 11, fontWeight: '900', color: COLORS.coralDark },
   sharedPill: {
     backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 99,
   },
   sharedPillText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
-  heroBody: { padding: 15, gap: 12 },
+  heroBody: { padding: 16, gap: 12 },
   heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   heroTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
   heroSubtitle: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
@@ -401,7 +429,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    padding: 10,
+    padding: 12,
   },
   metricLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
   metricValue: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
@@ -417,17 +445,23 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: COLORS.coral, borderRadius: 99 },
   heroActions: { flexDirection: 'row', gap: 10 },
   heroActionPrimary: {
-    paddingVertical: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   heroActionPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   heroActionSecondary: {
     flex: 1,
-    paddingVertical: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 14,
     backgroundColor: COLORS.amberSoft,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
   heroActionSecondaryText: { color: '#92400E', fontWeight: '800', fontSize: 13 },
 
@@ -440,8 +474,8 @@ const styles = StyleSheet.create({
   },
   cdBadge: {
     backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 99,
   },
   cdBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
@@ -450,17 +484,21 @@ const styles = StyleSheet.create({
   cdBtnWhite: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cdBtnWhiteText: { color: '#4338CA', fontWeight: '800', fontSize: 13 },
   cdBtnGhost: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cdBtnGhostText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
@@ -473,17 +511,19 @@ const styles = StyleSheet.create({
     borderColor: '#FDBA74',
     padding: 24,
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   emptyEmoji: { fontSize: 36 },
-  emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
+  emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
   emptySub: { fontSize: 13, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 19 },
   emptyPrimaryBtn: {
     width: '100%',
     backgroundColor: COLORS.coral,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 4,
   },
   emptyPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
@@ -492,16 +532,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#FED7AA',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptySecondaryText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 14 },
 
   // Sections
   section: { gap: 10 },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
   sectionMeta: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
   horizontalList: { gap: 12, paddingRight: 8 },
   upcomingCard: {
@@ -518,7 +560,7 @@ const styles = StyleSheet.create({
   countdownBadge: {
     backgroundColor: COLORS.indigoSoft,
     paddingHorizontal: 9,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 99,
   },
   countdownBadgeText: { color: COLORS.indigo, fontSize: 11, fontWeight: '800' },
@@ -537,12 +579,12 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 12,
   },
-  planNewText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+  planNewText: { fontSize: 12, fontWeight: '800', color: '#92400E', textAlign: 'center' },
 
   // Past Memory Shelf
   pastGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   pastCard: {
-    width: '48%',
+    width: '47.5%',
     borderRadius: 20,
     borderWidth: 1,
     padding: 14,

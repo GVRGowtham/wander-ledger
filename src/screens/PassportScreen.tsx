@@ -122,20 +122,22 @@ export const PassportScreen: React.FC = () => {
       {/* Cumulative Lifetime Strip */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: COLORS.coral }]}>{countryStamps.length}</Text>
-          <Text style={styles.statLbl}>Countries</Text>
+          <Text style={[styles.statVal, { color: COLORS.coral }]} numberOfLines={1} adjustsFontSizeToFit>
+            {countryStamps.length}
+          </Text>
+          <Text style={styles.statLbl} numberOfLines={1}>Countries</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: COLORS.sky }]}>
+          <Text style={[styles.statVal, { color: COLORS.sky }]} numberOfLines={1} adjustsFontSizeToFit>
             {totalMiles.toLocaleString()}
           </Text>
-          <Text style={styles.statLbl}>Miles Flown</Text>
+          <Text style={styles.statLbl} numberOfLines={1}>Miles Flown</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: '#B45309' }]}>
+          <Text style={[styles.statVal, { color: '#B45309' }]} numberOfLines={1} adjustsFontSizeToFit>
             {(totalPoints / 1000).toFixed(1)}k
           </Text>
-          <Text style={styles.statLbl}>Vault Pts</Text>
+          <Text style={styles.statLbl} numberOfLines={1}>Vault Pts</Text>
         </View>
       </View>
 
@@ -166,7 +168,12 @@ export const PassportScreen: React.FC = () => {
                     },
                   ]}
                 >
-                  <Text style={[styles.stampCountry, { color: st.text }]}>
+                  <Text
+                    style={[styles.stampCountry, { color: st.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                  >
                     {s.flag} {s.country.toUpperCase()}
                   </Text>
                   <Text style={[styles.stampDate, { color: st.text }]}>{s.date}</Text>
@@ -187,8 +194,8 @@ export const PassportScreen: React.FC = () => {
         ) : (
           loyaltyAccounts.map((acc) => (
             <View key={acc.id} style={styles.loyaltyRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.loyaltyName}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.loyaltyName} numberOfLines={1}>
                   {acc.category === 'airline' ? '✈️ ' : acc.category === 'hotel' ? '🏨 ' : '💳 '}
                   {acc.programName}
                 </Text>
@@ -209,7 +216,7 @@ export const PassportScreen: React.FC = () => {
         <Text style={styles.cardTitle}>⚙️ Travel Preferences</Text>
 
         <Text style={styles.prefSub}>Home Currency (FX rates: {fxSource === 'live' ? 'Live ECB ✓' : 'Cached Offline'})</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
           {CURRENCIES.map((c) => {
             const active = profile?.homeCurrency === c;
             return (
@@ -238,15 +245,17 @@ export const PassportScreen: React.FC = () => {
         </View>
 
         <View style={styles.footerActions}>
-          <TouchableOpacity onPress={handleExportCsv} style={styles.exportBtn}>
+          <TouchableOpacity onPress={handleExportCsv} style={styles.exportBtn} activeOpacity={0.85}>
             <Text style={styles.exportBtnText}>📊 Export Spend CSV</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleResetLocalData} style={styles.logoutBtn}>
-            <Text style={styles.logoutBtnText}>🧹 Reset Data</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-            <Text style={styles.logoutBtnText}>Sign Out</Text>
-          </TouchableOpacity>
+          <View style={styles.footerSubRow}>
+            <TouchableOpacity onPress={handleResetLocalData} style={styles.resetBtn} activeOpacity={0.85}>
+              <Text style={styles.resetBtnText} numberOfLines={1}>🧹 Reset Data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.85}>
+              <Text style={styles.logoutBtnText} numberOfLines={1}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </ScrollView>
@@ -255,7 +264,7 @@ export const PassportScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 40, gap: 14 },
+  content: { padding: 16, paddingBottom: 48, gap: 14 },
   passportCover: {
     borderRadius: 24,
     padding: 18,
@@ -286,31 +295,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   statVal: { fontSize: 18, fontWeight: '900' },
-  statLbl: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 2 },
+  statLbl: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
 
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 16,
+    padding: 18,
     gap: 12,
     ...SHADOWS.card,
   },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  cardTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
   cardMeta: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
 
-  stampsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 4 },
+  stampsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
   stamp: {
-    width: '46%',
+    width: '47%',
     borderWidth: 2,
     borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     alignItems: 'center',
   },
   stampCountry: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
@@ -320,21 +330,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderSoft,
   },
   loyaltyName: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
-  loyaltyNum: { fontSize: 11, color: COLORS.inkSoft, marginTop: 1 },
+  loyaltyNum: { fontSize: 11, color: COLORS.inkSoft, marginTop: 2 },
   loyaltyBal: { fontSize: 13, fontWeight: '900', color: '#B45309' },
 
-  prefSub: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
+  prefSub: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', lineHeight: 17 },
   currChip: {
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 99,
   },
   currChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
@@ -346,22 +356,42 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   switchTitle: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
-  switchSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 1 },
-  footerActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  switchSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2 },
+  footerActions: { gap: 10, marginTop: 6 },
+  footerSubRow: { flexDirection: 'row', gap: 10 },
   exportBtn: {
-    flex: 1,
     backgroundColor: COLORS.skySoft,
-    paddingVertical: 11,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
   },
   exportBtnText: { color: '#0369A1', fontWeight: '800', fontSize: 13 },
-  logoutBtn: {
-    backgroundColor: COLORS.roseSoft,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
+  resetBtn: {
+    flex: 1,
+    backgroundColor: COLORS.amberSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  resetBtnText: { color: '#92400E', fontWeight: '800', fontSize: 13 },
+  logoutBtn: {
+    flex: 1,
+    backgroundColor: COLORS.roseSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
   },
   logoutBtnText: { color: COLORS.rose, fontWeight: '800', fontSize: 13 },
 });
