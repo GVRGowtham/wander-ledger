@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import PdfThumbnail from 'react-native-pdf-thumbnail';
+import { renderPdfPagesNative } from '../../modules/local-pdf-renderer';
 import { compressAndSaveReceiptUri } from './mediaService';
 import { recognizeTextWithDiagnostics } from './nativeOcr';
 import { mergeOcrTexts } from './ocrParser';
@@ -44,35 +44,14 @@ export async function pickMultipleDocumentImages(maxCount = 3): Promise<string[]
 
 /**
  * Renders up to `maxPages` pages of a local PDF (file:// or content://) into crisp
- * 1600px JPEGs using Android/iOS native PDF rendering so offline ML Kit OCR can read
- * BOTH digital confirmation PDFs and scanned paper folios.
+ * 1600px white-backed JPEGs using Android's built-in PdfRenderer so offline ML Kit OCR
+ * reads BOTH digital confirmation PDFs and scanned paper folios.
  */
 export async function renderPdfPagesToJpegs(
   pdfUri: string,
   maxPages = 3
 ): Promise<string[]> {
-  const rendered: string[] = [];
-  for (let page = 0; page < maxPages; page++) {
-    try {
-      const res = await PdfThumbnail.generate(pdfUri, page, {
-        quality: 92,
-        maxWidth: 1600,
-      });
-      if (res?.uri) {
-        rendered.push(res.uri);
-      } else {
-        break;
-      }
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      // Normal end-of-document when PDF has fewer than maxPages pages
-      if (page > 0 || code === 'INVALID_PAGE') {
-        break;
-      }
-      throw err;
-    }
-  }
-  return rendered;
+  return renderPdfPagesNative(pdfUri, maxPages, 1600);
 }
 
 /**

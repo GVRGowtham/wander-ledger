@@ -154,6 +154,15 @@ export function parseDateFromString(text: string): string | null {
     }
   }
 
+  // 17 Oct '26 or 17 Oct 26 (common on MakeMyTrip / Goibibo / Ixigo cards)
+  const dayFirstShortYr = text.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+['’]?(\d{2})\b/i
+  );
+  if (dayFirstShortYr) {
+    const mon = MONTH_MAP[dayFirstShortYr[2].slice(0, 3).toLowerCase()];
+    return `20${dayFirstShortYr[3]}-${mon}-${dayFirstShortYr[1].padStart(2, '0')}`;
+  }
+
   return null;
 }
 
@@ -211,7 +220,7 @@ export function mergeOcrTexts(pages: string[]): string {
 
 export function inferExpenseCategory(text: string): ExpenseCategory {
   const q = text.toLowerCase();
-  if (/(hotel|resort|inn|suites|ryokan|airbnb|check-in|nights)/.test(q)) return 'lodging';
+  if (/(hotel|resort|inn|suites|ryokan|airbnb|check-in|nights|homestay|villa)/.test(q)) return 'lodging';
   if (/(ramen|cafe|coffee|matcha|restaurant|bistro|bar|pizza|sushi|burger|bakery|dining|kitchen|grill|tavern|tea|gyoza)/.test(q)) {
     return 'dining';
   }
@@ -234,8 +243,8 @@ export function isHotelConfirmationText(text: string): boolean {
     /check[\s-]?in/,
     /check[\s-]?out/,
     /\b\d+\s*nights?\b/,
-    /reservation|booking\s*confirmed|confirmation\s*#?|itinerary/,
-    /hotel|resort|ryokan|suites|airbnb|hostel|villa|marriott|hilton|hyatt|taj|oberoi|radisson/,
+    /reservation|booking\s*confirmed|booking\s*id|hotel\s*voucher|confirmation\s*#?|itinerary/,
+    /hotel|resort|ryokan|suites|airbnb|hostel|villa|homestay|guesthouse|chalet|lodge|marriott|hilton|hyatt|taj|oberoi|radisson|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|agoda|makemytrip|goibibo|ixigo|cleartrip|booking\.com|expedia/,
   ].filter((r) => r.test(q)).length;
   return hits >= 2;
 }
@@ -493,38 +502,46 @@ export function parseDocumentOcrText(
     const nights = nightsMatch ? parseInt(nightsMatch[1], 10) : computedNights;
 
     const confMatch =
-      rawText.match(/#([A-Z0-9-]{4,14})\b/i) ??
+      rawText.match(/#([A-Z0-9-]{4,16})\b/i) ??
       rawText.match(
-        /(?:confirmation|booking(?:\s+confirmed)?|reservation|pin\s*code|ref(?:erence)?)\s*(?:no\.?|number|id|code|#|:)*\s*#?([A-Z0-9-]*\d[A-Z0-9-]{2,13})\b/i
+        /(?:confirmation|booking(?:\s+confirmed)?|reservation|trip\s*id|voucher|pin\s*code|ref(?:erence)?)\s*(?:no\.?|number|id|code|#|:)*\s*#?([A-Z0-9-]*\d[A-Z0-9-]{2,15})\b/i
       );
+    const otaHeaderNoise =
+      /^(?:booking\.com|agoda|makemytrip|goibibo|ixigo|cleartrip|yatra|expedia|hotels\.com|trip\.com|airbnb|hotel\s*voucher|e-?voucher|booking\s*voucher|booking\s*confirmed|reservation\s*confirmed|confirmation|itinerary|tax\s*invoice)\b/i;
     const hotelNameLine =
       lines.find(
         (l) =>
-          /(hotel|resort|ryokan|inn|suites|thousand|marriott|hilton|hyatt|airbnb|villa|house|taj|oberoi|radisson|sheraton|westin|ibis|novotel|accor|chalet|lodge)/i.test(
+          /(hotel|resort|ryokan|inn|suites|thousand|marriott|hilton|hyatt|airbnb|villa|house|taj|oberoi|radisson|sheraton|westin|ibis|novotel|accor|chalet|lodge|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|homestay|guesthouse)/i.test(
             l
-          ) && !/booking\s*confirmed|reservation\s*confirmed|booking\.com/i.test(l)
+          ) && !otaHeaderNoise.test(l)
       ) ??
-      lines.find((l) => !/booking\s*confirmed|confirmation|itinerary|booking\.com/i.test(l)) ??
+      lines.find((l) => !otaHeaderNoise.test(l) && /[A-Za-z]{3,}/.test(l)) ??
       'Scanned Stay';
 
     const addressLine = lines.find((l) =>
       /(ward|street|st\.|strasse|straße|ave|road|rd\.|ku,|kyoto|tokyo|lisbon|rome|paris|zurich|lucerne|interlaken|geneva|zermatt|address|bengaluru|mumbai|goa|delhi|london|new york)/i.test(l)
     );
 
-    // Infer destination city from known travel cities for clean auto-trip creation
+    // Infer destination city from known travel cities (word-boundary match so 'Goa' matches cleanly)
     const lowerAll = rawText.toLowerCase();
     let cityHint: string | undefined;
     for (const ap of Object.values(AIRPORTS)) {
-      if (ap.city.length >= 4 && lowerAll.includes(ap.city.toLowerCase())) {
-        cityHint = ap.city;
-        break;
+      if (ap.city.length >= 3) {
+        const escaped = ap.city.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
+          cityHint = ap.city;
+          break;
+        }
       }
     }
     if (!cityHint) {
       for (const ap of Object.values(AIRPORTS)) {
-        if (ap.country.length >= 4 && lowerAll.includes(ap.country.toLowerCase())) {
-          cityHint = ap.country;
-          break;
+        if (ap.country.length >= 4) {
+          const escaped = ap.country.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
+            cityHint = ap.country;
+            break;
+          }
         }
       }
     }

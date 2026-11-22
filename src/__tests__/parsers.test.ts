@@ -601,6 +601,30 @@ CHF 1,240.00`;
       expect(aiMapped.cityHint).toBe('Zurich');
     }
   });
+
+  it('parses MakeMyTrip / Goibibo / Agoda hotel vouchers in INR with short-year dates', () => {
+    const mmtVoucher = `MakeMyTrip
+Hotel Voucher
+Booking ID: NH72019384729
+Taj Fort Aguada Resort & Spa, Goa
+Check-in: Fri, 14 Nov '25
+Check-out: Mon, 17 Nov '25
+3 Nights • Sea View Cottage
+Total Paid: ₹48,500`;
+
+    const parsed = parseDocumentOcrText(mmtVoucher, 'INR');
+    expect(parsed.kind).toBe('hotel');
+    if (parsed.kind === 'hotel') {
+      expect(parsed.hotelName).toContain('Taj Fort Aguada');
+      expect(parsed.confirmationCode).toBe('NH72019384729');
+      expect(parsed.checkIn).toBe('2025-11-14');
+      expect(parsed.checkOut).toBe('2025-11-17');
+      expect(parsed.nights).toBe(3);
+      expect(parsed.currency).toBe('INR');
+      expect(parsed.totalAmount).toBe(48500);
+      expect(parsed.cityHint).toBe('Goa');
+    }
+  });
 });
 
 
