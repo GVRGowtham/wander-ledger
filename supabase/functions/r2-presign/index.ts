@@ -1,0 +1,77 @@
+// Supabase Edge Function: r2-presign
+// Authorizes the user's Google/Supabase JWT & trip membership, then returns a short-lived
+// Cloudflare R2 presigned PUT URL for compressed WebP memories (~200KB) or private receipts (~70KB).
+// Memory photos live under `memories/{tripId}/{id}.webp`.
+// Private receipts live under `receipts/{tripId}/{userId}/{id}.webp` (never exposed on Postcards).
+
+// @ts-nocheck — Deno Edge Runtime
+import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20';
+
+serve(async (req) => {
+  if (req.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  try {
+    const authHeader = req.headers.get('Authorization') || '';
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    const { tripId, mediaKind, fileId } = await req.json();
+    const kind = mediaKind === 'receipt' ? 'receipt' : 'memory';
+
+    // Verify user belongs to trip via RLS
+    const { data: trip } = await supabase
+      .from('trips')
+      .select('id')
+      .eq('id', tripId)
+      .maybeSingle();
+
+    if (!trip) {
+      return new Response('Forbidden', { status: 403 });
+    }
+
+    const key =
+      kind === 'receipt'
+        ? `receipts/${tripId}/${userData.user.id}/${fileId}.webp`
+        : `memories/${tripId}/${fileId}.webp`;
+
+    const r2AccountId = Deno.env.get('R2_ACCOUNT_ID')!;
+    const r2Bucket = Deno.env.get('R2_BUCKET_NAME') || 'wanderledger-media';
+    const aws = new AwsClient({
+      accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID')!,
+      secretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY')!,
+      service: 's3',
+      region: 'auto',
+    });
+
+    const url = `https://${r2AccountId}.r2.cloudflarestorage.com/${r2Bucket}/${key}`;
+    const signed = await aws.sign(
+      new Request(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp' },
+      }),
+      { aws: { signQuery: true } }
+    );
+
+    return new Response(
+      JSON.stringify({ uploadUrl: signed.url, objectKey: key }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  } catch (err) {
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+});
