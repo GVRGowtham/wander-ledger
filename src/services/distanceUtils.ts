@@ -176,13 +176,29 @@ export function suggestStopsFromBookings(
 }
 
 export type JourneyTimelineItem =
-  | { kind: 'flight'; sortKey: string; dateLabel: string; flight: Flight }
-  | { kind: 'transport'; sortKey: string; dateLabel: string; transport: TransportLeg }
-  | { kind: 'stay'; sortKey: string; dateLabel: string; stay: Stay };
+  | { kind: 'flight'; sortKey: string; dateLabel: string; timeLabel?: string; flight: Flight }
+  | { kind: 'transport'; sortKey: string; dateLabel: string; timeLabel?: string; transport: TransportLeg }
+  | { kind: 'stay'; sortKey: string; dateLabel: string; timeLabel?: string; stay: Stay };
+
+function normalizeTimelineSortKey(isoLike: string, fallbackHm: string): {
+  sortKey: string;
+  dateLabel: string;
+  timeLabel?: string;
+} {
+  const datePart = (isoLike || '').slice(0, 10);
+  const rawTime = isoLike.includes('T') && isoLike.length >= 16 ? isoLike.slice(11, 16) : '';
+  const hasExplicitTime = /^\d{2}:\d{2}$/.test(rawTime) && rawTime !== '00:00';
+  const sortTime = hasExplicitTime ? rawTime : fallbackHm;
+  return {
+    sortKey: `${datePart}T${sortTime}`,
+    dateLabel: datePart,
+    timeLabel: hasExplicitTime ? rawTime : undefined,
+  };
+}
 
 /**
  * Merges flights, ground/sea transport legs, and stays into one clean
- * chronological journey timeline (sorted earliest → latest).
+ * chronological journey timeline (sorted earliest → latest by date & time).
  */
 export function buildJourneyTimeline(
   flights: Flight[],
@@ -192,35 +208,33 @@ export function buildJourneyTimeline(
   const items: JourneyTimelineItem[] = [];
 
   for (const f of flights) {
-    const sortKey = f.departureTime.includes('T')
-      ? f.departureTime
-      : `${f.departureTime.slice(0, 10)}T08:00`;
+    const { sortKey, dateLabel, timeLabel } = normalizeTimelineSortKey(f.departureTime, '08:00');
     items.push({
       kind: 'flight',
       sortKey,
-      dateLabel: f.departureTime.slice(0, 10),
+      dateLabel,
+      timeLabel,
       flight: f,
     });
   }
 
   for (const t of transports) {
-    const sortKey = t.startDate.includes('T')
-      ? t.startDate
-      : `${t.startDate.slice(0, 10)}T09:00`;
+    const { sortKey, dateLabel, timeLabel } = normalizeTimelineSortKey(t.startDate, '09:00');
     items.push({
       kind: 'transport',
       sortKey,
-      dateLabel: t.startDate.slice(0, 10),
+      dateLabel,
+      timeLabel,
       transport: t,
     });
   }
 
   for (const s of stays) {
-    const sortKey = `${s.checkIn.slice(0, 10)}T14:00`;
+    const { sortKey, dateLabel } = normalizeTimelineSortKey(s.checkIn, '14:00');
     items.push({
       kind: 'stay',
       sortKey,
-      dateLabel: s.checkIn.slice(0, 10),
+      dateLabel,
       stay: s,
     });
   }

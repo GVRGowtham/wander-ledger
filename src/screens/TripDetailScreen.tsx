@@ -36,7 +36,13 @@ import {
 } from '../components/instagram/IgPostcardCanvas';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
-import { inferDestinationVibe } from '../db/airportsData';
+import {
+  calculateDistanceMiles,
+  estimateFlightDurationMinutes,
+  inferDestinationVibe,
+  lookupAirline,
+  lookupAirport,
+} from '../db/airportsData';
 import { generateId } from '../db/database';
 import {
   buildJourneyRouteTrail,
@@ -71,6 +77,7 @@ import {
 import {
   DistanceUnit,
   ExpenseCategory,
+  Flight,
   Memory,
   Stay,
   TripVibe,
@@ -121,6 +128,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     getSummaryForTrip,
     editTrip,
     addFlight,
+    editFlight,
     removeFlight,
     addTransport,
     removeTransport,
@@ -182,6 +190,17 @@ export const TripDetailScreen: React.FC<Props> = ({
       trip?.destinationCity || ''
     )
   );
+  // Edit Existing Flight Modal (date, time, flight #, route, PNR, seat, cabin)
+  const [editFlightModal, setEditFlightModal] = useState(false);
+  const [editingFlightId, setEditingFlightId] = useState<string | null>(null);
+  const [editFltNum, setEditFltNum] = useState('');
+  const [editFltOrigin, setEditFltOrigin] = useState('');
+  const [editFltDest, setEditFltDest] = useState('');
+  const [editFltDate, setEditFltDate] = useState('');
+  const [editFltTime, setEditFltTime] = useState('');
+  const [editFltPnr, setEditFltPnr] = useState('');
+  const [editFltSeat, setEditFltSeat] = useState('');
+  const [editFltCabin, setEditFltCabin] = useState('Economy');
   const [transportDraft, setTransportDraft] = useState<TransportDraft>({
     mode: 'train',
     title: '',
@@ -741,6 +760,88 @@ export const TripDetailScreen: React.FC<Props> = ({
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => removeFlight(flightId) },
     ]);
+  };
+
+  const openEditFlightModal = (f: Flight) => {
+    setEditingFlightId(f.id);
+    setEditFltNum(f.flightNumber);
+    setEditFltOrigin(f.originIata);
+    setEditFltDest(f.destIata);
+    setEditFltDate(f.departureTime.slice(0, 10));
+    const rawHm = f.departureTime.length >= 16 ? f.departureTime.slice(11, 16) : '';
+    setEditFltTime(rawHm && rawHm !== '00:00' ? rawHm : '');
+    setEditFltPnr(f.pnr || '');
+    setEditFltSeat(f.seat || '');
+    setEditFltCabin(f.cabinClass || 'Economy');
+    setEditFlightModal(true);
+  };
+
+  const handleSaveEditedFlight = () => {
+    if (!editingFlightId) return;
+    const existing = flights.find((f) => f.id === editingFlightId);
+    if (!existing) return;
+
+    const cleanDate = editFltDate.trim() || existing.departureTime.slice(0, 10);
+    const trimmedTime = editFltTime.trim();
+    let hm = '00:00';
+    if (trimmedTime) {
+      const m = trimmedTime.match(/^(\d{1,2}):(\d{2})$/);
+      const h = m ? parseInt(m[1], 10) : -1;
+      const min = m ? parseInt(m[2], 10) : -1;
+      if (!m || h < 0 || h > 23 || min < 0 || min > 59) {
+        Alert.alert('Invalid Time', 'Enter departure time in 24-hour HH:MM format (e.g. 22:00 or 06:45), or leave blank.');
+        return;
+      }
+      hm = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    }
+
+    const cleanOrigin = (editFltOrigin.trim() || existing.originIata).toUpperCase().slice(0, 3);
+    const cleanDest = (editFltDest.trim() || existing.destIata).toUpperCase().slice(0, 3);
+    const originAp = lookupAirport(cleanOrigin);
+    const destAp = lookupAirport(cleanDest);
+    const distanceMiles =
+      originAp && destAp
+        ? calculateDistanceMiles(originAp.lat, originAp.lng, destAp.lat, destAp.lng)
+        : existing.distanceMiles;
+    const durationMinutes =
+      originAp && destAp
+        ? estimateFlightDurationMinutes(distanceMiles)
+        : existing.durationMinutes;
+
+    const cleanFlightNum = editFltNum.trim().toUpperCase() || existing.flightNumber;
+    const carrierMatch = cleanFlightNum.match(/^([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})/);
+    const alInfo = carrierMatch ? lookupAirline(carrierMatch[1]) : null;
+
+    const depIso = `${cleanDate}T${hm}:00`;
+    const depObj = new Date(`${depIso}Z`);
+    let arrIso = depIso;
+    if (!Number.isNaN(depObj.getTime())) {
+      depObj.setUTCMinutes(depObj.getUTCMinutes() + Math.max(30, durationMinutes || 120));
+      arrIso = depObj.toISOString().slice(0, 19);
+    }
+
+    editFlight(editingFlightId, {
+      airlineCode: alInfo?.code ?? existing.airlineCode,
+      airlineName: alInfo?.name ?? existing.airlineName,
+      flightNumber: cleanFlightNum,
+      pnr: editFltPnr.trim().toUpperCase() || undefined,
+      originIata: cleanOrigin,
+      originCity: originAp?.city ?? (cleanOrigin === existing.originIata ? existing.originCity : cleanOrigin),
+      destIata: cleanDest,
+      destCity: destAp?.city ?? (cleanDest === existing.destIata ? existing.destCity : cleanDest),
+      departureTime: depIso,
+      arrivalTime: arrIso,
+      durationMinutes,
+      distanceMiles,
+      milesEarned: distanceMiles,
+      loyaltyProgram: alInfo?.loyaltyProgram ?? existing.loyaltyProgram,
+      seat: editFltSeat.trim().toUpperCase() || undefined,
+      cabinClass: editFltCabin.trim() || undefined,
+    });
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEditFlightModal(false);
+    setEditingFlightId(null);
   };
 
   const openManualStayModal = () => {
@@ -1394,16 +1495,28 @@ export const TripDetailScreen: React.FC<Props> = ({
                     <View key={`tl_f_${f.id}`} style={{ gap: 6 }}>
                       <View style={styles.timelineDateHeader}>
                         <View style={[styles.timelineDot, { backgroundColor: COLORS.sky }]} />
-                        <Text style={styles.timelineDateText}>{item.dateLabel} • FLIGHT</Text>
+                        <Text style={styles.timelineDateText}>
+                          {item.dateLabel}
+                          {item.timeLabel ? ` • ${item.timeLabel}` : ''} • FLIGHT
+                        </Text>
                       </View>
                       <BoardingPassCard flight={f} distanceUnit={distanceUnit} />
-                      <TouchableOpacity
-                        onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
-                        style={styles.subtleRemoveRow}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.subtleRemoveText}>🗑️ Remove flight</Text>
-                      </TouchableOpacity>
+                      <View style={styles.flightCardActionsRow}>
+                        <TouchableOpacity
+                          onPress={() => openEditFlightModal(f)}
+                          style={styles.flightEditPill}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.flightEditPillText}>✏️ Edit date &amp; time</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
+                          style={styles.subtleRemoveRow}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={styles.subtleRemoveText}>🗑️ Remove flight</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   );
                 }
@@ -2189,6 +2302,117 @@ export const TripDetailScreen: React.FC<Props> = ({
         </View>
       </BottomSheetModal>
 
+      {/* EDIT EXISTING FLIGHT MODAL (Date, Time, Route, Flight #, PNR, Seat) */}
+      <BottomSheetModal
+        visible={editFlightModal}
+        title="✈️ Edit Flight Details"
+        onClose={() => {
+          setEditFlightModal(false);
+          setEditingFlightId(null);
+        }}
+        footer={
+          <TouchableOpacity
+            onPress={handleSaveEditedFlight}
+            style={styles.modalPrimaryBtn}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.modalPrimaryText}>Save Flight Changes ✓</Text>
+          </TouchableOpacity>
+        }
+      >
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <DatePickerField
+            label="Departure Date"
+            value={editFltDate}
+            onChange={setEditFltDate}
+            placeholder="Pick date"
+            compact
+          />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>TIME (24H)</Text>
+            <TextInput
+              value={editFltTime}
+              onChangeText={(v) => setEditFltTime(v.replace(/[^0-9:]/g, '').slice(0, 5))}
+              placeholder="e.g. 22:00"
+              placeholderTextColor={COLORS.inkSoft}
+              keyboardType="numbers-and-punctuation"
+              style={styles.input}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1.2, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>FLIGHT #</Text>
+            <TextInput
+              value={editFltNum}
+              onChangeText={(v) => setEditFltNum(v.toUpperCase())}
+              placeholder="e.g. EY 217"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ flex: 0.9, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>FROM (IATA)</Text>
+            <TextInput
+              value={editFltOrigin}
+              onChangeText={(v) => setEditFltOrigin(v.toUpperCase().slice(0, 3))}
+              placeholder="BLR"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ flex: 0.9, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>TO (IATA)</Text>
+            <TextInput
+              value={editFltDest}
+              onChangeText={(v) => setEditFltDest(v.toUpperCase().slice(0, 3))}
+              placeholder="AUH"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>PNR / REF</Text>
+            <TextInput
+              value={editFltPnr}
+              onChangeText={(v) => setEditFltPnr(v.toUpperCase())}
+              placeholder="Optional"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ flex: 0.8, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>SEAT</Text>
+            <TextInput
+              value={editFltSeat}
+              onChangeText={(v) => setEditFltSeat(v.toUpperCase())}
+              placeholder="e.g. 14A"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.fieldMiniLabel}>CABIN</Text>
+            <TextInput
+              value={editFltCabin}
+              onChangeText={setEditFltCabin}
+              placeholder="Economy"
+              placeholderTextColor={COLORS.inkSoft}
+              style={styles.input}
+            />
+          </View>
+        </View>
+      </BottomSheetModal>
+
       {/* MANUAL STAY / HOTEL MODAL */}
       <BottomSheetModal
         visible={stayModal}
@@ -2911,5 +3135,31 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.inkMuted,
     letterSpacing: 0.6,
+  },
+  flightCardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  flightEditPill: {
+    backgroundColor: COLORS.skySoft,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 99,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+  },
+  flightEditPillText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0369A1',
+  },
+  fieldMiniLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.inkSoft,
+    letterSpacing: 0.4,
+    paddingLeft: 2,
   },
 });

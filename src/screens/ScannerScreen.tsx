@@ -487,6 +487,7 @@ export const ScannerScreen: React.FC<Props> = ({
         originIata: scan.originIata,
         destIata: scan.destIata,
         flightDate: scan.flightDate,
+        departureTimeHm: scan.departureTimeHm,
         seat: scan.seat || undefined,
         cabinClass: scan.cabinClass,
         distanceMiles: scan.distanceMiles,
@@ -510,6 +511,7 @@ export const ScannerScreen: React.FC<Props> = ({
       originIata: first.originIata,
       destIata: first.destIata,
       flightDate: first.flightDate,
+      departureTimeHm: first.departureTimeHm,
       seat: first.seat ?? prev.seat,
       distanceMiles: first.distanceMiles,
       estimatedDurationMin: first.estimatedDurationMin,
@@ -526,13 +528,15 @@ export const ScannerScreen: React.FC<Props> = ({
         patch.originIata !== undefined ||
         patch.destIata !== undefined ||
         patch.flightNumber !== undefined ||
-        patch.flightDate !== undefined
+        patch.flightDate !== undefined ||
+        patch.departureTimeHm !== undefined
       ) {
         const legs = [...getFlightLegs(prev)];
         const leg0 = { ...legs[0] };
         if (patch.originIata !== undefined) leg0.originIata = patch.originIata;
         if (patch.destIata !== undefined) leg0.destIata = patch.destIata;
         if (patch.flightDate !== undefined) leg0.flightDate = patch.flightDate;
+        if (patch.departureTimeHm !== undefined) leg0.departureTimeHm = patch.departureTimeHm;
         if (patch.flightNumber !== undefined) {
           leg0.flightNumber = patch.flightNumber;
           const m = patch.flightNumber.trim().toUpperCase().match(/^([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})/);
@@ -741,6 +745,12 @@ export const ScannerScreen: React.FC<Props> = ({
         const originAp = lookupAirport(cleanOrigin);
         const destAp = lookupAirport(cleanDest);
         const legEnrich = idx === 0 ? enrichment : null;
+        const durationMin = legEnrich?.durationMinutes ?? leg.estimatedDurationMin;
+        const cleanTime = normalizeHmTime(leg.departureTimeHm);
+        const depIso = cleanTime
+          ? `${leg.flightDate}T${cleanTime}:00`
+          : legEnrich?.departureTime ?? `${leg.flightDate}T00:00:00`;
+        const arrIso = computeArrivalIso(depIso, durationMin);
         addFlight({
           id: generateId('flt'),
           tripId: finalTripId,
@@ -752,9 +762,9 @@ export const ScannerScreen: React.FC<Props> = ({
           originCity: originAp?.city ?? cleanOrigin,
           destIata: cleanDest,
           destCity: destAp?.city ?? cleanDest,
-          departureTime: legEnrich?.departureTime ?? `${leg.flightDate}T10:30:00Z`,
-          arrivalTime: legEnrich?.arrivalTime ?? `${leg.flightDate}T16:30:00Z`,
-          durationMinutes: legEnrich?.durationMinutes ?? leg.estimatedDurationMin,
+          departureTime: depIso,
+          arrivalTime: legEnrich?.arrivalTime && !cleanTime ? legEnrich.arrivalTime : arrIso,
+          durationMinutes: durationMin,
           seat: leg.seat || (idx === 0 ? scanResult.seat || undefined : undefined),
           cabinClass: leg.cabinClass || scanResult.cabinClass || undefined,
           terminal: legEnrich?.terminal,
@@ -1297,12 +1307,24 @@ export const ScannerScreen: React.FC<Props> = ({
                           />
                         </View>
 
-                        <DatePickerField
-                          label="Flight Date"
-                          value={scanResult.flightDate}
-                          onChange={(v) => updateFlightField({ flightDate: v })}
-                          compact
-                        />
+                        <View style={styles.editRow}>
+                          <DatePickerField
+                            label="Flight Date"
+                            value={scanResult.flightDate}
+                            onChange={(v) => updateFlightField({ flightDate: v })}
+                            compact
+                          />
+                          <EditableField
+                            label="Time (24h)"
+                            value={scanResult.departureTimeHm ?? ''}
+                            placeholder="HH:MM"
+                            onChangeText={(v) =>
+                              updateFlightField({
+                                departureTimeHm: v.replace(/[^0-9:]/g, '').slice(0, 5),
+                              })
+                            }
+                          />
+                        </View>
                       </>
                     ) : (
                       <>
@@ -1358,12 +1380,24 @@ export const ScannerScreen: React.FC<Props> = ({
                               />
                             </View>
 
-                            <DatePickerField
-                              label={`Flight ${idx + 1} Date`}
-                              value={leg.flightDate}
-                              onChange={(v) => updateFlightLeg(idx, { flightDate: v })}
-                              compact
-                            />
+                            <View style={styles.editRow}>
+                              <DatePickerField
+                                label={`Flight ${idx + 1} Date`}
+                                value={leg.flightDate}
+                                onChange={(v) => updateFlightLeg(idx, { flightDate: v })}
+                                compact
+                              />
+                              <EditableField
+                                label="Time (24h)"
+                                value={leg.departureTimeHm ?? ''}
+                                placeholder="HH:MM"
+                                onChangeText={(v) =>
+                                  updateFlightLeg(idx, {
+                                    departureTimeHm: v.replace(/[^0-9:]/g, '').slice(0, 5),
+                                  })
+                                }
+                              />
+                            </View>
                           </View>
                         ))}
                       </>
@@ -2014,6 +2048,24 @@ function addDays(isoDate: string, days: number): string {
   if (Number.isNaN(d.getTime())) return isoDate;
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function normalizeHmTime(raw?: string): string | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+function computeArrivalIso(departureIso: string, durationMinutes: number): string {
+  const clean = departureIso.endsWith('Z') ? departureIso : `${departureIso}Z`;
+  const d = new Date(clean);
+  if (Number.isNaN(d.getTime())) return departureIso;
+  d.setUTCMinutes(d.getUTCMinutes() + Math.max(30, durationMinutes || 120));
+  return d.toISOString().slice(0, 19);
 }
 
 const styles = StyleSheet.create({

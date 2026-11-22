@@ -739,8 +739,11 @@ function extractAirportRouteFromText(text: string): ExtractedRoute | null {
     'INR', 'EUR', 'GBP', 'JPY', 'AED', 'AUD', 'CAD', 'SGD', 'CHF', 'KRW', 'THB',
     'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'JAN', 'FEB', 'MAR', 'APR',
     'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'DEP', 'ARR', 'NON',
-    'BAG', 'HRS', 'MIN', 'EST', 'IST', 'PST', 'UTC', 'GMT', 'YES', 'NOT', 'ONE',
-    'TWO', 'DAY', 'PER', 'REF', 'WEB', 'APP', 'PDF', 'VIA', 'OUT', 'NEW', 'PAY',
+    'BAG', 'HRS', 'MIN', 'SEC', 'EST', 'IST', 'PST', 'UTC', 'GMT', 'YES', 'NOT',
+    'ONE', 'TWO', 'DAY', 'PER', 'REF', 'WEB', 'APP', 'PDF', 'VIA', 'OUT', 'NEW',
+    'PAY', 'ETD', 'ETA', 'STD', 'STA', 'ADT', 'CHD', 'INF', 'DOC', 'TKT', 'TTL',
+    'NET', 'VAT', 'GST', 'ROE', 'NUC', 'END', 'INT', 'DOM', 'ECO', 'BUS', 'FIR',
+    'KGS', 'LBS', 'PCS',
   ]);
 
   for (const m of text.matchAll(tokenRegex)) {
@@ -755,6 +758,26 @@ function extractAirportRouteFromText(text: string): ExtractedRoute | null {
   if (foundCodes.length >= 2) {
     return { originIata: foundCodes[0], destIata: foundCodes[1] };
   }
+
+  // 3. Fallback: match known airport city names in order of appearance (e.g. "Bengaluru ... Abu Dhabi")
+  const cityHits: Array<{ iata: string; index: number }> = [];
+  const seenCityIatas = new Set<string>(foundCodes);
+  for (const ap of Object.values(AIRPORTS)) {
+    const primaryCity = ap.city.split('/')[0].trim();
+    if (primaryCity.length < 4 || seenCityIatas.has(ap.iata)) continue;
+    const escaped = primaryCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cm = text.match(new RegExp(`\\b${escaped}\\b`, 'i'));
+    if (cm && cm.index !== undefined) {
+      cityHits.push({ iata: ap.iata, index: cm.index });
+      seenCityIatas.add(ap.iata);
+    }
+  }
+  cityHits.sort((a, b) => a.index - b.index);
+  const combined = [...foundCodes, ...cityHits.map((h) => h.iata)];
+  if (combined.length >= 2 && combined[0] !== combined[1]) {
+    return { originIata: combined[0], destIata: combined[1] };
+  }
+
   return null;
 }
 
@@ -936,6 +959,73 @@ interface FlightSegmentAnchor {
 const FARE_CALC_OR_NOISE_LINE_RX =
   /\b(?:nuc\b|end\s*roe\b|fare\s*calc(?:ulation)?|ticket\s*(?:no\.?|number)|e-?ticket\s*(?:no\.?|number)|document\s*number|membership\s*(?:no\.?|number)|frequent\s*flyer)\b/i;
 
+const ITINERARY_FOOTER_HEADER_RX =
+  /^(?:baggage\s*allowance|fare\s*(?:details|breakdown|summary|calculation)|payment\s*(?:details|summary)|receipt\s*summary|conditions\s*of\s*carriage|important\s*information|terms\s*(?:&|and)\s*conditions|fare\s*rules)\b/i;
+
+const SECTION_SUMMARY_LINE_RX =
+  /^(?:outbound|return|inbound|onward|itinerary|journey|trip\s*summary|flight\s*summary)\b/i;
+
+const SEGMENT_DIVIDER_RX =
+  /\b(?:layover|stopover|transit\s*time|change\s*planes?|connecting\s*time|return\s*:|inbound\s*:|outbound\s*:)\b/i;
+
+const DURATION_ONLY_LINE_RX =
+  /\b(?:duration|flying\s*time|flight\s*time|travel\s*time|layover|stopover|transit)\b/i;
+
+/**
+ * Extracts a 24-hour clock time (HH:MM) from a line, supporting both 24h ("22:00", "02:25")
+ * and 12h ("10:00 PM", "2:25 AM") formats while skipping duration/metadata lines.
+ */
+export function parseClockTimeHm(line: string): string | null {
+  if (!line || ISSUE_METADATA_DATE_RX.test(line)) return null;
+  // 12-hour format: e.g. 10:15 PM or 2:25 AM
+  const m12 = line.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*(AM|PM)\b/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const min = m12[2];
+    const meridiem = m12[3].toUpperCase();
+    if (meridiem === 'PM' && h < 12) h += 12;
+    if (meridiem === 'AM' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${min}`;
+  }
+
+  // Skip lines that are purely flight duration (e.g. "Duration: 04:20")
+  if (DURATION_ONLY_LINE_RX.test(line) && !/\b(?:depart|dep\b|arrive|arr\b|[A-Z]{3})\b/.test(line)) {
+    return null;
+  }
+
+  // 24-hour format: e.g. 22:00, 02:25, 06:40 (not followed by :SS seconds or hrs/min)
+  const m24 = line.match(/(?<!\d:)(\b[01]?\d|2[0-3]):([0-5]\d)(?!:\d{2})(?!\s*(?:hrs?|hours?|mins?))/i);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    return `${String(h).padStart(2, '0')}:${m24[2]}`;
+  }
+
+  return null;
+}
+
+function extractDepartureTimeHm(zoneLines: string[], originIata?: string): string | undefined {
+  const originRx =
+    originIata && originIata !== 'TBD' ? new RegExp(`\\b${originIata}\\b`) : null;
+
+  // 1. Prefer clock time on a line mentioning departure or the origin airport
+  for (const line of zoneLines) {
+    if (ISSUE_METADATA_DATE_RX.test(line)) continue;
+    if (/\bdepart(?:ure|ing)?\b/i.test(line) || (originRx && originRx.test(line))) {
+      const t = parseClockTimeHm(line);
+      if (t) return t;
+    }
+  }
+
+  // 2. Fallback: first clock time top-to-bottom inside this leg's exclusive zone
+  for (const line of zoneLines) {
+    if (ISSUE_METADATA_DATE_RX.test(line) || SECTION_SUMMARY_LINE_RX.test(line)) continue;
+    const t = parseClockTimeHm(line);
+    if (t) return t;
+  }
+
+  return undefined;
+}
+
 function buildParsedFlightLeg(
   airlineCode: string,
   flightNumber: string,
@@ -943,7 +1033,8 @@ function buildParsedFlightLeg(
   destIata: string,
   flightDate: string,
   cabinClass: string,
-  seat?: string
+  seat?: string,
+  departureTimeHm?: string
 ): ParsedFlightLeg {
   const airlineInfo = lookupAirline(airlineCode);
   const originAp = lookupAirport(originIata);
@@ -962,6 +1053,7 @@ function buildParsedFlightLeg(
     originIata,
     destIata,
     flightDate,
+    departureTimeHm,
     seat: seat || undefined,
     cabinClass,
     distanceMiles,
@@ -984,6 +1076,10 @@ function findAllFlightSegmentAnchors(lines: string[]): FlightSegmentAnchor[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    // Once we've already captured flight legs and hit Baggage Allowance / Payment / Fare footer, stop!
+    if (anchors.length > 0 && ITINERARY_FOOTER_HEADER_RX.test(line)) {
+      break;
+    }
     if (FARE_CALC_OR_NOISE_LINE_RX.test(line)) continue;
 
     const lineHits: Array<{ airlineCode: string; flightNumber: string }> = [];
@@ -1054,6 +1150,96 @@ function extractMultiLegFlights(
     return [];
   }
 
+  // Detect PDF card orientation so Leg k NEVER steals Leg k+1's route/date/time!
+  // 1. INLINE: route sits on the same line as the flight number (e.g. "31 Oct  EY 217  22:00 BLR -> 00:50 AUH")
+  // 2. HEADER_ABOVE: route/date/time sit ABOVE the flight number (common on Etihad/Amadeus stacked cards)
+  // 3. FLIGHT_TOP: flight number sits at the top of the card, route/date/time sit BELOW it
+  const inlineCount = anchors.filter((a) => Boolean(extractAirportRouteFromText(lines[a.lineIdx]))).length;
+  let cardMode: 'inline' | 'header_above' | 'flight_top' = 'flight_top';
+
+  if (inlineCount >= Math.ceil(anchors.length / 2)) {
+    cardMode = 'inline';
+  } else {
+    const scoreSlice = (from: number, to: number): number => {
+      if (from > to) return 0;
+      const cleanLines: string[] = [];
+      for (let i = from; i <= to; i++) {
+        if (isMetadataLine(i) || SECTION_SUMMARY_LINE_RX.test(lines[i])) continue;
+        cleanLines.push(lines[i]);
+      }
+      if (cleanLines.length === 0) return 0;
+      const joined = cleanLines.join('\n');
+      let score = 0;
+      if (extractAirportRouteFromText(joined)) score += 3;
+      if (cleanLines.some((l) => Boolean(parseClockTimeHm(l)))) score += 2;
+      if (cleanLines.some((l) => Boolean(parseDateFromString(l)))) score += 1;
+      return score;
+    };
+
+    const a0 = anchors[0].lineIdx;
+    const a1 = anchors[1].lineIdx;
+    // Check lines directly above anchor 0 (capped at 4 lines) vs lines directly below anchor 0 (before divider or anchor 1)
+    let belowLimit = Math.min(a1 - 1, a0 + 4);
+    for (let i = a0 + 1; i <= belowLimit; i++) {
+      if (SEGMENT_DIVIDER_RX.test(lines[i]) || SECTION_SUMMARY_LINE_RX.test(lines[i])) {
+        belowLimit = i - 1;
+        break;
+      }
+    }
+    const aboveScore = scoreSlice(Math.max(0, a0 - 4), a0 - 1);
+    const belowScore = scoreSlice(a0 + 1, belowLimit);
+    cardMode = aboveScore > belowScore ? 'header_above' : 'flight_top';
+  }
+
+  // Partition exclusive, non-overlapping [zoneStart, zoneEnd] boundaries for every anchor
+  const zones: Array<{ start: number; end: number }> = anchors.map((anchor, k) => {
+    const prevIdx = k > 0 ? anchors[k - 1].lineIdx : -1;
+    const nextIdx = k + 1 < anchors.length ? anchors[k + 1].lineIdx : lines.length;
+
+    if (cardMode === 'inline') {
+      // Check for an explicit divider between anchors, else stay tightly scoped around anchor line
+      let zStart = Math.max(prevIdx + 1, anchor.lineIdx - 1);
+      let zEnd = Math.min(nextIdx - 1, anchor.lineIdx + 1);
+      // Never overlap with previous anchor's end
+      if (k > 0) {
+        const mid = Math.floor((prevIdx + anchor.lineIdx) / 2);
+        zStart = Math.max(zStart, mid + 1);
+      }
+      if (k + 1 < anchors.length) {
+        const mid = Math.floor((anchor.lineIdx + nextIdx) / 2);
+        zEnd = Math.min(zEnd, mid);
+      }
+      return { start: Math.min(zStart, anchor.lineIdx), end: Math.max(zEnd, anchor.lineIdx) };
+    }
+
+    if (cardMode === 'header_above') {
+      // Card info sits ABOVE anchor.lineIdx; stop strictly at anchor.lineIdx (plus optional 1 metadata-only line if no route yet)
+      let zStart = Math.max(prevIdx + 1, anchor.lineIdx - 5);
+      // If there's a layover/return divider between prevIdx and anchor.lineIdx, start right after it
+      for (let i = anchor.lineIdx - 1; i >= zStart; i--) {
+        if (SEGMENT_DIVIDER_RX.test(lines[i])) {
+          zStart = i + 1;
+          break;
+        }
+      }
+      return { start: Math.min(zStart, anchor.lineIdx), end: anchor.lineIdx };
+    }
+
+    // cardMode === 'flight_top': Card info sits AT/BELOW anchor.lineIdx; stop before next card's header or divider
+    let zEnd = Math.min(nextIdx - 1, anchor.lineIdx + 5);
+    for (let i = anchor.lineIdx + 1; i <= zEnd; i++) {
+      if (
+        SEGMENT_DIVIDER_RX.test(lines[i]) ||
+        SECTION_SUMMARY_LINE_RX.test(lines[i]) ||
+        ITINERARY_FOOTER_HEADER_RX.test(lines[i])
+      ) {
+        zEnd = i - 1;
+        break;
+      }
+    }
+    return { start: anchor.lineIdx, end: Math.max(zEnd, anchor.lineIdx) };
+  });
+
   const legs: ParsedFlightLeg[] = [];
   const seenKey = new Set<string>();
   const seenFlightNumsWithRoute = new Set<string>();
@@ -1061,21 +1247,27 @@ function extractMultiLegFlights(
 
   for (let k = 0; k < anchors.length; k++) {
     const anchor = anchors[k];
-    const prevAnchorLine = k > 0 ? anchors[k - 1].lineIdx : -1;
-    const nextAnchorLine = k + 1 < anchors.length ? anchors[k + 1].lineIdx : lines.length;
+    const { start: zoneStart, end: zoneEnd } = zones[k];
 
-    const startIdx = Math.max(prevAnchorLine + 1, anchor.lineIdx - 2);
-    const endIdx = Math.min(nextAnchorLine - 1, anchor.lineIdx + 6);
+    const zoneLines: string[] = [];
+    const nonHeaderZoneLines: string[] = [];
+    for (let i = zoneStart; i <= zoneEnd; i++) {
+      if (isMetadataLine(i)) continue;
+      zoneLines.push(lines[i]);
+      if (!SECTION_SUMMARY_LINE_RX.test(lines[i])) {
+        nonHeaderZoneLines.push(lines[i]);
+      }
+    }
 
-    // Prefer route on the anchor line itself, then anchor+below (so section headers above like "Outbound: BLR to ZRH" don't override Leg 1 "BLR -> AUH")
     const selfText = lines[anchor.lineIdx];
-    const belowText = lines.slice(anchor.lineIdx, endIdx + 1).join('\n');
-    const windowText = lines.slice(startIdx, endIdx + 1).join('\n');
+    const cleanZoneText = nonHeaderZoneLines.join('\n');
+    const fullZoneText = zoneLines.join('\n');
 
+    // Prefer route on anchor line itself, then non-section-header zone lines, then full zone
     const route =
       extractAirportRouteFromText(selfText) ??
-      extractAirportRouteFromText(belowText) ??
-      extractAirportRouteFromText(windowText);
+      extractAirportRouteFromText(cleanZoneText) ??
+      extractAirportRouteFromText(fullZoneText);
 
     // Skip repeated mentions of an already-parsed flight (e.g. in a baggage allowance table)
     if (!route && seenFlightNumsWithRoute.has(anchor.flightNumber)) {
@@ -1085,20 +1277,11 @@ function extractMultiLegFlights(
     const originIata = route?.originIata ?? 'TBD';
     const destIata = route?.destIata ?? 'TBD';
 
-    // Extract departure date for this specific segment
-    const orderedIndices: number[] = [
-      anchor.lineIdx,
-      anchor.lineIdx - 1,
-      anchor.lineIdx + 1,
-      anchor.lineIdx + 2,
-      anchor.lineIdx - 2,
-    ];
-    for (let j = anchor.lineIdx + 3; j <= endIdx; j++) orderedIndices.push(j);
-
+    // Scan zone TOP-TO-BOTTOM so Departure Date always beats Arrival Date (+1 day)!
+    const dateCandidates = nonHeaderZoneLines.length > 0 ? nonHeaderZoneLines : zoneLines;
     let legDate: string | null = null;
-    for (const idx of orderedIndices) {
-      if (idx < startIdx || idx > endIdx || isMetadataLine(idx)) continue;
-      const full = parseDateFromString(lines[idx]);
+    for (const line of dateCandidates) {
+      const full = parseDateFromString(line);
       if (full) {
         legDate = full;
         break;
@@ -1106,9 +1289,8 @@ function extractMultiLegFlights(
     }
     if (!legDate) {
       const minDate = prevLegDate ?? issueDate;
-      for (const idx of orderedIndices) {
-        if (idx < startIdx || idx > endIdx || isMetadataLine(idx)) continue;
-        const dm = parseDayMonthWithYear(lines[idx], referenceYear, minDate);
+      for (const line of dateCandidates) {
+        const dm = parseDayMonthWithYear(line, referenceYear, minDate);
         if (dm) {
           legDate = dm;
           break;
@@ -1117,15 +1299,17 @@ function extractMultiLegFlights(
     }
     const finalDate: string = legDate ?? prevLegDate ?? issueDate ?? today;
 
+    // Extract departure time (HH:MM) for this specific leg
+    const departureTimeHm = extractDepartureTimeHm(dateCandidates, originIata);
+
     // Deduplicate identical flight segments repeated across itinerary + receipt summary sections
     const dedupKey = `${anchor.flightNumber}|${originIata}|${destIata}`;
     if (seenKey.has(dedupKey)) continue;
-    // If this anchor has no route and we already captured valid routed legs, skip stray mention
     if (!route && legs.some((l) => l.originIata !== 'TBD' && l.destIata !== 'TBD')) {
       continue;
     }
 
-    const seatMatch = windowText.match(/\bseat[\s:#-]*(\d{1,2}[A-K])\b/i);
+    const seatMatch = fullZoneText.match(/\bseat[\s:#-]*(\d{1,2}[A-K])\b/i);
     const leg = buildParsedFlightLeg(
       anchor.airlineCode,
       anchor.flightNumber,
@@ -1133,7 +1317,8 @@ function extractMultiLegFlights(
       destIata,
       finalDate,
       defaultCabin,
-      seatMatch ? seatMatch[1].toUpperCase() : undefined
+      seatMatch ? seatMatch[1].toUpperCase() : undefined,
+      departureTimeHm
     );
 
     seenKey.add(dedupKey);
@@ -1243,6 +1428,7 @@ function parseFlightConfirmationOcr(
       airlineName: first.airlineName,
       flightNumber: first.flightNumber,
       flightDate: first.flightDate,
+      departureTimeHm: first.departureTimeHm,
       cabinClass,
       seat: first.seat ?? '',
       distanceMiles: first.distanceMiles,
@@ -1282,6 +1468,7 @@ function parseFlightConfirmationOcr(
   const seat = seatMatch ? seatMatch[1].toUpperCase() : '';
 
   const flightDate = extractFlightDepartureDate(rawText, lines, flightNumber, originIata, today);
+  const departureTimeHm = extractDepartureTimeHm(lines, originIata);
 
   const singleLeg = buildParsedFlightLeg(
     airlineCode,
@@ -1290,7 +1477,8 @@ function parseFlightConfirmationOcr(
     destIata,
     flightDate,
     cabinClass,
-    seat
+    seat,
+    departureTimeHm
   );
 
   return {
@@ -1304,6 +1492,7 @@ function parseFlightConfirmationOcr(
     airlineName: airlineInfo.name,
     flightNumber,
     flightDate,
+    departureTimeHm,
     cabinClass,
     seat,
     distanceMiles,

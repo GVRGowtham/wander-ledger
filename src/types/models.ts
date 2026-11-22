@@ -193,6 +193,7 @@ export interface ParsedFlightLeg {
   originIata: string;
   destIata: string;
   flightDate: string; // YYYY-MM-DD
+  departureTimeHm?: string; // HH:MM (24h, optional)
   seat?: string;
   cabinClass?: string;
   distanceMiles: number;
@@ -211,6 +212,7 @@ export interface ParsedBoardingPass {
   airlineName: string;
   flightNumber: string;
   flightDate: string; // YYYY-MM-DD
+  departureTimeHm?: string; // HH:MM (24h, optional)
   cabinClass: string;
   seat: string;
   frequentFlyerAirline?: string;

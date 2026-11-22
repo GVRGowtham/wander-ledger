@@ -513,6 +513,68 @@ export function insertFlight(f: Flight): void {
   }
 }
 
+export interface FlightEditablePatch {
+  airlineCode: string;
+  airlineName: string;
+  flightNumber: string;
+  pnr?: string;
+  originIata: string;
+  originCity: string;
+  destIata: string;
+  destCity: string;
+  departureTime: string;
+  arrivalTime: string;
+  durationMinutes: number;
+  distanceMiles: number;
+  milesEarned: number;
+  loyaltyProgram?: string;
+  seat?: string;
+  cabinClass?: string;
+}
+
+export function updateFlight(flightId: string, patch: FlightEditablePatch): void {
+  const db = getDb();
+  db.runSync(
+    `UPDATE flights
+     SET airline_code = ?,
+         airline_name = ?,
+         flight_number = ?,
+         pnr = ?,
+         origin_iata = ?,
+         origin_city = ?,
+         dest_iata = ?,
+         dest_city = ?,
+         departure_time = ?,
+         arrival_time = ?,
+         duration_minutes = ?,
+         distance_miles = ?,
+         miles_earned = ?,
+         loyalty_program = ?,
+         seat = ?,
+         cabin_class = ?
+     WHERE id = ?`,
+    [
+      patch.airlineCode,
+      patch.airlineName,
+      patch.flightNumber,
+      patch.pnr ?? null,
+      patch.originIata,
+      patch.originCity,
+      patch.destIata,
+      patch.destCity,
+      patch.departureTime,
+      patch.arrivalTime,
+      patch.durationMinutes,
+      patch.distanceMiles,
+      patch.milesEarned,
+      patch.loyaltyProgram ?? null,
+      patch.seat ?? null,
+      patch.cabinClass ?? null,
+      flightId,
+    ]
+  );
+}
+
 // --- TRANSPORTS (Train, Bus, Ferry, Rental Car, Own Car) ---
 
 export function listTransports(tripId?: string): TransportLeg[] {

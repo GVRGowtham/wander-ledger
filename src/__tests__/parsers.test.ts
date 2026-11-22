@@ -1024,6 +1024,92 @@ Total Calculated Fare  INR 69,422`;
 
       expect(formatFlightItinerarySummary(parsed.legs!)).toBe('BLR → AUH → ZRH • FRA → AUH → BLR');
       expect(inferPrimaryDestinationFromLegs(parsed.legs!)).toBe('ZRH');
+      expect(parsed.legs?.map((l) => l.departureTimeHm)).toEqual(['22:00', '02:25', '10:45', '21:20']);
     }
   });
+
+  it('correctly parses stacked Etihad/Amadeus cards where route, date & time sit ABOVE the flight number without shifting legs', () => {
+    const stackedEtihadPdf = `ETIHAD AIRWAYS
+Date of issue: 12 Sep 2025
+Booking reference: 7CHIQH
+
+Fri, 31 Oct 2025  Bengaluru (BLR)  22:00
+Sat, 01 Nov 2025  Abu Dhabi (AUH)  00:50
+EY 217  Operated by Etihad Airways  Duration 4h 20m
+Layover in Abu Dhabi 1h 35m
+
+Sat, 01 Nov 2025  Abu Dhabi (AUH)  02:25
+Sat, 01 Nov 2025  Zurich (ZRH)     06:40
+EY 73   Operated by Etihad Airways  Duration 7h 15m
+
+Sat, 08 Nov 2025  Frankfurt (FRA)  10:45
+Sat, 08 Nov 2025  Abu Dhabi (AUH)  19:55
+EY 122  Operated by Etihad Airways  Duration 6h 10m
+Layover in Abu Dhabi 1h 25m
+
+Sat, 08 Nov 2025  Abu Dhabi (AUH)  21:20
+Sun, 09 Nov 2025  Bengaluru (BLR)  03:00
+EY 216  Operated by Etihad Airways  Duration 4h 10m
+
+Total Calculated Fare  INR 69,422`;
+
+    const parsed = parseDocumentOcrText(stackedEtihadPdf, 'INR');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.legs?.length).toBe(4);
+      expect(
+        parsed.legs?.map(
+          (l) => `${l.flightNumber}:${l.originIata}->${l.destIata}:${l.flightDate}@${l.departureTimeHm}`
+        )
+      ).toEqual([
+        'EY 217:BLR->AUH:2025-10-31@22:00',
+        'EY 73:AUH->ZRH:2025-11-01@02:25',
+        'EY 122:FRA->AUH:2025-11-08@10:45',
+        'EY 216:AUH->BLR:2025-11-08@21:20',
+      ]);
+      expect(parsed.ticketAmount).toBe(69422);
+    }
+  });
+
+  it('orders same-day and multi-day flights chronologically by exact date and 24h time in Bookings timeline', () => {
+    const outOfOrderFlights: Flight[] = [
+      {
+        id: 'f4', tripId: 't1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 216',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'BLR', destCity: 'Bengaluru',
+        departureTime: '2025-11-08T21:20:00', arrivalTime: '2025-11-09T03:00:00',
+        durationMinutes: 250, status: 'scheduled', distanceMiles: 1690, milesEarned: 1690,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f2', tripId: 't1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 73',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'ZRH', destCity: 'Zurich',
+        departureTime: '2025-11-01T02:25:00', arrivalTime: '2025-11-01T06:40:00',
+        durationMinutes: 435, status: 'scheduled', distanceMiles: 2970, milesEarned: 2970,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f3', tripId: 't1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 122',
+        originIata: 'FRA', originCity: 'Frankfurt', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2025-11-08T10:45:00', arrivalTime: '2025-11-08T19:55:00',
+        durationMinutes: 370, status: 'scheduled', distanceMiles: 3010, milesEarned: 3010,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f1', tripId: 't1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 217',
+        originIata: 'BLR', originCity: 'Bengaluru', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2025-10-31T22:00:00', arrivalTime: '2025-11-01T00:50:00',
+        durationMinutes: 260, status: 'scheduled', distanceMiles: 1690, milesEarned: 1690,
+        enrichedOnline: false, createdAt: '',
+      },
+    ];
+
+    const timeline = buildJourneyTimeline(outOfOrderFlights, [], []);
+    expect(timeline.map((i) => (i.kind === 'flight' ? `${i.flight.flightNumber}@${i.timeLabel}` : ''))).toEqual([
+      'EY 217@22:00',
+      'EY 73@02:25',
+      'EY 122@10:45',
+      'EY 216@21:20',
+    ]);
+  });
 });
+

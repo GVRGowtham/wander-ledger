@@ -17,6 +17,7 @@ import {
   deleteTransport,
   deleteTrip,
   deleteTripStop,
+  FlightEditablePatch,
   getDb,
   getTripSummary,
   insertExpense,
@@ -39,6 +40,7 @@ import {
   purgeLegacySeedDataIfNeeded,
   saveFxRates,
   TripEditablePatch,
+  updateFlight,
   updateMemory,
   updateTrip,
   updateTripCover,
@@ -107,6 +109,7 @@ interface AppContextValue {
   setTripCoverPhoto: (tripId: string, uri: string | null) => void;
   saveTripSharing: (tripId: string, isShared: boolean, coTravelers: string[], shareToken: string) => void;
   addFlight: (flight: Flight) => void;
+  editFlight: (flightId: string, patch: FlightEditablePatch) => void;
   removeFlight: (flightId: string) => Promise<void>;
   addTransport: (transport: TransportLeg) => void;
   removeTransport: (transportId: string) => Promise<void>;
@@ -289,6 +292,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const editFlight = useCallback(
+    (flightId: string, patch: FlightEditablePatch) => {
+      updateFlight(flightId, patch);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
   const removeFlight = useCallback(
     async (flightId: string) => {
       deleteFlight(flightId);
@@ -440,6 +451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTripCoverPhoto,
         saveTripSharing,
         addFlight,
+        editFlight,
         removeFlight,
         addTransport,
         removeTransport,
