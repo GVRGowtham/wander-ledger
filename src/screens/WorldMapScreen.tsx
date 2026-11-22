@@ -80,8 +80,8 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         })}
       </ScrollView>
 
-      {/* Selected Pin Mini Postcard */}
-      {selectedTrip && selectedSummary && (
+      {/* Selected Pin Mini Postcard or Empty Map Prompt */}
+      {selectedTrip && selectedSummary ? (
         <View style={styles.postcard}>
           <View style={styles.postcardTop}>
             <View style={styles.postcardLeft}>
@@ -120,6 +120,13 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
               {formatMoney(selectedSummary.totalSpentHome, selectedTrip.homeCurrency)}
             </Text>
           </View>
+        </View>
+      ) : (
+        <View style={styles.postcard}>
+          <Text style={styles.cityTitle}>🧭 Your map is waiting for its first pin!</Text>
+          <Text style={styles.subtitle}>
+            Add a trip or log a flight (even without a boarding pass) to draw your first geodesic arc across the globe.
+          </Text>
         </View>
       )}
 

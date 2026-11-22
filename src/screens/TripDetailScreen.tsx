@@ -16,9 +16,19 @@ import * as Haptics from 'expo-haptics';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { BoardingPassCard } from '../components/cards/BoardingPassCard';
 import { MemoryIllustration } from '../components/cards/MemoryIllustration';
+import {
+  createEmptyFlightDraft,
+  hasAnyFlightDraftData,
+  ManualFlightDraft,
+  ManualFlightFields,
+} from '../components/forms/ManualFlightFields';
 import { useApp } from '../context/AppContext';
 import { generateId } from '../db/database';
 import { convertCurrency } from '../services/fxService';
+import {
+  buildManualFlight,
+  buildReturnFlight,
+} from '../services/manualFlightBuilder';
 import { pickAndOptimizeMemoryPhoto } from '../services/mediaService';
 import {
   CATEGORY_META,
@@ -27,7 +37,7 @@ import {
   MOOD_STICKERS,
   SHADOWS,
 } from '../theme/tokens';
-import { ExpenseCategory } from '../types/models';
+import { ExpenseCategory, Stay } from '../types/models';
 
 interface Props {
   tripId: string;
@@ -36,6 +46,14 @@ interface Props {
 }
 
 type InnerTab = 'memories' | 'bookings' | 'spend';
+
+const STAY_TYPES: Array<{ id: Stay['stayType']; label: string }> = [
+  { id: 'hotel', label: 'Hotel' },
+  { id: 'airbnb', label: 'Airbnb' },
+  { id: 'resort', label: 'Resort' },
+  { id: 'ryokan', label: 'Ryokan' },
+  { id: 'hostel', label: 'Hostel' },
+];
 
 export const TripDetailScreen: React.FC<Props> = ({
   tripId,
@@ -51,8 +69,11 @@ export const TripDetailScreen: React.FC<Props> = ({
     getExpensesForTrip,
     getMemoriesForTrip,
     getSummaryForTrip,
+    addFlight,
+    addStay,
     addMemory,
     addExpense,
+    removeTrip,
     setTripCoverPhoto,
     saveTripSharing,
   } = useApp();
@@ -70,11 +91,36 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [memPhotoUri, setMemPhotoUri] = useState<string | undefined>(undefined);
   const [memThumbUri, setMemThumbUri] = useState<string | undefined>(undefined);
 
+  // Manual Flight Modal (Lost / Missing Boarding Pass)
+  const [flightModal, setFlightModal] = useState(false);
+  const [flightDraft, setFlightDraft] = useState<ManualFlightDraft>(() =>
+    createEmptyFlightDraft(
+      trip?.startDate || new Date().toISOString().slice(0, 10),
+      trip?.endDate || new Date().toISOString().slice(0, 10),
+      trip?.homeCurrency || 'USD',
+      trip?.destinationCity || ''
+    )
+  );
+
+  // Manual Stay Modal
+  const [stayModal, setStayModal] = useState(false);
+  const [stayName, setStayName] = useState('');
+  const [stayType, setStayType] = useState<Stay['stayType']>('hotel');
+  const [stayCheckIn, setStayCheckIn] = useState(trip?.startDate || '');
+  const [stayCheckOut, setStayCheckOut] = useState(trip?.endDate || '');
+  const [stayConf, setStayConf] = useState('');
+  const [stayAddress, setStayAddress] = useState('');
+  const [stayCost, setStayCost] = useState('');
+  const [stayCurrency, setStayCurrency] = useState(trip?.homeCurrency || 'USD');
+  const [stayPoints, setStayPoints] = useState('');
+  const [stayPointsProg, setStayPointsProg] = useState('');
+  const [stayNotes, setStayNotes] = useState('');
+
   // Quick Expense Modal
   const [expenseModal, setExpenseModal] = useState(false);
   const [expMerchant, setExpMerchant] = useState('');
   const [expAmount, setExpAmount] = useState('');
-  const [expCurrency, setExpCurrency] = useState('USD');
+  const [expCurrency, setExpCurrency] = useState(trip?.homeCurrency || 'USD');
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('dining');
 
   // Share Modal
@@ -172,6 +218,147 @@ export const TripDetailScreen: React.FC<Props> = ({
     setExpenseModal(false);
   };
 
+  const openManualFlightModal = () => {
+    setFlightDraft(
+      createEmptyFlightDraft(trip.startDate, trip.endDate, trip.homeCurrency, trip.destinationCity)
+    );
+    setFlightModal(true);
+  };
+
+  const handleSaveManualFlight = () => {
+    if (!hasAnyFlightDraftData(flightDraft)) {
+      Alert.alert(
+        'Add at least one flight detail',
+        'Enter a flight number, airline, origin/destination, or PNR — even partial info works!'
+      );
+      return;
+    }
+    const outbound = buildManualFlight({
+      tripId: trip.id,
+      flightNumber: flightDraft.flightNumber,
+      airlineName: flightDraft.airlineName,
+      originInput: flightDraft.originInput,
+      destInput: flightDraft.destInput,
+      flightDate: flightDraft.flightDate || trip.startDate,
+      departureTimeHm: flightDraft.departureTimeHm,
+      arrivalTimeHm: flightDraft.arrivalTimeHm,
+      cabinClass: flightDraft.cabinClass,
+      seat: flightDraft.seat,
+      pnr: flightDraft.pnr,
+      terminal: flightDraft.terminal,
+      gate: flightDraft.gate,
+      aircraft: flightDraft.aircraft,
+      milesEarned: flightDraft.milesEarned,
+      frequentFlyerNumber: flightDraft.frequentFlyerNumber,
+      fallbackDestCity: trip.destinationCity,
+    });
+    addFlight(outbound);
+
+    if (flightDraft.addReturnFlight) {
+      const ret = buildReturnFlight(
+        outbound,
+        flightDraft.returnDate || trip.endDate,
+        flightDraft.returnFlightNumber
+      );
+      addFlight(ret);
+    }
+
+    const priceNum = parseFloat(flightDraft.ticketPrice);
+    if (!Number.isNaN(priceNum) && priceNum > 0) {
+      const curr = (flightDraft.ticketCurrency || trip.homeCurrency).toUpperCase();
+      const { converted, rate } = convertCurrency(priceNum, curr, trip.homeCurrency, fxRates);
+      addExpense({
+        id: generateId('exp'),
+        tripId: trip.id,
+        merchant: `${outbound.airlineName} (${outbound.flightNumber})`,
+        category: 'flights',
+        localAmount: priceNum,
+        localCurrency: curr,
+        homeAmount: converted,
+        homeCurrency: trip.homeCurrency,
+        fxRateUsed: rate,
+        expenseDate: outbound.departureTime.slice(0, 10),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setFlightModal(false);
+  };
+
+  const openManualStayModal = () => {
+    setStayName('');
+    setStayType('hotel');
+    setStayCheckIn(trip.startDate);
+    setStayCheckOut(trip.endDate);
+    setStayConf('');
+    setStayAddress('');
+    setStayCost('');
+    setStayCurrency(trip.homeCurrency);
+    setStayPoints('');
+    setStayPointsProg('');
+    setStayNotes('');
+    setStayModal(true);
+  };
+
+  const handleSaveManualStay = () => {
+    if (!stayName.trim()) {
+      Alert.alert('Add stay name', 'Enter the hotel, Airbnb, or resort name.');
+      return;
+    }
+    const checkIn = stayCheckIn.trim() || trip.startDate;
+    const checkOut = stayCheckOut.trim() || trip.endDate;
+    const d1 = new Date(`${checkIn}T00:00:00Z`).getTime();
+    const d2 = new Date(`${checkOut}T00:00:00Z`).getTime();
+    const nights =
+      !Number.isNaN(d1) && !Number.isNaN(d2)
+        ? Math.max(1, Math.round((d2 - d1) / 86400000))
+        : 1;
+    const cash = parseFloat(stayCost) || 0;
+    const curr = (stayCurrency || trip.homeCurrency).toUpperCase();
+    const { converted } = convertCurrency(cash, curr, trip.homeCurrency, fxRates);
+    const pts = parseInt(stayPoints.replace(/[^0-9]/g, ''), 10) || 0;
+
+    addStay({
+      id: generateId('stay'),
+      tripId: trip.id,
+      name: stayName.trim(),
+      stayType,
+      address: stayAddress.trim() || undefined,
+      confirmationCode: stayConf.trim().toUpperCase() || undefined,
+      checkIn,
+      checkOut,
+      nights,
+      costCash: cash,
+      currency: curr,
+      homeCost: converted,
+      pointsRedeemed: pts,
+      pointsProgram: stayPointsProg.trim() || undefined,
+      notes: stayNotes.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setStayModal(false);
+  };
+
+  const handleDeleteTrip = () => {
+    Alert.alert(
+      `Delete "${trip.title}"?`,
+      'This removes this trip and its linked flights, stays, expenses, and memories from this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            removeTrip(trip.id);
+            onBack();
+          },
+        },
+      ]
+    );
+  };
+
   const handleInviteBuddy = () => {
     const buddy = inviteEmail.trim();
     if (!buddy) return;
@@ -214,12 +401,15 @@ export const TripDetailScreen: React.FC<Props> = ({
           <TouchableOpacity onPress={onBack} style={styles.glassBtn}>
             <Text style={styles.glassBtnText}>← Trips</Text>
           </TouchableOpacity>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
             <TouchableOpacity onPress={onOpenScanner} style={styles.glassBtn}>
               <Text style={styles.glassBtnText}>📷 Scan</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShareModal(true)} style={styles.shareGlassBtn}>
               <Text style={styles.shareGlassText}>💌 Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDeleteTrip} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>🗑️</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -341,10 +531,15 @@ export const TripDetailScreen: React.FC<Props> = ({
         {tab === 'bookings' && (
           <View style={styles.sectionGap}>
             <View style={styles.rowBetween}>
-              <Text style={styles.subHeading}>✈️ Flights & Boarding Passes</Text>
-              <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill}>
-                <Text style={styles.actionPillText}>📷 Scan Pass</Text>
-              </TouchableOpacity>
+              <Text style={styles.subHeading}>✈️ Flights</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity onPress={openManualFlightModal} style={styles.actionPillSoft}>
+                  <Text style={styles.actionPillSoftText}>+ Manual</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill}>
+                  <Text style={styles.actionPillText}>📷 Scan Pass</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {flights.length === 0 ? (
@@ -352,8 +547,11 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={{ fontSize: 28 }}>✈️</Text>
                 <Text style={styles.emptyTitle}>No flights logged yet</Text>
                 <Text style={styles.emptySub}>
-                  Point your camera at any paper or mobile boarding pass barcode to auto-add!
+                  Scan a boarding pass barcode, or log whatever details you remember if you lost it!
                 </Text>
+                <TouchableOpacity onPress={openManualFlightModal} style={styles.emptyBtn}>
+                  <Text style={styles.emptyBtnText}>✍️ Add Flight Manually</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               flights.map((f) => <BoardingPassCard key={f.id} flight={f} />)
@@ -361,9 +559,14 @@ export const TripDetailScreen: React.FC<Props> = ({
 
             <View style={[styles.rowBetween, { marginTop: 8 }]}>
               <Text style={styles.subHeading}>🏨 Hotels & Stays</Text>
-              <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill}>
-                <Text style={styles.actionPillText}>📷 Scan Hotel</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity onPress={openManualStayModal} style={styles.actionPillSoft}>
+                  <Text style={styles.actionPillSoftText}>+ Manual</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill}>
+                  <Text style={styles.actionPillText}>📷 Scan Hotel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {stays.length === 0 ? (
@@ -371,8 +574,11 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={{ fontSize: 28 }}>🏨</Text>
                 <Text style={styles.emptyTitle}>No stays logged yet</Text>
                 <Text style={styles.emptySub}>
-                  Scan a hotel confirmation page to log dates, confirmation code & address offline.
+                  Scan a hotel confirmation or add your hotel/Airbnb details manually.
                 </Text>
+                <TouchableOpacity onPress={openManualStayModal} style={styles.emptyBtn}>
+                  <Text style={styles.emptyBtnText}>✍️ Add Stay Manually</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               stays.map((s) => {
@@ -736,6 +942,155 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={styles.postcardShareText}>Share Postcard Now ✈️</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MANUAL FLIGHT MODAL (LOST / MISSING BOARDING PASS) */}
+      <Modal visible={flightModal} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.modalTitle}>✈️ Add Flight Manually</Text>
+              <TouchableOpacity onPress={() => setFlightModal(false)}>
+                <Text style={styles.closeX}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+            >
+              <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
+            </ScrollView>
+            <TouchableOpacity onPress={handleSaveManualFlight} style={styles.modalPrimaryBtn}>
+              <Text style={styles.modalPrimaryText}>Save Flight to Trip ✈️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MANUAL STAY / HOTEL MODAL */}
+      <Modal visible={stayModal} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.modalTitle}>🏨 Add Hotel / Stay</Text>
+              <TouchableOpacity onPress={() => setStayModal(false)}>
+                <Text style={styles.closeX}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+            >
+              <TextInput
+                value={stayName}
+                onChangeText={setStayName}
+                placeholder="Hotel, Airbnb, or Resort name"
+                placeholderTextColor={COLORS.inkSoft}
+                style={styles.input}
+              />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6 }}
+              >
+                {STAY_TYPES.map((st) => {
+                  const active = stayType === st.id;
+                  return (
+                    <TouchableOpacity
+                      key={st.id}
+                      onPress={() => setStayType(st.id)}
+                      style={[styles.moodChip, active && styles.moodChipActive]}
+                    >
+                      <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
+                        {st.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={stayCheckIn}
+                  onChangeText={setStayCheckIn}
+                  placeholder="Check-in YYYY-MM-DD"
+                  placeholderTextColor={COLORS.inkSoft}
+                  style={[styles.input, { flex: 1 }]}
+                />
+                <TextInput
+                  value={stayCheckOut}
+                  onChangeText={setStayCheckOut}
+                  placeholder="Check-out YYYY-MM-DD"
+                  placeholderTextColor={COLORS.inkSoft}
+                  style={[styles.input, { flex: 1 }]}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={stayConf}
+                  onChangeText={setStayConf}
+                  placeholder="Confirmation # (opt)"
+                  placeholderTextColor={COLORS.inkSoft}
+                  autoCapitalize="characters"
+                  style={[styles.input, { flex: 1 }]}
+                />
+                <TextInput
+                  value={stayAddress}
+                  onChangeText={setStayAddress}
+                  placeholder="Address / Area (opt)"
+                  placeholderTextColor={COLORS.inkSoft}
+                  style={[styles.input, { flex: 1.3 }]}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={stayCost}
+                  onChangeText={setStayCost}
+                  placeholder="Cash cost (opt)"
+                  placeholderTextColor={COLORS.inkSoft}
+                  keyboardType="decimal-pad"
+                  style={[styles.input, { flex: 1 }]}
+                />
+                <TextInput
+                  value={stayCurrency}
+                  onChangeText={(v) => setStayCurrency(v.toUpperCase())}
+                  placeholder="USD"
+                  autoCapitalize="characters"
+                  maxLength={3}
+                  style={[styles.input, { width: 74, textAlign: 'center' }]}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={stayPoints}
+                  onChangeText={setStayPoints}
+                  placeholder="Points redeemed (opt)"
+                  placeholderTextColor={COLORS.inkSoft}
+                  keyboardType="numeric"
+                  style={[styles.input, { flex: 1 }]}
+                />
+                <TextInput
+                  value={stayPointsProg}
+                  onChangeText={setStayPointsProg}
+                  placeholder="Program (e.g. Bonvoy)"
+                  placeholderTextColor={COLORS.inkSoft}
+                  style={[styles.input, { flex: 1 }]}
+                />
+              </View>
+              <TextInput
+                value={stayNotes}
+                onChangeText={setStayNotes}
+                placeholder="Notes (optional)"
+                placeholderTextColor={COLORS.inkSoft}
+                style={styles.input}
+              />
+            </ScrollView>
+            <TouchableOpacity onPress={handleSaveManualStay} style={styles.modalPrimaryBtn}>
+              <Text style={styles.modalPrimaryText}>Save Stay to Trip 🏨</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

@@ -19,8 +19,8 @@ const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD'];
 export const LoginScreen: React.FC = () => {
   const { loginWithGoogle, cloudConfigured } = useApp();
   const [homeCurrency, setHomeCurrency] = useState('USD');
-  const [name, setName] = useState('Alex Jordan');
-  const [email, setEmail] = useState('alex.wanderer@gmail.com');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   const onContinue = async () => {

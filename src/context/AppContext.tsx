@@ -7,6 +7,7 @@ import {
   signInWithGoogle,
 } from '../services/authService';
 import {
+  clearAllLocalData,
   deleteTrip,
   getDb,
   getTripSummary,
@@ -22,8 +23,8 @@ import {
   listStays,
   listTrips,
   loadCachedFxRates,
+  purgeLegacySeedDataIfNeeded,
   saveFxRates,
-  seedStarterTripsIfEmpty,
   updateTripCover,
   updateTripSharing,
 } from '../db/database';
@@ -55,6 +56,7 @@ interface AppContextValue {
   fxRates: FxRatesMap;
   fxSource: 'live' | 'fallback';
   refreshAll: () => void;
+  clearAllData: () => void;
   loginWithGoogle: (homeCurrency?: string, email?: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileSettings: (patch: Partial<UserProfile>) => Promise<void>;
@@ -99,12 +101,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (async () => {
       try {
         getDb();
+        purgeLegacySeedDataIfNeeded();
         const saved = await loadSavedProfile();
         const cachedFx = loadCachedFxRates();
         if (mounted) {
           setFxRates(cachedFx);
           if (saved) {
-            seedStarterTripsIfEmpty(saved.id, saved.homeCurrency);
             setProfile(saved);
             refreshAll();
           }
@@ -132,12 +134,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithGoogle = useCallback(
     async (homeCurrency = 'USD', email?: string, name?: string) => {
       const p = await signInWithGoogle(homeCurrency, email, name);
-      seedStarterTripsIfEmpty(p.id, p.homeCurrency);
       setProfile(p);
       refreshAll();
     },
     [refreshAll]
   );
+
+  const clearAllData = useCallback(() => {
+    clearAllLocalData();
+    refreshAll();
+  }, [refreshAll]);
 
   const logout = useCallback(async () => {
     await clearProfile();
@@ -232,6 +238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fxRates,
         fxSource,
         refreshAll,
+        clearAllData,
         loginWithGoogle,
         logout,
         updateProfileSettings,

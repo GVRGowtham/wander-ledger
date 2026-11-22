@@ -32,6 +32,7 @@ export const PassportScreen: React.FC = () => {
     loyaltyAccounts,
     fxSource,
     updateProfileSettings,
+    clearAllData,
     logout,
   } = useApp();
 
@@ -73,6 +74,24 @@ export const PassportScreen: React.FC = () => {
     } catch {
       Alert.alert('Export Error', 'Unable to export CSV on this device.');
     }
+  };
+
+  const handleResetLocalData = () => {
+    Alert.alert(
+      'Reset Local Travelogue?',
+      'This removes all locally stored trips, flights, stays, expenses, memories, and loyalty balances on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => {
+            clearAllData();
+            Alert.alert('Clean Slate ✨', 'All local travelogue data has been cleared.');
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -127,50 +146,62 @@ export const PassportScreen: React.FC = () => {
           <Text style={styles.cardMeta}>{countryStamps.length} collected</Text>
         </View>
 
-        <View style={styles.stampsGrid}>
-          {countryStamps.map((s, idx) => {
-            const st = STAMP_STYLES[idx % STAMP_STYLES.length];
-            return (
-              <View
-                key={s.code}
-                style={[
-                  styles.stamp,
-                  {
-                    borderColor: st.border,
-                    backgroundColor: st.bg,
-                    transform: [{ rotate: st.tilt }],
-                  },
-                ]}
-              >
-                <Text style={[styles.stampCountry, { color: st.text }]}>
-                  {s.flag} {s.country.toUpperCase()}
-                </Text>
-                <Text style={[styles.stampDate, { color: st.text }]}>{s.date}</Text>
-              </View>
-            );
-          })}
-        </View>
+        {countryStamps.length === 0 ? (
+          <Text style={styles.prefSub}>
+            No ink stamps yet — log your first trip to stamp your first country!
+          </Text>
+        ) : (
+          <View style={styles.stampsGrid}>
+            {countryStamps.map((s, idx) => {
+              const st = STAMP_STYLES[idx % STAMP_STYLES.length];
+              return (
+                <View
+                  key={s.code}
+                  style={[
+                    styles.stamp,
+                    {
+                      borderColor: st.border,
+                      backgroundColor: st.bg,
+                      transform: [{ rotate: st.tilt }],
+                    },
+                  ]}
+                >
+                  <Text style={[styles.stampCountry, { color: st.text }]}>
+                    {s.flag} {s.country.toUpperCase()}
+                  </Text>
+                  <Text style={[styles.stampDate, { color: st.text }]}>{s.date}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       {/* Loyalty Miles & Points Vault */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🏆 Loyalty Miles & Points Vault</Text>
-        {loyaltyAccounts.map((acc) => (
-          <View key={acc.id} style={styles.loyaltyRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.loyaltyName}>
-                {acc.category === 'airline' ? '✈️ ' : acc.category === 'hotel' ? '🏨 ' : '💳 '}
-                {acc.programName}
+        {loyaltyAccounts.length === 0 ? (
+          <Text style={styles.prefSub}>
+            Miles and loyalty balances appear here automatically whenever you scan or log flights.
+          </Text>
+        ) : (
+          loyaltyAccounts.map((acc) => (
+            <View key={acc.id} style={styles.loyaltyRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.loyaltyName}>
+                  {acc.category === 'airline' ? '✈️ ' : acc.category === 'hotel' ? '🏨 ' : '💳 '}
+                  {acc.programName}
+                </Text>
+                {acc.memberNumber && (
+                  <Text style={styles.loyaltyNum}>Member #{acc.memberNumber}</Text>
+                )}
+              </View>
+              <Text style={styles.loyaltyBal}>
+                {acc.balance.toLocaleString()} {acc.unitLabel}
               </Text>
-              {acc.memberNumber && (
-                <Text style={styles.loyaltyNum}>Member #{acc.memberNumber}</Text>
-              )}
             </View>
-            <Text style={styles.loyaltyBal}>
-              {acc.balance.toLocaleString()} {acc.unitLabel}
-            </Text>
-          </View>
-        ))}
+          ))
+        )}
       </View>
 
       {/* Preferences & Sync Controls */}
@@ -209,6 +240,9 @@ export const PassportScreen: React.FC = () => {
         <View style={styles.footerActions}>
           <TouchableOpacity onPress={handleExportCsv} style={styles.exportBtn}>
             <Text style={styles.exportBtnText}>📊 Export Spend CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleResetLocalData} style={styles.logoutBtn}>
+            <Text style={styles.logoutBtnText}>🧹 Reset Data</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
             <Text style={styles.logoutBtnText}>Sign Out</Text>

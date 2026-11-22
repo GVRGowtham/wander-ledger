@@ -14,6 +14,13 @@ import {
   parseDocumentOcrText,
   SAMPLE_OCR_TEXTS,
 } from '../services/ocrParser';
+import {
+  buildManualFlight,
+  buildReturnFlight,
+  parseFlightNumberInput,
+  resolveAirportOrCity,
+  searchAirports,
+} from '../services/manualFlightBuilder';
 
 describe('IATA BCBP Boarding Pass Parser (100% Offline)', () => {
   it('decodes ANA LAX -> HND boarding pass with PNR, seat, miles & loyalty number', () => {
@@ -127,5 +134,65 @@ describe('Offline Multi-Currency FX Service', () => {
     const same = convertCurrency(42.5, 'USD', 'USD', DEFAULT_USD_RATES);
     expect(same.converted).toBe(42.5);
     expect(same.rate).toBe(1);
+  });
+});
+
+describe('Manual Flight Builder (Lost / Missing Boarding Pass)', () => {
+  it('parses airline code and loyalty program from flight number input', () => {
+    const parsed = parseFlightNumberInput('6e412');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.airlineCode).toBe('6E');
+    expect(parsed?.flightNumber).toBe('6E 412');
+    expect(parsed?.airlineName).toBe('IndiGo');
+    expect(parsed?.loyaltyProgram).toBe('IndiGo BluChip');
+  });
+
+  it('searches bundled offline airports by code and city name', () => {
+    const byCode = searchAirports('BLR');
+    expect(byCode[0]?.iata).toBe('BLR');
+    const byCity = searchAirports('Tokyo');
+    expect(byCity.some((a) => a.iata === 'HND')).toBe(true);
+    const custom = resolveAirportOrCity('Udaipur');
+    expect(custom?.iata).toBe('UDA');
+    expect(custom?.city).toBe('Udaipur');
+  });
+
+  it('builds a flight cleanly when user only remembers flight number and date', () => {
+    const f = buildManualFlight({
+      tripId: 'trip_1',
+      flightNumber: 'NH105',
+      flightDate: '2026-10-14',
+      fallbackDestCity: 'Tokyo',
+    });
+    expect(f.airlineCode).toBe('NH');
+    expect(f.airlineName).toContain('ANA');
+    expect(f.flightNumber).toBe('NH 105');
+    expect(f.originIata).toBe('TBD');
+    expect(f.destIata).toBe('HND');
+    expect(f.departureTime).toBe('2026-10-14T00:00:00');
+  });
+
+  it('builds outbound and swapped return flights from origin/destination cities without a flight number', () => {
+    const outbound = buildManualFlight({
+      tripId: 'trip_2',
+      originInput: 'Bengaluru',
+      destInput: 'Goa',
+      flightDate: '2026-08-10',
+      departureTimeHm: '09:15',
+      seat: '12a',
+      cabinClass: 'Economy',
+    });
+    expect(outbound.originIata).toBe('BLR');
+    expect(outbound.destIata).toBe('GOI');
+    expect(outbound.distanceMiles).toBeGreaterThan(280);
+    expect(outbound.milesEarned).toBe(outbound.distanceMiles);
+    expect(outbound.seat).toBe('12A');
+    expect(outbound.departureTime).toBe('2026-08-10T09:15:00');
+
+    const ret = buildReturnFlight(outbound, '2026-08-14', '6E 419');
+    expect(ret.originIata).toBe('GOI');
+    expect(ret.destIata).toBe('BLR');
+    expect(ret.flightNumber).toBe('6E 419');
+    expect(ret.departureTime).toBe('2026-08-14T00:00:00');
   });
 });

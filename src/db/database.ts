@@ -159,6 +159,11 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       payload TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
 }
 
@@ -678,370 +683,74 @@ export function getTripSummary(tripId: string): TripSummaryStats {
   };
 }
 
-// --- RICH STARTER TRAVELOGUE SEED (First Launch) ---
+// --- CLEAN LOCAL STATE & LEGACY DEMO CLEANUP ---
 
-export function seedStarterTripsIfEmpty(ownerId: string, homeCurrency = 'USD'): void {
-  const existing = listTrips();
-  if (existing.length > 0) return;
+const LEGACY_DEMO_TRIP_IDS = [
+  'trip_japan_autumn',
+  'trip_italy_upcoming',
+  'trip_lisbon_past',
+  'trip_goa_past',
+];
 
-  const today = new Date();
-  const fmt = (offsetDays: number) => {
-    const d = new Date(today.getTime() + offsetDays * 86400000);
-    return d.toISOString().slice(0, 10);
-  };
-  const nowIso = today.toISOString();
+const LEGACY_DEMO_LOYALTY_PROGRAMS = [
+  'Marriott Bonvoy',
+  'Amex Membership Rewards',
+  'ANA Mileage Club (Star Alliance)',
+  'Volare',
+  'Miles&Go (Star Alliance)',
+  'IndiGo BluChip',
+];
 
-  // 1. Active Trip: Tokyo & Kyoto Autumn (spans today!)
-  const japanId = 'trip_japan_autumn';
-  insertTrip({
-    id: japanId,
-    ownerId,
-    title: 'Tokyo & Kyoto Autumn',
-    destinationCity: 'Kyoto',
-    destinationCountry: 'Japan',
-    countryCode: 'JP',
-    flagEmoji: '🇯🇵',
-    startDate: fmt(-3),
-    endDate: fmt(6),
-    homeCurrency,
-    budget: 3000,
-    vibe: 'japan',
-    isShared: true,
-    shareToken: 'wl_jp_autumn26',
-    coTravelers: ['Maya K.'],
-    lat: 35.0116,
-    lng: 135.7681,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  });
+/**
+ * One-time cleanup when upgrading over v0.1.0: removes only the 4 hardcoded demo seed trips
+ * (and orphaned demo loyalty rows) while leaving any user-created trips untouched.
+ */
+export function purgeLegacySeedDataIfNeeded(): void {
+  const db = getDb();
+  const already = db.getFirstSync<{ value: string }>(
+    "SELECT value FROM app_meta WHERE key = 'purged_v010_demo_data'"
+  );
+  if (already?.value === '1') return;
 
-  insertFlight({
-    id: 'flt_nh105',
-    tripId: japanId,
-    airlineCode: 'NH',
-    airlineName: 'ANA (All Nippon Airways)',
-    flightNumber: 'NH 105',
-    pnr: '7X9K2P',
-    originIata: 'LAX',
-    originCity: 'Los Angeles',
-    destIata: 'HND',
-    destCity: 'Tokyo',
-    departureTime: `${fmt(-3)}T12:30:00Z`,
-    arrivalTime: `${fmt(-2)}T00:15:00Z`,
-    durationMinutes: 705,
-    seat: '24A',
-    cabinClass: 'Economy',
-    terminal: 'Tom Bradley Intl',
-    gate: 'B152',
-    aircraft: 'Boeing 787-9 Dreamliner',
-    status: 'completed',
-    distanceMiles: 5480,
-    milesEarned: 5480,
-    loyaltyProgram: 'ANA Mileage Club (Star Alliance)',
-    frequentFlyerNumber: '882194012',
-    enrichedOnline: true,
-    createdAt: nowIso,
-  });
+  let removedAnyDemo = false;
+  for (const tripId of LEGACY_DEMO_TRIP_IDS) {
+    const exists = db.getFirstSync<{ id: string }>(
+      'SELECT id FROM trips WHERE id = ?',
+      [tripId]
+    );
+    if (exists) {
+      deleteTrip(tripId);
+      removedAnyDemo = true;
+    }
+  }
 
-  insertStay({
-    id: 'stay_kyoto',
-    tripId: japanId,
-    name: 'The Thousand Kyoto',
-    stayType: 'hotel',
-    address: '570 Higashishiokojicho, Shimogyo Ward, Kyoto',
-    confirmationCode: 'TK-88412',
-    checkIn: fmt(-1),
-    checkOut: fmt(3),
-    nights: 4,
-    costCash: 120,
-    currency: 'USD',
-    homeCost: 120,
-    pointsRedeemed: 80000,
-    pointsProgram: 'Marriott Bonvoy',
-    cashValueEstimate: 1450,
-    notes: 'Right next to Kyoto Station — amazing minimalist courtyard!',
-    createdAt: nowIso,
-  });
+  if (removedAnyDemo) {
+    const remainingTrips = listTrips();
+    if (remainingTrips.length === 0) {
+      for (const prog of LEGACY_DEMO_LOYALTY_PROGRAMS) {
+        db.runSync('DELETE FROM loyalty_accounts WHERE program_name = ?', [prog]);
+      }
+    }
+  }
 
-  insertExpense({
-    id: 'exp_ramen',
-    tripId: japanId,
-    merchant: 'Menba Kawatomi Kyoto',
-    category: 'dining',
-    localAmount: 1850,
-    localCurrency: 'JPY',
-    homeAmount: 12.4,
-    homeCurrency,
-    fxRateUsed: 0.0067,
-    expenseDate: fmt(0),
-    paymentMethod: 'Suica (Amex)',
-    pointsEarned: 37,
-    receiptRawText:
-      'MENBA KAWATOMI KYOTO\nDuck Shoyu Ramen   ¥1,450\nGyoza (6pc)          ¥400\nTOTAL (TAX INCL)   ¥1,850',
-    createdAt: nowIso,
-  });
+  db.runSync(
+    "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('purged_v010_demo_data', '1')"
+  );
+}
 
-  insertExpense({
-    id: 'exp_shinkansen',
-    tripId: japanId,
-    merchant: 'Shinkansen Nozomi (Tokyo → Kyoto)',
-    category: 'transit',
-    localAmount: 14400,
-    localCurrency: 'JPY',
-    homeAmount: 96.51,
-    homeCurrency,
-    fxRateUsed: 0.0067,
-    expenseDate: fmt(-1),
-    paymentMethod: 'SmartEX Visa',
-    pointsEarned: 290,
-    receiptRawText: 'JR CENTRAL SMARTEX • NOZOMI 23 • CAR 7 SEAT 12E • ¥14,400',
-    createdAt: nowIso,
-  });
-
-  insertExpense({
-    id: 'exp_matcha',
-    tripId: japanId,
-    merchant: 'Gion Tsujiri Matcha House',
-    category: 'dining',
-    localAmount: 1680,
-    localCurrency: 'JPY',
-    homeAmount: 11.26,
-    homeCurrency,
-    fxRateUsed: 0.0067,
-    expenseDate: fmt(0),
-    paymentMethod: 'Cash (JPY)',
-    pointsEarned: 0,
-    receiptRawText: 'GION TSUJIRI KYOTO\nUji Matcha Parfait  ¥1,180\nDango Skewer          ¥500\nTOTAL               ¥1,680',
-    createdAt: nowIso,
-  });
-
-  insertMemory({
-    id: 'mem_torii',
-    tripId: japanId,
-    title: 'Fushimi Inari at Sunrise',
-    note: 'Beat the morning crowds! Crisp mountain air, glowing vermilion gates, and Kyoto mist unfolding beneath us. Easily one of the happiest mornings ever.',
-    capturedAt: `${fmt(0)}T06:45:00`,
-    placeName: 'Fushimi Inari Taisha, Kyoto',
-    lat: 34.9671,
-    lng: 135.7727,
-    illustrationKey: 'torii',
-    moodSticker: '🌅 Core Memory',
-    isHighlight: true,
-    authorName: 'You',
-    createdAt: nowIso,
-  });
-
-  insertMemory({
-    id: 'mem_matcha',
-    tripId: japanId,
-    title: 'Hidden Uji Matcha Tearoom',
-    note: 'Stumbled down a lantern-lit alley in Gion and found a 6-seat wooden teahouse serving frothy Uji matcha and warm sweet dango.',
-    capturedAt: `${fmt(0)}T14:15:00`,
-    placeName: 'Gion District, Kyoto',
-    lat: 35.0037,
-    lng: 135.7785,
-    illustrationKey: 'matcha',
-    moodSticker: '🍜 Food Coma',
-    isHighlight: false,
-    authorName: 'Maya K.',
-    createdAt: nowIso,
-  });
-
-  // 2. Upcoming Trip: Amalfi & Rome
-  const italyId = 'trip_italy_upcoming';
-  insertTrip({
-    id: italyId,
-    ownerId,
-    title: 'Amalfi & Rome Escape',
-    destinationCity: 'Rome',
-    destinationCountry: 'Italy',
-    countryCode: 'IT',
-    flagEmoji: '🇮🇹',
-    startDate: fmt(24),
-    endDate: fmt(31),
-    homeCurrency,
-    budget: 2600,
-    vibe: 'coastal',
-    isShared: false,
-    coTravelers: [],
-    lat: 41.9028,
-    lng: 12.4964,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  });
-
-  insertFlight({
-    id: 'flt_az611',
-    tripId: italyId,
-    airlineCode: 'AZ',
-    airlineName: 'ITA Airways',
-    flightNumber: 'AZ 611',
-    pnr: 'M8P2RL',
-    originIata: 'JFK',
-    originCity: 'New York',
-    destIata: 'FCO',
-    destCity: 'Rome',
-    departureTime: `${fmt(24)}T17:15:00Z`,
-    arrivalTime: `${fmt(25)}T07:35:00Z`,
-    durationMinutes: 500,
-    seat: '11K',
-    cabinClass: 'Premium Economy',
-    aircraft: 'Airbus A350-900',
-    status: 'scheduled',
-    distanceMiles: 4277,
-    milesEarned: 4277,
-    loyaltyProgram: 'Volare',
-    enrichedOnline: false,
-    createdAt: nowIso,
-  });
-
-  // 3. Past Trip: Lisbon & Porto
-  const lisbonId = 'trip_lisbon_past';
-  insertTrip({
-    id: lisbonId,
-    ownerId,
-    title: 'Lisbon & Porto Sun',
-    destinationCity: 'Lisbon',
-    destinationCountry: 'Portugal',
-    countryCode: 'PT',
-    flagEmoji: '🇵🇹',
-    startDate: fmt(-140),
-    endDate: fmt(-133),
-    homeCurrency,
-    budget: 1800,
-    vibe: 'coastal',
-    isShared: true,
-    shareToken: 'wl_pt_sun26',
-    coTravelers: [],
-    lat: 38.7223,
-    lng: -9.1393,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  });
-
-  insertFlight({
-    id: 'flt_tp208',
-    tripId: lisbonId,
-    airlineCode: 'TP',
-    airlineName: 'TAP Air Portugal',
-    flightNumber: 'TP 208',
-    pnr: 'K4M9Q1',
-    originIata: 'JFK',
-    originCity: 'New York',
-    destIata: 'LIS',
-    destCity: 'Lisbon',
-    departureTime: `${fmt(-140)}T22:00:00Z`,
-    arrivalTime: `${fmt(-139)}T09:50:00Z`,
-    durationMinutes: 410,
-    seat: '4F',
-    cabinClass: 'Business',
-    aircraft: 'Airbus A321LR',
-    status: 'completed',
-    distanceMiles: 3366,
-    milesEarned: 5049,
-    loyaltyProgram: 'Miles&Go (Star Alliance)',
-    enrichedOnline: true,
-    createdAt: nowIso,
-  });
-
-  insertExpense({
-    id: 'exp_belem',
-    tripId: lisbonId,
-    merchant: 'Pastéis de Belém',
-    category: 'dining',
-    localAmount: 9.0,
-    localCurrency: 'EUR',
-    homeAmount: 9.78,
-    homeCurrency,
-    fxRateUsed: 1.087,
-    expenseDate: fmt(-138),
-    paymentMethod: 'Apple Pay',
-    pointsEarned: 30,
-    receiptRawText: 'PASTEIS DE BELEM LISBOA\nPastel de Nata x4  €5.60\nGalao Coffee x2    €3.40\nTOTAL              €9.00',
-    createdAt: nowIso,
-  });
-
-  insertMemory({
-    id: 'mem_tram',
-    tripId: lisbonId,
-    title: 'Golden Hour on Tram 28',
-    note: 'Rattling up Alfama hills as terracotta rooftops turned pure gold. Warm cinnamon pastéis still in our paper bag.',
-    capturedAt: `${fmt(-138)}T18:10:00`,
-    placeName: 'Alfama, Lisbon',
-    lat: 38.7117,
-    lng: -9.1303,
-    illustrationKey: 'tram',
-    moodSticker: '🚆 Scenic Ride',
-    isHighlight: true,
-    authorName: 'You',
-    createdAt: nowIso,
-  });
-
-  // 4. Past Trip: Goa Monsoon
-  const goaId = 'trip_goa_past';
-  insertTrip({
-    id: goaId,
-    ownerId,
-    title: 'Goa Coast Retreat',
-    destinationCity: 'Goa',
-    destinationCountry: 'India',
-    countryCode: 'IN',
-    flagEmoji: '🇮🇳',
-    startDate: fmt(-210),
-    endDate: fmt(-204),
-    homeCurrency,
-    budget: 900,
-    vibe: 'tropical',
-    isShared: false,
-    coTravelers: [],
-    lat: 15.2993,
-    lng: 74.124,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  });
-
-  insertFlight({
-    id: 'flt_6e412',
-    tripId: goaId,
-    airlineCode: '6E',
-    airlineName: 'IndiGo',
-    flightNumber: '6E 412',
-    pnr: 'R8V2N4',
-    originIata: 'BLR',
-    originCity: 'Bengaluru',
-    destIata: 'GOI',
-    destCity: 'Goa',
-    departureTime: `${fmt(-210)}T08:15:00Z`,
-    arrivalTime: `${fmt(-210)}T09:30:00Z`,
-    durationMinutes: 75,
-    seat: '14C',
-    cabinClass: 'Economy',
-    aircraft: 'Airbus A320neo',
-    status: 'completed',
-    distanceMiles: 306,
-    milesEarned: 600,
-    loyaltyProgram: 'IndiGo BluChip',
-    enrichedOnline: true,
-    createdAt: nowIso,
-  });
-
-  insertMemory({
-    id: 'mem_goa_beach',
-    tripId: goaId,
-    title: 'Palolem Palm Hammocks',
-    note: 'Warm ocean breeze, fresh coconut water, and watching fishing boats drift across a pastel pink sky.',
-    capturedAt: `${fmt(-208)}T17:40:00`,
-    placeName: 'Palolem Beach, South Goa',
-    lat: 15.01,
-    lng: 74.0232,
-    illustrationKey: 'beach',
-    moodSticker: '🌊 Ocean Breeze',
-    isHighlight: true,
-    authorName: 'You',
-    createdAt: nowIso,
-  });
-
-  // Extra starter loyalty balances
-  creditLoyaltyProgram('Marriott Bonvoy', 'hotel', 44200, 'pts', 'MB-778201');
-  creditLoyaltyProgram('Amex Membership Rewards', 'card', 18600, 'pts');
+/**
+ * Clears all local travelogue records (trips, flights, stays, expenses, memories, loyalty vault)
+ * for fresh local testing.
+ */
+export function clearAllLocalData(): void {
+  const db = getDb();
+  db.execSync(`
+    DELETE FROM flights;
+    DELETE FROM stays;
+    DELETE FROM expenses;
+    DELETE FROM memories;
+    DELETE FROM trips;
+    DELETE FROM loyalty_accounts;
+    DELETE FROM sync_queue;
+  `);
 }

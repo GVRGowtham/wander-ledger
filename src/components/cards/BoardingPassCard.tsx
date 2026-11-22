@@ -11,6 +11,13 @@ interface Props {
 
 export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
   const depDateLabel = flight.departureTime.slice(0, 10);
+  const rawTime = flight.departureTime.length >= 16 ? flight.departureTime.slice(11, 16) : '';
+  const hasRealTime = Boolean(rawTime && rawTime !== '00:00');
+  const badgeLabel = flight.enrichedOnline
+    ? 'LIVE ENRICHED'
+    : flight.rawBarcode
+    ? 'BOARDING PASS'
+    : 'MANUAL LOG';
 
   return (
     <View style={styles.card}>
@@ -22,13 +29,11 @@ export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
         style={styles.header}
       >
         <View style={styles.rowBetween}>
-          <Text style={styles.airlineTitle}>
+          <Text style={styles.airlineTitle} numberOfLines={1}>
             ✈️ {flight.airlineName.split(' ')[0]} • {flight.flightNumber}
           </Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {flight.enrichedOnline ? 'LIVE ENRICHED' : 'BOARDING PASS'}
-            </Text>
+            <Text style={styles.badgeText}>{badgeLabel}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -44,12 +49,16 @@ export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
           </View>
 
           <View style={styles.midCol}>
-            <Text style={styles.durationText}>{formatDuration(flight.durationMinutes)}</Text>
+            <Text style={styles.durationText}>
+              {flight.durationMinutes > 0 ? formatDuration(flight.durationMinutes) : 'Direct / Est.'}
+            </Text>
             <View style={styles.dashLineWrap}>
               <View style={styles.dashLine} />
               <Text style={styles.planeMini}>✈️</Text>
             </View>
-            <Text style={styles.milesText}>{flight.distanceMiles.toLocaleString()} mi</Text>
+            <Text style={styles.milesText}>
+              {flight.distanceMiles > 0 ? `${flight.distanceMiles.toLocaleString()} mi` : 'Route logged'}
+            </Text>
           </View>
 
           <View style={[styles.endpoint, { alignItems: 'flex-end' }]}>
@@ -61,9 +70,9 @@ export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
         </View>
 
         <View style={styles.metaRow}>
-          <MetaItem label="DATE" value={depDateLabel} />
-          <MetaItem label="SEAT" value={flight.seat || 'TBD'} />
-          <MetaItem label="CABIN" value={flight.cabinClass || 'Economy'} />
+          <MetaItem label="DATE" value={hasRealTime ? `${depDateLabel} ${rawTime}` : depDateLabel} />
+          <MetaItem label="SEAT" value={flight.seat || '—'} />
+          <MetaItem label="CABIN" value={flight.cabinClass || '—'} />
           <MetaItem label="PNR" value={flight.pnr || '—'} />
         </View>
 
@@ -91,10 +100,10 @@ export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
 
       <View style={styles.footer}>
         <Text style={styles.loyaltyLabel} numberOfLines={1}>
-          🏆 {flight.loyaltyProgram || 'Frequent Flyer'}
+          🏆 {flight.loyaltyProgram || 'Travel Log'}
         </Text>
         <Text style={styles.loyaltyPoints}>
-          +{flight.milesEarned.toLocaleString()} mi ✨
+          {flight.milesEarned > 0 ? `+${flight.milesEarned.toLocaleString()} mi ✨` : 'Logged ✓'}
         </Text>
       </View>
     </View>

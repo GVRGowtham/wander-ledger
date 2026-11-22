@@ -122,8 +122,8 @@ export async function signInWithGoogle(
     }
   }
 
-  const displayName = customName?.trim() || 'Alex Jordan';
-  const email = customEmail?.trim() || 'alex.wanderer@gmail.com';
+  const displayName = customName?.trim() || 'Traveler';
+  const email = customEmail?.trim() || 'traveler@wanderledger.local';
   const profile: UserProfile = {
     id: `google_local_${email.replace(/[^a-z0-9]/gi, '_')}`,
     email,

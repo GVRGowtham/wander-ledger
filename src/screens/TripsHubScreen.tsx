@@ -99,53 +99,55 @@ export const TripsHubScreen: React.FC<Props> = ({
       )}
 
       {/* UPCOMING ADVENTURES CAROUSEL */}
-      <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>🎟️ Upcoming Adventures</Text>
-          <Text style={styles.sectionMeta}>{upcomingTrips.length} planned</Text>
-        </View>
+      {trips.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>🎟️ Upcoming Adventures</Text>
+            <Text style={styles.sectionMeta}>{upcomingTrips.length} planned</Text>
+          </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.horizontalList}
-        >
-          {upcomingTrips.map((trip) => {
-            const { daysUntil } = getTripDayProgress(trip);
-            const stats = getSummaryForTrip(trip.id);
-            return (
-              <TouchableOpacity
-                key={trip.id}
-                onPress={() => onOpenTrip(trip.id)}
-                style={styles.upcomingCard}
-                activeOpacity={0.85}
-              >
-                <View style={styles.upcomingTop}>
-                  <View style={styles.countdownBadge}>
-                    <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
-                  </View>
-                  <Text style={styles.flagLg}>{trip.flagEmoji}</Text>
-                </View>
-                <Text style={styles.upcomingTitle} numberOfLines={1}>
-                  {trip.title}
-                </Text>
-                <Text style={styles.upcomingSub} numberOfLines={1}>
-                  {trip.startDate} • {stats.flightsCount} flights
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          <TouchableOpacity
-            onPress={onNewTrip}
-            style={styles.planNewCard}
-            activeOpacity={0.85}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalList}
           >
-            <Text style={{ fontSize: 22 }}>🗺️</Text>
-            <Text style={styles.planNewText}>Dream a Trip</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
+            {upcomingTrips.map((trip) => {
+              const { daysUntil } = getTripDayProgress(trip);
+              const stats = getSummaryForTrip(trip.id);
+              return (
+                <TouchableOpacity
+                  key={trip.id}
+                  onPress={() => onOpenTrip(trip.id)}
+                  style={styles.upcomingCard}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.upcomingTop}>
+                    <View style={styles.countdownBadge}>
+                      <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
+                    </View>
+                    <Text style={styles.flagLg}>{trip.flagEmoji}</Text>
+                  </View>
+                  <Text style={styles.upcomingTitle} numberOfLines={1}>
+                    {trip.title}
+                  </Text>
+                  <Text style={styles.upcomingSub} numberOfLines={1}>
+                    {trip.startDate} • {stats.flightsCount} flights
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            <TouchableOpacity
+              onPress={onNewTrip}
+              style={styles.planNewCard}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 22 }}>🗺️</Text>
+              <Text style={styles.planNewText}>Dream a Trip</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
 
       {/* PAST MEMORY SHELF */}
       {pastTrips.length > 0 && (
