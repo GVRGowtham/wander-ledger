@@ -649,6 +649,93 @@ export function insertMemory(m: Memory): void {
   );
 }
 
+export interface MemoryEditablePatch {
+  title?: string;
+  note?: string;
+  placeName?: string;
+  moodSticker?: string;
+  capturedAt?: string;
+  photoUri?: string | null;
+  thumbUri?: string | null;
+  illustrationKey?: Memory['illustrationKey'] | null;
+}
+
+export function updateMemory(
+  memoryId: string,
+  patch: MemoryEditablePatch
+): { previousPhotoUri?: string; previousThumbUri?: string; updated: Memory } | null {
+  const db = getDb();
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM memories WHERE id = ?',
+    [memoryId]
+  );
+  if (!row) return null;
+
+  const prevPhotoUri = (row.photo_uri as string) || undefined;
+  const prevThumbUri = (row.thumb_uri as string) || undefined;
+
+  const nextTitle = patch.title !== undefined ? patch.title : String(row.title);
+  const nextNote = patch.note !== undefined ? patch.note : String(row.note);
+  const nextPlace =
+    patch.placeName !== undefined ? patch.placeName || null : (row.place_name as string) || null;
+  const nextMood =
+    patch.moodSticker !== undefined ? patch.moodSticker : String(row.mood_sticker || '🌅 Core Memory');
+  const nextCapturedAt =
+    patch.capturedAt !== undefined ? patch.capturedAt : String(row.captured_at);
+  const nextPhoto =
+    patch.photoUri !== undefined ? patch.photoUri : (row.photo_uri as string) || null;
+  const nextThumb =
+    patch.thumbUri !== undefined ? patch.thumbUri : (row.thumb_uri as string) || null;
+  const nextIllust =
+    patch.illustrationKey !== undefined
+      ? patch.illustrationKey
+      : (row.illustration_key as Memory['illustrationKey']) || null;
+
+  db.runSync(
+    `UPDATE memories
+     SET title = ?, note = ?, place_name = ?, mood_sticker = ?, captured_at = ?,
+         photo_uri = ?, thumb_uri = ?, illustration_key = ?
+     WHERE id = ?`,
+    [
+      nextTitle,
+      nextNote,
+      nextPlace,
+      nextMood,
+      nextCapturedAt,
+      nextPhoto,
+      nextThumb,
+      nextIllust,
+      memoryId,
+    ]
+  );
+
+  const updated: Memory = {
+    id: String(row.id),
+    tripId: String(row.trip_id),
+    title: nextTitle,
+    note: nextNote,
+    capturedAt: nextCapturedAt,
+    placeName: nextPlace || undefined,
+    lat: row.lat !== null && row.lat !== undefined ? Number(row.lat) : undefined,
+    lng: row.lng !== null && row.lng !== undefined ? Number(row.lng) : undefined,
+    photoUri: nextPhoto || undefined,
+    thumbUri: nextThumb || undefined,
+    illustrationKey: nextIllust || undefined,
+    moodSticker: nextMood,
+    isHighlight: Number(row.is_highlight) === 1,
+    authorName: (row.author_name as string) || undefined,
+    createdAt: String(row.created_at),
+  };
+
+  enqueueSyncMutation('memories', memoryId, 'upsert', { ...updated });
+
+  return {
+    previousPhotoUri: prevPhotoUri && prevPhotoUri !== nextPhoto ? prevPhotoUri : undefined,
+    previousThumbUri: prevThumbUri && prevThumbUri !== nextThumb ? prevThumbUri : undefined,
+    updated,
+  };
+}
+
 export function deleteMemory(memoryId: string): Memory | null {
   const db = getDb();
   const row = db.getFirstSync<Record<string, unknown>>(

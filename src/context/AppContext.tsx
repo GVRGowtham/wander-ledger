@@ -28,9 +28,11 @@ import {
   listStays,
   listTrips,
   loadCachedFxRates,
+  MemoryEditablePatch,
   purgeLegacySeedDataIfNeeded,
   saveFxRates,
   TripEditablePatch,
+  updateMemory,
   updateTrip,
   updateTripCover,
   updateTripSharing,
@@ -39,6 +41,7 @@ import {
   deleteEntityFromCloud,
   deleteMemoryFromCloud,
   deleteTripFromCloud,
+  updateMemoryInCloud,
 } from '../services/cloudDeleteService';
 import {
   deleteLocalPhotoFiles,
@@ -88,6 +91,7 @@ interface AppContextValue {
   addExpense: (expense: Expense) => void;
   removeExpense: (expenseId: string) => Promise<void>;
   addMemory: (memory: Memory) => void;
+  editMemory: (memoryId: string, patch: MemoryEditablePatch) => Promise<void>;
   removeMemory: (memoryId: string) => Promise<{ cloudSynced: boolean }>;
   getFlightsForTrip: (tripId: string) => Flight[];
   getStaysForTrip: (tripId: string) => Stay[];
@@ -294,6 +298,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const editMemory = useCallback(
+    async (memoryId: string, patch: MemoryEditablePatch) => {
+      const res = updateMemory(memoryId, patch);
+      refreshAll();
+      if (!res) return;
+
+      if (res.previousPhotoUri || res.previousThumbUri) {
+        await deleteLocalPhotoFiles([res.previousPhotoUri, res.previousThumbUri]);
+      }
+      const cloudRes = await updateMemoryInCloud(res.updated);
+      if (cloudRes.synced) {
+        clearSyncMutation('memories', memoryId, 'upsert');
+      }
+    },
+    [refreshAll]
+  );
+
   const removeMemory = useCallback(
     async (memoryId: string): Promise<{ cloudSynced: boolean }> => {
       const deleted = deleteMemory(memoryId);
@@ -340,6 +361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExpense,
         removeExpense,
         addMemory,
+        editMemory,
         removeMemory,
         getFlightsForTrip: (id) => listFlights(id),
         getStaysForTrip: (id) => listStays(id),

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Alert,
   Image,
-  Modal,
   ScrollView,
   Share,
   StyleSheet,
@@ -16,12 +15,14 @@ import * as Haptics from 'expo-haptics';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { BoardingPassCard } from '../components/cards/BoardingPassCard';
 import { MemoryIllustration } from '../components/cards/MemoryIllustration';
+import { DatePickerField } from '../components/forms/DatePickerField';
 import {
   createEmptyFlightDraft,
   hasAnyFlightDraftData,
   ManualFlightDraft,
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
+import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
@@ -85,6 +86,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     addStay,
     removeStay,
     addMemory,
+    editMemory,
     removeMemory,
     addExpense,
     removeExpense,
@@ -107,11 +109,13 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [editCurrency, setEditCurrency] = useState('USD');
   const [editVibe, setEditVibe] = useState<TripVibe>('coastal');
 
-  // Add Memory Modal
+  // Add / Edit Memory Modal
   const [memoryModal, setMemoryModal] = useState(false);
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [memTitle, setMemTitle] = useState('');
   const [memNote, setMemNote] = useState('');
   const [memPlace, setMemPlace] = useState('');
+  const [memDate, setMemDate] = useState(new Date().toISOString().slice(0, 10));
   const [memMood, setMemMood] = useState(MOOD_STICKERS[0]);
   const [memPhotoUri, setMemPhotoUri] = useState<string | undefined>(undefined);
   const [memThumbUri, setMemThumbUri] = useState<string | undefined>(undefined);
@@ -146,6 +150,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [expMerchant, setExpMerchant] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expCurrency, setExpCurrency] = useState(trip?.homeCurrency || 'USD');
+  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('dining');
 
   // Share Modal
@@ -220,7 +225,31 @@ export const TripDetailScreen: React.FC<Props> = ({
     setEditModal(false);
   };
 
-  // --- MEMORIES ---
+  // --- MEMORIES (ADD + EDIT + DELETE) ---
+  const openAddMemoryModal = () => {
+    setEditingMemoryId(null);
+    setMemTitle('');
+    setMemNote('');
+    setMemPlace('');
+    setMemDate(new Date().toISOString().slice(0, 10));
+    setMemMood(MOOD_STICKERS[0]);
+    setMemPhotoUri(undefined);
+    setMemThumbUri(undefined);
+    setMemoryModal(true);
+  };
+
+  const openEditMemoryModal = (m: Memory) => {
+    setEditingMemoryId(m.id);
+    setMemTitle(m.title);
+    setMemNote(m.note);
+    setMemPlace(m.placeName || '');
+    setMemDate(m.capturedAt.slice(0, 10) || trip.startDate);
+    setMemMood(m.moodSticker || MOOD_STICKERS[0]);
+    setMemPhotoUri(m.photoUri);
+    setMemThumbUri(m.thumbUri);
+    setMemoryModal(true);
+  };
+
   const handlePickMemoryPhoto = async (source: 'camera' | 'library') => {
     const res = await pickAndOptimizeMemoryPhoto(trip.id, source);
     if (res) {
@@ -230,27 +259,45 @@ export const TripDetailScreen: React.FC<Props> = ({
     }
   };
 
-  const handleSaveMemory = () => {
+  const handleSaveMemory = async () => {
     if (!memTitle.trim() && !memNote.trim()) {
       Alert.alert('Add a quick note', 'Give your memory a title or short reflection!');
       return;
     }
-    addMemory({
-      id: generateId('mem'),
-      tripId: trip.id,
-      title: memTitle.trim() || `${trip.destinationCity} Moment`,
-      note: memNote.trim() || 'A favorite moment from the journey ✨',
-      capturedAt: new Date().toISOString().slice(0, 19),
-      placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
-      photoUri: memPhotoUri,
-      thumbUri: memThumbUri,
-      illustrationKey: memPhotoUri ? undefined : 'torii',
-      moodSticker: memMood,
-      isHighlight: false,
-      authorName: profile?.displayName.split(' ')[0] || 'You',
-      createdAt: new Date().toISOString(),
-    });
+    const cleanDate = memDate.trim() || new Date().toISOString().slice(0, 10);
+    const timeSuffix = new Date().toISOString().slice(11, 19);
+
+    if (editingMemoryId) {
+      await editMemory(editingMemoryId, {
+        title: memTitle.trim() || `${trip.destinationCity} Moment`,
+        note: memNote.trim() || 'A favorite moment from the journey ✨',
+        placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
+        moodSticker: memMood,
+        capturedAt: `${cleanDate}T${timeSuffix}`,
+        photoUri: memPhotoUri ?? null,
+        thumbUri: memThumbUri ?? null,
+        illustrationKey: memPhotoUri ? null : 'torii',
+      });
+    } else {
+      addMemory({
+        id: generateId('mem'),
+        tripId: trip.id,
+        title: memTitle.trim() || `${trip.destinationCity} Moment`,
+        note: memNote.trim() || 'A favorite moment from the journey ✨',
+        capturedAt: `${cleanDate}T${timeSuffix}`,
+        placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
+        photoUri: memPhotoUri,
+        thumbUri: memThumbUri,
+        illustrationKey: memPhotoUri ? undefined : 'torii',
+        moodSticker: memMood,
+        isHighlight: false,
+        authorName: profile?.displayName.split(' ')[0] || 'You',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEditingMemoryId(null);
     setMemTitle('');
     setMemNote('');
     setMemPlace('');
@@ -278,6 +325,15 @@ export const TripDetailScreen: React.FC<Props> = ({
   };
 
   // --- EXPENSES ---
+  const openExpenseModal = () => {
+    setExpMerchant('');
+    setExpAmount('');
+    setExpCurrency(trip.homeCurrency || 'USD');
+    setExpDate(new Date().toISOString().slice(0, 10));
+    setExpCategory('dining');
+    setExpenseModal(true);
+  };
+
   const handleSaveExpense = () => {
     const amt = parseFloat(expAmount);
     if (!expMerchant.trim() || Number.isNaN(amt) || amt <= 0) {
@@ -295,7 +351,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       homeAmount: converted,
       homeCurrency: trip.homeCurrency,
       fxRateUsed: rate,
-      expenseDate: new Date().toISOString().slice(0, 10),
+      expenseDate: expDate.trim() || new Date().toISOString().slice(0, 10),
       createdAt: new Date().toISOString(),
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -576,7 +632,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={styles.tinyNote}>Photos & notes only — receipts stay in Spend</Text>
               </View>
               <TouchableOpacity
-                onPress={() => setMemoryModal(true)}
+                onPress={openAddMemoryModal}
                 style={styles.actionPill}
                 activeOpacity={0.85}
               >
@@ -592,7 +648,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                   Snap a Polaroid photo and write a quick note to start your travelogue.
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setMemoryModal(true)}
+                  onPress={openAddMemoryModal}
                   style={styles.emptyBtn}
                   activeOpacity={0.88}
                 >
@@ -619,6 +675,11 @@ export const TripDetailScreen: React.FC<Props> = ({
                       <Text style={styles.polaroidTitle}>{m.title}</Text>
                       <Text style={styles.polaroidDate}>{m.capturedAt.slice(0, 10)}</Text>
                     </View>
+                    {m.placeName ? (
+                      <Text style={styles.polaroidPlace} numberOfLines={1}>
+                        📍 {m.placeName}
+                      </Text>
+                    ) : null}
                     <Text style={styles.polaroidNote}>{m.note}</Text>
                     <View style={styles.polaroidFooter}>
                       <View style={styles.moodTag}>
@@ -628,6 +689,13 @@ export const TripDetailScreen: React.FC<Props> = ({
                         {m.authorName ? (
                           <Text style={styles.authorTag}>by {m.authorName}</Text>
                         ) : null}
+                        <TouchableOpacity
+                          onPress={() => openEditMemoryModal(m)}
+                          style={styles.memEditPill}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.editAction}>✏️ Edit</Text>
+                        </TouchableOpacity>
                         {m.photoUri && (
                           <TouchableOpacity
                             onPress={() => {
@@ -817,7 +885,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
               <View style={styles.actionGroup}>
                 <TouchableOpacity
-                  onPress={() => setExpenseModal(true)}
+                  onPress={openExpenseModal}
                   style={styles.actionPillSoft}
                   activeOpacity={0.85}
                 >
@@ -912,481 +980,470 @@ export const TripDetailScreen: React.FC<Props> = ({
       </ScrollView>
 
       {/* EDIT TRIP MODAL */}
-      <Modal visible={editModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.modalTitle}>✏️ Edit Trip Details</Text>
-              <TouchableOpacity onPress={() => setEditModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-            >
-              <Text style={styles.fieldLabel}>Trip Name</Text>
-              <TextInput
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder="e.g. Kyoto Autumn Escape"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
+      <BottomSheetModal
+        visible={editModal}
+        title="✏️ Edit Trip Details"
+        onClose={() => setEditModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveTripEdit} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>Save Trip Changes ✨</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.fieldLabel}>Trip Name</Text>
+        <TextInput
+          value={editTitle}
+          onChangeText={setEditTitle}
+          placeholder="e.g. Kyoto Autumn Escape"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
 
-              <Text style={styles.fieldLabel}>Destination City or Country</Text>
-              <TextInput
-                value={editDestination}
-                onChangeText={setEditDestination}
-                placeholder="e.g. Tokyo, Goa, Zurich"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
+        <Text style={styles.fieldLabel}>Destination City or Country</Text>
+        <TextInput
+          value={editDestination}
+          onChangeText={setEditDestination}
+          placeholder="e.g. Tokyo, Goa, Zurich"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
 
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.fieldLabel}>Start Date (YYYY-MM-DD)</Text>
-                  <TextInput
-                    value={editStartDate}
-                    onChangeText={setEditStartDate}
-                    placeholder="2026-10-14"
-                    placeholderTextColor={COLORS.inkSoft}
-                    style={styles.input}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.fieldLabel}>End Date (YYYY-MM-DD)</Text>
-                  <TextInput
-                    value={editEndDate}
-                    onChangeText={setEditEndDate}
-                    placeholder="2026-10-20"
-                    placeholderTextColor={COLORS.inkSoft}
-                    style={styles.input}
-                  />
-                </View>
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1.3 }}>
-                  <Text style={styles.fieldLabel}>Target Budget (Optional)</Text>
-                  <TextInput
-                    value={editBudget}
-                    onChangeText={setEditBudget}
-                    placeholder="0"
-                    placeholderTextColor={COLORS.inkSoft}
-                    keyboardType="numeric"
-                    style={styles.input}
-                  />
-                </View>
-                <View style={{ flex: 0.7 }}>
-                  <Text style={styles.fieldLabel}>Currency</Text>
-                  <TextInput
-                    value={editCurrency}
-                    onChangeText={(v) => setEditCurrency(v.toUpperCase())}
-                    placeholder="USD"
-                    autoCapitalize="characters"
-                    maxLength={3}
-                    style={[styles.input, { textAlign: 'center' }]}
-                  />
-                </View>
-              </View>
-
-              <Text style={styles.fieldLabel}>Postcard Banner Vibe</Text>
-              <View style={styles.vibeGrid}>
-                {VIBES.map((v) => {
-                  const active = editVibe === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => setEditVibe(v.id)}
-                      style={[styles.vibeChip, active && styles.vibeChipActive]}
-                    >
-                      <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                      <Text
-                        style={[styles.vibeText, active && styles.vibeTextActive]}
-                        numberOfLines={1}
-                      >
-                        {v.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {trip.coverPhotoUri && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setTripCoverPhoto(trip.id, null);
-                    Alert.alert('Banner Reset', 'Reverted back to the illustrated postcard banner.');
-                  }}
-                  style={styles.resetCoverBtn}
-                >
-                  <Text style={styles.resetCoverText}>🖼️ Reset Custom Cover Photo</Text>
-                </TouchableOpacity>
-              )}
-            </ScrollView>
-            <TouchableOpacity onPress={handleSaveTripEdit} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-              <Text style={styles.modalPrimaryText}>Save Trip Changes ✨</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <DatePickerField
+            label="Start Date"
+            value={editStartDate}
+            onChange={setEditStartDate}
+            placeholder="Pick start"
+          />
+          <DatePickerField
+            label="End Date"
+            value={editEndDate}
+            onChange={setEditEndDate}
+            placeholder="Pick end"
+          />
         </View>
-      </Modal>
 
-      {/* ADD MEMORY MODAL */}
-      <Modal visible={memoryModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.modalTitle}>📸 Capture a Polaroid Memory</Text>
-              <TouchableOpacity onPress={() => setMemoryModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-            >
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity
-                  onPress={() => handlePickMemoryPhoto('camera')}
-                  style={styles.photoPickBtn}
-                >
-                  <Text style={styles.photoPickText}>📷 Take Photo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handlePickMemoryPhoto('library')}
-                  style={styles.photoPickBtn}
-                >
-                  <Text style={styles.photoPickText}>🖼️ From Gallery</Text>
-                </TouchableOpacity>
-              </View>
-
-              {memPhotoUri && (
-                <Image
-                  source={{ uri: memPhotoUri }}
-                  style={styles.previewMemImg}
-                  resizeMode="cover"
-                />
-              )}
-
-              <TextInput
-                value={memTitle}
-                onChangeText={setMemTitle}
-                placeholder="Moment title (e.g. Sunset at Arashiyama)"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
-              <TextInput
-                value={memPlace}
-                onChangeText={setMemPlace}
-                placeholder="Place name (optional)"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
-              <TextInput
-                value={memNote}
-                onChangeText={setMemNote}
-                placeholder="How did it feel? Write your little story..."
-                placeholderTextColor={COLORS.inkSoft}
-                multiline
-                numberOfLines={3}
-                style={[styles.input, { height: 78, textAlignVertical: 'top' }]}
-              />
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6 }}
-              >
-                {MOOD_STICKERS.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    onPress={() => setMemMood(s)}
-                    style={[styles.moodChip, memMood === s && styles.moodChipActive]}
-                  >
-                    <Text
-                      style={[
-                        styles.moodChipText,
-                        memMood === s && { color: '#FFFFFF' },
-                      ]}
-                    >
-                      {s}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </ScrollView>
-
-            <TouchableOpacity onPress={handleSaveMemory} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-              <Text style={styles.modalPrimaryText}>Save to Polaroid Timeline ✨</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* QUICK MANUAL EXPENSE MODAL */}
-      <Modal visible={expenseModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.modalTitle}>🧾 Add Quick Expense</Text>
-              <TouchableOpacity onPress={() => setExpenseModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1.3 }}>
+            <Text style={styles.fieldLabel}>Target Budget (Optional)</Text>
             <TextInput
-              value={expMerchant}
-              onChangeText={setExpMerchant}
-              placeholder="Merchant (e.g. Ichiran Ramen)"
+              value={editBudget}
+              onChangeText={setEditBudget}
+              placeholder="0"
+              placeholderTextColor={COLORS.inkSoft}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ flex: 0.7 }}>
+            <Text style={styles.fieldLabel}>Currency</Text>
+            <TextInput
+              value={editCurrency}
+              onChangeText={(v) => setEditCurrency(v.toUpperCase())}
+              placeholder="USD"
+              autoCapitalize="characters"
+              maxLength={3}
+              style={[styles.input, { textAlign: 'center' }]}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.fieldLabel}>Postcard Banner Vibe</Text>
+        <View style={styles.vibeGrid}>
+          {VIBES.map((v) => {
+            const active = editVibe === v.id;
+            return (
+              <TouchableOpacity
+                key={v.id}
+                onPress={() => setEditVibe(v.id)}
+                style={[styles.vibeChip, active && styles.vibeChipActive]}
+              >
+                <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
+                <Text
+                  style={[styles.vibeText, active && styles.vibeTextActive]}
+                  numberOfLines={1}
+                >
+                  {v.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {trip.coverPhotoUri && (
+          <TouchableOpacity
+            onPress={() => {
+              setTripCoverPhoto(trip.id, null);
+              Alert.alert('Banner Reset', 'Reverted back to the illustrated postcard banner.');
+            }}
+            style={styles.resetCoverBtn}
+          >
+            <Text style={styles.resetCoverText}>🖼️ Reset Custom Cover Photo</Text>
+          </TouchableOpacity>
+        )}
+      </BottomSheetModal>
+
+      {/* ADD / EDIT MEMORY MODAL */}
+      <BottomSheetModal
+        visible={memoryModal}
+        title={editingMemoryId ? '✏️ Edit Polaroid Memory' : '📸 Capture a Polaroid Memory'}
+        onClose={() => {
+          setMemoryModal(false);
+          setEditingMemoryId(null);
+        }}
+        footer={
+          <TouchableOpacity onPress={handleSaveMemory} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>
+              {editingMemoryId ? 'Save Memory Changes ✨' : 'Save to Polaroid Timeline ✨'}
+            </Text>
+          </TouchableOpacity>
+        }
+      >
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => handlePickMemoryPhoto('camera')}
+            style={styles.photoPickBtn}
+          >
+            <Text style={styles.photoPickText}>📷 {memPhotoUri ? 'Retake' : 'Take Photo'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handlePickMemoryPhoto('library')}
+            style={styles.photoPickBtn}
+          >
+            <Text style={styles.photoPickText}>🖼️ {memPhotoUri ? 'Change Photo' : 'From Gallery'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {memPhotoUri && (
+          <View style={{ gap: 6 }}>
+            <Image
+              source={{ uri: memPhotoUri }}
+              style={styles.previewMemImg}
+              resizeMode="cover"
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setMemPhotoUri(undefined);
+                setMemThumbUri(undefined);
+              }}
+              style={styles.resetCoverBtn}
+            >
+              <Text style={styles.resetCoverText}>🗑️ Remove Photo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Text style={styles.fieldLabel}>Title</Text>
+        <TextInput
+          value={memTitle}
+          onChangeText={setMemTitle}
+          placeholder="Moment title (e.g. Sunset at Arashiyama)"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1.25 }}>
+            <Text style={styles.fieldLabel}>Place</Text>
+            <TextInput
+              value={memPlace}
+              onChangeText={setMemPlace}
+              placeholder="Place name (optional)"
               placeholderTextColor={COLORS.inkSoft}
               style={styles.input}
             />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TextInput
-                value={expAmount}
-                onChangeText={setExpAmount}
-                placeholder="Amount"
-                placeholderTextColor={COLORS.inkSoft}
-                keyboardType="decimal-pad"
-                style={[styles.input, { flex: 1 }]}
-              />
-              <TextInput
-                value={expCurrency}
-                onChangeText={setExpCurrency}
-                placeholder="USD"
-                autoCapitalize="characters"
-                maxLength={3}
-                style={[styles.input, { width: 84, textAlign: 'center' }]}
-              />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-              {(Object.keys(CATEGORY_META) as ExpenseCategory[]).map((cat) => {
-                const m = CATEGORY_META[cat];
-                const active = expCategory === cat;
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    onPress={() => setExpCategory(cat)}
-                    style={[styles.moodChip, active && styles.moodChipActive]}
-                  >
-                    <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
-                      {m.emoji} {m.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TouchableOpacity onPress={handleSaveExpense} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-              <Text style={styles.modalPrimaryText}>Save to Spend Ledger</Text>
-            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }}>
+            <DatePickerField
+              label="Date"
+              value={memDate}
+              onChange={setMemDate}
+              placeholder="Pick date"
+              compact
+            />
           </View>
         </View>
-      </Modal>
+
+        <Text style={styles.fieldLabel}>Story / Reflection</Text>
+        <TextInput
+          value={memNote}
+          onChangeText={setMemNote}
+          placeholder="How did it feel? Write your little story..."
+          placeholderTextColor={COLORS.inkSoft}
+          multiline
+          numberOfLines={3}
+          style={[styles.input, { height: 78, textAlignVertical: 'top' }]}
+        />
+
+        <Text style={styles.fieldLabel}>Feel / Mood Sticker</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+        >
+          {MOOD_STICKERS.map((s) => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setMemMood(s)}
+              style={[styles.moodChip, memMood === s && styles.moodChipActive]}
+            >
+              <Text
+                style={[
+                  styles.moodChipText,
+                  memMood === s && { color: '#FFFFFF' },
+                ]}
+              >
+                {s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </BottomSheetModal>
+
+      {/* QUICK MANUAL EXPENSE MODAL */}
+      <BottomSheetModal
+        visible={expenseModal}
+        title="🧾 Add Quick Expense"
+        onClose={() => setExpenseModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveExpense} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>Save to Spend Ledger</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.fieldLabel}>Merchant</Text>
+        <TextInput
+          value={expMerchant}
+          onChangeText={setExpMerchant}
+          placeholder="Merchant (e.g. Ichiran Ramen)"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldLabel}>Amount</Text>
+            <TextInput
+              value={expAmount}
+              onChangeText={setExpAmount}
+              placeholder="0.00"
+              placeholderTextColor={COLORS.inkSoft}
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+          </View>
+          <View style={{ width: 84 }}>
+            <Text style={styles.fieldLabel}>Currency</Text>
+            <TextInput
+              value={expCurrency}
+              onChangeText={(v) => setExpCurrency(v.toUpperCase())}
+              placeholder="USD"
+              autoCapitalize="characters"
+              maxLength={3}
+              style={[styles.input, { textAlign: 'center' }]}
+            />
+          </View>
+        </View>
+
+        <DatePickerField
+          label="Expense Date"
+          value={expDate}
+          onChange={setExpDate}
+          placeholder="Pick date"
+        />
+
+        <Text style={styles.fieldLabel}>Category</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+          {(Object.keys(CATEGORY_META) as ExpenseCategory[]).map((cat) => {
+            const m = CATEGORY_META[cat];
+            const active = expCategory === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => setExpCategory(cat)}
+                style={[styles.moodChip, active && styles.moodChipActive]}
+              >
+                <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
+                  {m.emoji} {m.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </BottomSheetModal>
 
       {/* SHARE TRIP & POSTCARD MODAL */}
-      <Modal visible={shareModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <View style={styles.rowBetween}>
-              <Text style={[styles.modalTitle, { flex: 1 }]} numberOfLines={1}>
-                💌 Share {trip.title}
-              </Text>
-              <TouchableOpacity onPress={() => setShareModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.shareCardWarm}>
-              <Text style={styles.shareCardHead}>✨ Invite Co-Travelers</Text>
-              <Text style={styles.shareCardSub}>
-                Friends sign in with Google to add their own Polaroids, flights & shared bills.
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                <TextInput
-                  value={inviteEmail}
-                  onChangeText={setInviteEmail}
-                  placeholder="friend@gmail.com"
-                  placeholderTextColor={COLORS.inkSoft}
-                  autoCapitalize="none"
-                  style={[styles.input, { flex: 1, backgroundColor: '#FFFFFF' }]}
-                />
-                <TouchableOpacity onPress={handleInviteBuddy} style={styles.inviteBtn}>
-                  <Text style={styles.inviteBtnText}>Add</Text>
-                </TouchableOpacity>
-              </View>
-              {trip.coTravelers.length > 0 && (
-                <Text style={styles.coTravelerList}>
-                  Co-travelers: {trip.coTravelers.join(', ')}
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.shareCardSky}>
-              <Text style={[styles.shareCardHead, { color: '#0369A1' }]}>
-                📮 Send Read-Only Family Postcard
-              </Text>
-              <Text style={styles.shareCardSub}>
-                Shares your Memories & trip highlights via WhatsApp/Messages — private receipts & spend stay hidden!
-              </Text>
-              <TouchableOpacity onPress={handleSharePostcard} style={styles.postcardShareBtn}>
-                <Text style={styles.postcardShareText}>Share Postcard Now ✈️</Text>
-              </TouchableOpacity>
-            </View>
+      <BottomSheetModal
+        visible={shareModal}
+        title={`💌 Share ${trip.title}`}
+        onClose={() => setShareModal(false)}
+      >
+        <View style={styles.shareCardWarm}>
+          <Text style={styles.shareCardHead}>✨ Invite Co-Travelers</Text>
+          <Text style={styles.shareCardSub}>
+            Friends sign in with Google to add their own Polaroids, flights & shared bills.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            <TextInput
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              placeholder="friend@gmail.com"
+              placeholderTextColor={COLORS.inkSoft}
+              autoCapitalize="none"
+              style={[styles.input, { flex: 1, backgroundColor: '#FFFFFF' }]}
+            />
+            <TouchableOpacity onPress={handleInviteBuddy} style={styles.inviteBtn}>
+              <Text style={styles.inviteBtnText}>Add</Text>
+            </TouchableOpacity>
           </View>
+          {trip.coTravelers.length > 0 && (
+            <Text style={styles.coTravelerList}>
+              Co-travelers: {trip.coTravelers.join(', ')}
+            </Text>
+          )}
         </View>
-      </Modal>
+
+        <View style={styles.shareCardSky}>
+          <Text style={[styles.shareCardHead, { color: '#0369A1' }]}>
+            📮 Send Read-Only Family Postcard
+          </Text>
+          <Text style={styles.shareCardSub}>
+            Shares your Memories & trip highlights via WhatsApp/Messages — private receipts & spend stay hidden!
+          </Text>
+          <TouchableOpacity onPress={handleSharePostcard} style={styles.postcardShareBtn}>
+            <Text style={styles.postcardShareText}>Share Postcard Now ✈️</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheetModal>
 
       {/* MANUAL FLIGHT MODAL (LOST / MISSING BOARDING PASS) */}
-      <Modal visible={flightModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.modalTitle}>✈️ Add Flight Manually</Text>
-              <TouchableOpacity onPress={() => setFlightModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-            >
-              <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
-            </ScrollView>
-            <TouchableOpacity onPress={handleSaveManualFlight} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-              <Text style={styles.modalPrimaryText}>Save Flight to Trip ✈️</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <BottomSheetModal
+        visible={flightModal}
+        title="✈️ Add Flight Manually"
+        onClose={() => setFlightModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveManualFlight} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>Save Flight to Trip ✈️</Text>
+          </TouchableOpacity>
+        }
+      >
+        <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
+      </BottomSheetModal>
 
       {/* MANUAL STAY / HOTEL MODAL */}
-      <Modal visible={stayModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.modalTitle}>🏨 Add Hotel / Stay</Text>
-              <TouchableOpacity onPress={() => setStayModal(false)}>
-                <Text style={styles.closeX}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-            >
-              <TextInput
-                value={stayName}
-                onChangeText={setStayName}
-                placeholder="Hotel, Airbnb, or Resort name"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 6 }}
+      <BottomSheetModal
+        visible={stayModal}
+        title="🏨 Add Hotel / Stay"
+        onClose={() => setStayModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveManualStay} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>Save Stay to Trip 🏨</Text>
+          </TouchableOpacity>
+        }
+      >
+        <TextInput
+          value={stayName}
+          onChangeText={setStayName}
+          placeholder="Hotel, Airbnb, or Resort name"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+        >
+          {STAY_TYPES.map((st) => {
+            const active = stayType === st.id;
+            return (
+              <TouchableOpacity
+                key={st.id}
+                onPress={() => setStayType(st.id)}
+                style={[styles.moodChip, active && styles.moodChipActive]}
               >
-                {STAY_TYPES.map((st) => {
-                  const active = stayType === st.id;
-                  return (
-                    <TouchableOpacity
-                      key={st.id}
-                      onPress={() => setStayType(st.id)}
-                      style={[styles.moodChip, active && styles.moodChipActive]}
-                    >
-                      <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
-                        {st.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  value={stayCheckIn}
-                  onChangeText={setStayCheckIn}
-                  placeholder="Check-in YYYY-MM-DD"
-                  placeholderTextColor={COLORS.inkSoft}
-                  style={[styles.input, { flex: 1 }]}
-                />
-                <TextInput
-                  value={stayCheckOut}
-                  onChangeText={setStayCheckOut}
-                  placeholder="Check-out YYYY-MM-DD"
-                  placeholderTextColor={COLORS.inkSoft}
-                  style={[styles.input, { flex: 1 }]}
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  value={stayConf}
-                  onChangeText={setStayConf}
-                  placeholder="Confirmation # (opt)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  autoCapitalize="characters"
-                  style={[styles.input, { flex: 1 }]}
-                />
-                <TextInput
-                  value={stayAddress}
-                  onChangeText={setStayAddress}
-                  placeholder="Address / Area (opt)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  style={[styles.input, { flex: 1.3 }]}
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  value={stayCost}
-                  onChangeText={setStayCost}
-                  placeholder="Cash cost (opt)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  keyboardType="decimal-pad"
-                  style={[styles.input, { flex: 1 }]}
-                />
-                <TextInput
-                  value={stayCurrency}
-                  onChangeText={(v) => setStayCurrency(v.toUpperCase())}
-                  placeholder="USD"
-                  autoCapitalize="characters"
-                  maxLength={3}
-                  style={[styles.input, { width: 74, textAlign: 'center' }]}
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  value={stayPoints}
-                  onChangeText={setStayPoints}
-                  placeholder="Points redeemed (opt)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  keyboardType="numeric"
-                  style={[styles.input, { flex: 1 }]}
-                />
-                <TextInput
-                  value={stayPointsProg}
-                  onChangeText={setStayPointsProg}
-                  placeholder="Program (e.g. Bonvoy)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  style={[styles.input, { flex: 1 }]}
-                />
-              </View>
-              <TextInput
-                value={stayNotes}
-                onChangeText={setStayNotes}
-                placeholder="Notes (optional)"
-                placeholderTextColor={COLORS.inkSoft}
-                style={styles.input}
-              />
-            </ScrollView>
-            <TouchableOpacity onPress={handleSaveManualStay} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-              <Text style={styles.modalPrimaryText}>Save Stay to Trip 🏨</Text>
-            </TouchableOpacity>
-          </View>
+                <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
+                  {st.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <DatePickerField
+            label="Check-in"
+            value={stayCheckIn}
+            onChange={setStayCheckIn}
+            placeholder="Pick date"
+            compact
+          />
+          <DatePickerField
+            label="Check-out"
+            value={stayCheckOut}
+            onChange={setStayCheckOut}
+            placeholder="Pick date"
+            compact
+          />
         </View>
-      </Modal>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TextInput
+            value={stayConf}
+            onChangeText={setStayConf}
+            placeholder="Confirmation # (opt)"
+            placeholderTextColor={COLORS.inkSoft}
+            autoCapitalize="characters"
+            style={[styles.input, { flex: 1 }]}
+          />
+          <TextInput
+            value={stayAddress}
+            onChangeText={setStayAddress}
+            placeholder="Address / Area (opt)"
+            placeholderTextColor={COLORS.inkSoft}
+            style={[styles.input, { flex: 1.3 }]}
+          />
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TextInput
+            value={stayCost}
+            onChangeText={setStayCost}
+            placeholder="Cash cost (opt)"
+            placeholderTextColor={COLORS.inkSoft}
+            keyboardType="decimal-pad"
+            style={[styles.input, { flex: 1 }]}
+          />
+          <TextInput
+            value={stayCurrency}
+            onChangeText={(v) => setStayCurrency(v.toUpperCase())}
+            placeholder="USD"
+            autoCapitalize="characters"
+            maxLength={3}
+            style={[styles.input, { width: 74, textAlign: 'center' }]}
+          />
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TextInput
+            value={stayPoints}
+            onChangeText={setStayPoints}
+            placeholder="Points redeemed (opt)"
+            placeholderTextColor={COLORS.inkSoft}
+            keyboardType="numeric"
+            style={[styles.input, { flex: 1 }]}
+          />
+          <TextInput
+            value={stayPointsProg}
+            onChangeText={setStayPointsProg}
+            placeholder="Program (e.g. Bonvoy)"
+            placeholderTextColor={COLORS.inkSoft}
+            style={[styles.input, { flex: 1 }]}
+          />
+        </View>
+        <TextInput
+          value={stayNotes}
+          onChangeText={setStayNotes}
+          placeholder="Notes (optional)"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+      </BottomSheetModal>
     </View>
   );
 };
@@ -1542,9 +1599,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 3,
   },
-  polaroidBody: { paddingTop: 10, gap: 8 },
+  polaroidBody: { paddingTop: 10, gap: 6 },
   polaroidTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flex: 1 },
   polaroidDate: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '700' },
+  polaroidPlace: { fontSize: 12, color: COLORS.coralDark, fontWeight: '700' },
   polaroidNote: { fontSize: 13, color: COLORS.inkMuted, lineHeight: 19 },
   polaroidFooter: {
     flexDirection: 'row',
@@ -1571,6 +1629,12 @@ const styles = StyleSheet.create({
   },
   moodTagText: { fontSize: 11, fontWeight: '800', color: COLORS.coralDark },
   authorTag: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '600' },
+  memEditPill: {
+    backgroundColor: COLORS.amberSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+  },
   memActionPill: {
     backgroundColor: COLORS.indigoSoft,
     paddingHorizontal: 10,
@@ -1583,6 +1647,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 99,
   },
+  editAction: { fontSize: 11, fontWeight: '800', color: '#92400E' },
   coverAction: { fontSize: 11, fontWeight: '800', color: COLORS.indigo },
   deleteAction: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
   subtleRemoveRow: { alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 4 },

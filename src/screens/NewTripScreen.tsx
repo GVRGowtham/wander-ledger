@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
+import { DatePickerField } from '../components/forms/DatePickerField';
 import {
   createEmptyFlightDraft,
   hasAnyFlightDraftData,
@@ -18,6 +19,7 @@ import {
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
 import { useApp } from '../context/AppContext';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { AirportInfo, inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
 import { convertCurrency } from '../services/fxService';
@@ -66,6 +68,7 @@ export const NewTripScreen: React.FC<Props> = ({
     addExpense,
     addMemory,
   } = useApp();
+  const keyboardHeight = useKeyboardHeight();
 
   const homeCurrency = profile?.homeCurrency || 'USD';
   const today = new Date();
@@ -307,8 +310,12 @@ export const NewTripScreen: React.FC<Props> = ({
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        keyboardHeight > 0 && { paddingBottom: keyboardHeight + 64 },
+      ]}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
       <View style={styles.topRow}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
@@ -393,26 +400,18 @@ export const NewTripScreen: React.FC<Props> = ({
         </View>
 
         <View style={styles.twoCol}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Start Date (YYYY-MM-DD)</Text>
-            <TextInput
-              value={startDate}
-              onChangeText={handleStartDateChange}
-              placeholder="2026-10-14"
-              placeholderTextColor={COLORS.inkSoft}
-              style={styles.input}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>End Date (YYYY-MM-DD)</Text>
-            <TextInput
-              value={endDate}
-              onChangeText={handleEndDateChange}
-              placeholder="2026-10-20"
-              placeholderTextColor={COLORS.inkSoft}
-              style={styles.input}
-            />
-          </View>
+          <DatePickerField
+            label="Start Date"
+            value={startDate}
+            onChange={handleStartDateChange}
+            placeholder="Pick start"
+          />
+          <DatePickerField
+            label="End Date"
+            value={endDate}
+            onChange={handleEndDateChange}
+            placeholder="Pick end"
+          />
         </View>
 
         <Text style={styles.label}>Postcard Vibe (Auto-matched)</Text>

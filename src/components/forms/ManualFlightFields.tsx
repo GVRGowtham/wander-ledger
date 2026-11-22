@@ -19,6 +19,7 @@ import {
   searchAirports,
 } from '../../services/manualFlightBuilder';
 import { COLORS } from '../../theme/tokens';
+import { DatePickerField } from './DatePickerField';
 
 export interface ManualFlightDraft {
   flightNumber: string;
@@ -281,17 +282,16 @@ export const ManualFlightFields: React.FC<Props> = ({
 
       {/* Flight Date + Optional Times */}
       <View style={styles.twoCol}>
-        <View style={{ flex: 1.3 }}>
-          <Text style={styles.label}>Flight Date (YYYY-MM-DD)</Text>
-          <TextInput
+        <View style={{ flex: 1.45 }}>
+          <DatePickerField
+            label="Flight Date"
             value={draft.flightDate}
-            onChangeText={(v) => patch({ flightDate: v })}
-            placeholder="2026-10-14"
-            placeholderTextColor={COLORS.inkSoft}
-            style={styles.input}
+            onChange={(v) => patch({ flightDate: v })}
+            placeholder="Pick date"
+            compact
           />
         </View>
-        <View style={{ flex: 0.85 }}>
+        <View style={{ flex: 0.78 }}>
           <Text style={styles.label}>Dep Time</Text>
           <TextInput
             value={draft.departureTimeHm}
@@ -301,7 +301,7 @@ export const ManualFlightFields: React.FC<Props> = ({
             style={styles.input}
           />
         </View>
-        <View style={{ flex: 0.85 }}>
+        <View style={{ flex: 0.78 }}>
           <Text style={styles.label}>Arr Time</Text>
           <TextInput
             value={draft.arrivalTimeHm}
@@ -475,17 +475,17 @@ export const ManualFlightFields: React.FC<Props> = ({
 
             {draft.addReturnFlight && (
               <View style={[styles.twoCol, { marginTop: 8 }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Return Date</Text>
-                  <TextInput
+                <View style={{ flex: 1.15 }}>
+                  <DatePickerField
+                    label="Return Date"
                     value={draft.returnDate}
-                    onChangeText={(v) => patch({ returnDate: v })}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={COLORS.inkSoft}
-                    style={[styles.input, { backgroundColor: '#FFFFFF' }]}
+                    onChange={(v) => patch({ returnDate: v })}
+                    placeholder="Pick date"
+                    backgroundColor="#FFFFFF"
+                    compact
                   />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 0.9 }}>
                   <Text style={styles.label}>Return Flight #</Text>
                   <TextInput
                     value={draft.returnFlightNumber}

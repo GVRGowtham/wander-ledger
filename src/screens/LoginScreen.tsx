@@ -12,12 +12,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { COLORS, SHADOWS } from '../theme/tokens';
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD'];
 
 export const LoginScreen: React.FC = () => {
   const { loginWithGoogle, cloudConfigured } = useApp();
+  const keyboardHeight = useKeyboardHeight();
   const [homeCurrency, setHomeCurrency] = useState('USD');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -35,8 +37,12 @@ export const LoginScreen: React.FC = () => {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        keyboardHeight > 0 && { paddingBottom: keyboardHeight + 48 },
+      ]}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
       {/* Joyful Illustrated Welcome Postcard */}
       <View style={styles.heroCard}>

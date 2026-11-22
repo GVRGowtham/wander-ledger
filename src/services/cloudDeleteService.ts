@@ -110,6 +110,34 @@ export async function deleteTripFromCloud(
 }
 
 /**
+ * Syncs edited memory fields (title, note, place, mood, date) to Supabase Postgres when cloud sync is active.
+ */
+export async function updateMemoryInCloud(
+  memory: Pick<Memory, 'id' | 'title' | 'note' | 'placeName' | 'moodSticker' | 'capturedAt'>
+): Promise<{ synced: boolean }> {
+  const sb = getSupabaseClient();
+  if (!sb) return { synced: false };
+
+  try {
+    const { data: sessionData } = await sb.auth.getSession();
+    if (!sessionData.session?.access_token) return { synced: false };
+    const { error } = await sb
+      .from('memories')
+      .update({
+        title: memory.title,
+        note: memory.note,
+        place_name: memory.placeName ?? null,
+        mood_sticker: memory.moodSticker,
+        captured_at: memory.capturedAt,
+      })
+      .eq('id', memory.id);
+    return { synced: !error };
+  } catch {
+    return { synced: false };
+  }
+}
+
+/**
  * Deletes a flight, stay, or expense row from Supabase Postgres when cloud sync is active.
  */
 export async function deleteEntityFromCloud(

@@ -12,7 +12,9 @@ import {
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { DatePickerField } from '../components/forms/DatePickerField';
 import { useApp } from '../context/AppContext';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   calculateDistanceMiles,
   estimateFlightDurationMinutes,
@@ -49,6 +51,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     addStay,
     addExpense,
   } = useApp();
+  const keyboardHeight = useKeyboardHeight();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -510,9 +513,13 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 64 },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         {/* STEP 1: LIVE CAMERA VIEWFINDER */}
         {!scanResult ? (
@@ -741,12 +748,14 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                       value={scanResult.destIata}
                       onChangeText={(v) => updateFlightField({ destIata: v.toUpperCase().slice(0, 3) })}
                     />
-                    <EditableField
-                      label="Date"
-                      value={scanResult.flightDate}
-                      onChangeText={(v) => updateFlightField({ flightDate: v })}
-                    />
                   </View>
+
+                  <DatePickerField
+                    label="Flight Date"
+                    value={scanResult.flightDate}
+                    onChange={(v) => updateFlightField({ flightDate: v })}
+                    compact
+                  />
 
                   <View style={styles.gridTwo}>
                     <InfoPair
@@ -804,12 +813,13 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                         updateReceiptField({ currency: v.toUpperCase().slice(0, 3) })
                       }
                     />
-                    <EditableField
-                      label="Date"
-                      value={scanResult.date}
-                      onChangeText={(v) => updateReceiptField({ date: v })}
-                    />
                   </View>
+                  <DatePickerField
+                    label="Receipt Date"
+                    value={scanResult.date}
+                    onChange={(v) => updateReceiptField({ date: v })}
+                    compact
+                  />
                   <View style={styles.gridTwo}>
                     <InfoPair
                       label={`In ${homeCurrency}`}
@@ -837,15 +847,17 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                     onChangeText={(v) => updateHotelField({ hotelName: v })}
                   />
                   <View style={styles.editRow}>
-                    <EditableField
+                    <DatePickerField
                       label="Check-in"
                       value={scanResult.checkIn}
-                      onChangeText={(v) => updateHotelField({ checkIn: v })}
+                      onChange={(v) => updateHotelField({ checkIn: v })}
+                      compact
                     />
-                    <EditableField
+                    <DatePickerField
                       label="Check-out"
                       value={scanResult.checkOut}
-                      onChangeText={(v) => updateHotelField({ checkOut: v })}
+                      onChange={(v) => updateHotelField({ checkOut: v })}
+                      compact
                     />
                   </View>
                   <View style={styles.editRow}>
