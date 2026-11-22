@@ -37,3 +37,15 @@ When you are ready to enable **live Google Sign-In, cross-device cloud sync, co-
    supabase functions deploy enrich-flight
    ```
    *Or for direct client-side testing without Supabase, set `EXPO_PUBLIC_AIRLABS_API_KEY` in `.env`.*
+
+---
+
+## 5. Expo / Android Build & Google Play Store Details
+* **Android Package Name**: `com.wanderledger.app`
+* **OAuth Deep-Link Scheme**: `wanderledger://`
+* **Test APK Signing SHA-1**: `5e:8f:16:06:2e:a3:cd:2c:4a:0d:54:78:76:ba:a6:f3:8c:ab:f6:25`
+* **Before Uploading to Google Play Console**:
+  1. Generate a real upload keystore (`keytool -genkey -v -keystore wanderledger-upload.keystore ...`) or let **Expo EAS** manage your Android keystore for free (`eas build -p android --profile production`).
+  2. Build an `.aab` (Android App Bundle) instead of `.apk` for Play Store submission (`./gradlew bundleRelease`).
+  3. Copy the Play App Signing **SHA-1** from Google Play Console → *App Integrity* into your Google Cloud OAuth credentials.
+
