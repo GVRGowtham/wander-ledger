@@ -1,6 +1,8 @@
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { renderPdfPagesNative } from '../../modules/local-pdf-renderer';
+import {
+  pickDocumentNative,
+  renderPdfPagesNative,
+} from '../../modules/local-pdf-renderer';
 import { compressAndSaveReceiptUri } from './mediaService';
 import { recognizeTextWithDiagnostics } from './nativeOcr';
 import { mergeOcrTexts } from './ocrParser';
@@ -56,20 +58,14 @@ export async function renderPdfPagesToJpegs(
 
 /**
  * Opens the system file picker for PDFs or images (airline e-tickets, Booking.com /
- * Airbnb / Marriott confirmations in Downloads or Google Drive).
+ * Agoda / MakeMyTrip / Airbnb / Marriott confirmations in Downloads or Google Drive).
  */
 export async function pickPdfOrImageFile(): Promise<PickedDocumentResult | null> {
-  const res = await DocumentPicker.getDocumentAsync({
-    type: ['application/pdf', 'image/*'],
-    copyToCacheDirectory: true,
-    multiple: false,
-  });
-
-  if (res.canceled || !res.assets?.[0]) {
+  const asset = await pickDocumentNative();
+  if (!asset?.uri) {
     return null;
   }
 
-  const asset = res.assets[0];
   const isPdf =
     asset.mimeType === 'application/pdf' ||
     asset.name?.toLowerCase().endsWith('.pdf') ||
