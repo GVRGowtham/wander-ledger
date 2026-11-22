@@ -344,3 +344,53 @@ describe('Instagram Draft Caption Studio (100% Offline, Privacy-Safe)', () => {
   });
 });
 
+import { extractPhotoCapturedAt, extractPhotoGps } from '../services/photoMetadata';
+
+describe('Photo Capture Date & GPS Metadata Extractor (Offline)', () => {
+  it('extracts EXIF DateTimeOriginal and falls back to DateTimeDigitized / GPSDateStamp', () => {
+    expect(
+      extractPhotoCapturedAt({
+        exif: { DateTimeOriginal: '2025:10:18 06:45:12' },
+      })
+    ).toBe('2025-10-18T06:45:12');
+
+    expect(
+      extractPhotoCapturedAt({
+        exif: { DateTimeDigitized: '2024:07:04 19:20:00' },
+      })
+    ).toBe('2024-07-04T19:20:00');
+
+    expect(
+      extractPhotoCapturedAt({
+        exif: { GPSDateStamp: '2025:03:22' },
+      })
+    ).toBe('2025-03-22T12:00:00');
+  });
+
+  it('extracts dates from Pixel, Samsung, WhatsApp, and Screenshot filenames when EXIF is missing', () => {
+    expect(
+      extractPhotoCapturedAt({ fileName: 'PXL_20250814_112233456.jpg' })
+    ).toBe('2025-08-14T11:22:33');
+
+    expect(
+      extractPhotoCapturedAt({ fileName: 'IMG-20241225-WA0007.jpg' })
+    ).toBe('2024-12-25T12:00:00');
+
+    expect(
+      extractPhotoCapturedAt({ fileName: 'Screenshot_2026-01-09-14-05-00.png' })
+    ).toBe('2026-01-09T12:00:00');
+  });
+
+  it('applies S/W hemisphere signs to EXIF GPS coordinates', () => {
+    const gps = extractPhotoGps({
+      GPSLatitude: 33.8688,
+      GPSLatitudeRef: 'S',
+      GPSLongitude: 151.2093,
+      GPSLongitudeRef: 'E',
+    });
+    expect(gps.lat).toBeCloseTo(-33.8688, 3);
+    expect(gps.lng).toBeCloseTo(151.2093, 3);
+  });
+});
+
+

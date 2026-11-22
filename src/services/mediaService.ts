@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import { extractPhotoCapturedAt, extractPhotoGps } from './photoMetadata';
 
 export interface ProcessedPhotoResult {
   photoUri: string;
@@ -43,16 +44,17 @@ export async function pickAndOptimizeMemoryPhoto(
     return null;
   }
 
+  // Pass quality: 1 so Android does NOT re-encode and strip EXIF tags before ImagePicker reads them
   const pickerResult =
     source === 'camera'
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
-          quality: 0.9,
+          quality: 1,
           exif: true,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          quality: 0.9,
+          quality: 1,
           exif: true,
         });
 
@@ -62,9 +64,12 @@ export async function pickAndOptimizeMemoryPhoto(
 
   const asset = pickerResult.assets[0];
   const exif = (asset.exif ?? {}) as Record<string, unknown>;
-  const capturedAt = parseExifDate(exif.DateTimeOriginal as string | undefined);
-  const lat = typeof exif.GPSLatitude === 'number' ? exif.GPSLatitude : undefined;
-  const lng = typeof exif.GPSLongitude === 'number' ? exif.GPSLongitude : undefined;
+  const capturedAt = extractPhotoCapturedAt({
+    exif,
+    fileName: asset.fileName,
+    uri: asset.uri,
+  });
+  const { lat, lng } = extractPhotoGps(exif);
 
   return optimizeAndPersistPhoto(asset.uri, `memories/${tripId}`, 1600, 0.8, true, {
     capturedAt,
@@ -190,14 +195,6 @@ export async function optimizeAndPersistPhoto(
       lng: meta?.lng,
     };
   }
-}
-
-function parseExifDate(exifDate?: string): string | undefined {
-  if (!exifDate) return undefined;
-  // EXIF format: "2026:10:18 06:45:12"
-  const m = exifDate.match(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2})/);
-  if (!m) return undefined;
-  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`;
 }
 
 /**

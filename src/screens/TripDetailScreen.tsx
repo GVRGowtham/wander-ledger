@@ -119,6 +119,10 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [memNote, setMemNote] = useState('');
   const [memPlace, setMemPlace] = useState('');
   const [memDate, setMemDate] = useState(new Date().toISOString().slice(0, 10));
+  const [memCapturedTime, setMemCapturedTime] = useState<string | undefined>(undefined);
+  const [memDateAutoDetected, setMemDateAutoDetected] = useState(false);
+  const [memLat, setMemLat] = useState<number | undefined>(undefined);
+  const [memLng, setMemLng] = useState<number | undefined>(undefined);
   const [memMood, setMemMood] = useState(MOOD_STICKERS[0]);
   const [memPhotoUri, setMemPhotoUri] = useState<string | undefined>(undefined);
   const [memThumbUri, setMemThumbUri] = useState<string | undefined>(undefined);
@@ -235,6 +239,10 @@ export const TripDetailScreen: React.FC<Props> = ({
     setMemNote('');
     setMemPlace('');
     setMemDate(new Date().toISOString().slice(0, 10));
+    setMemCapturedTime(undefined);
+    setMemDateAutoDetected(false);
+    setMemLat(undefined);
+    setMemLng(undefined);
     setMemMood(MOOD_STICKERS[0]);
     setMemPhotoUri(undefined);
     setMemThumbUri(undefined);
@@ -247,6 +255,10 @@ export const TripDetailScreen: React.FC<Props> = ({
     setMemNote(m.note);
     setMemPlace(m.placeName || '');
     setMemDate(m.capturedAt.slice(0, 10) || trip.startDate);
+    setMemCapturedTime(m.capturedAt.length >= 19 ? m.capturedAt.slice(11, 19) : undefined);
+    setMemDateAutoDetected(false);
+    setMemLat(m.lat);
+    setMemLng(m.lng);
     setMemMood(m.moodSticker || MOOD_STICKERS[0]);
     setMemPhotoUri(m.photoUri);
     setMemThumbUri(m.thumbUri);
@@ -258,6 +270,17 @@ export const TripDetailScreen: React.FC<Props> = ({
     if (res) {
       setMemPhotoUri(res.photoUri);
       setMemThumbUri(res.thumbUri);
+      if (res.capturedAt) {
+        setMemDate(res.capturedAt.slice(0, 10));
+        setMemCapturedTime(res.capturedAt.slice(11, 19));
+        setMemDateAutoDetected(true);
+      } else {
+        setMemDateAutoDetected(false);
+      }
+      if (res.lat !== undefined && res.lng !== undefined) {
+        setMemLat(res.lat);
+        setMemLng(res.lng);
+      }
       Haptics.selectionAsync().catch(() => {});
     }
   };
@@ -268,7 +291,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       return;
     }
     const cleanDate = memDate.trim() || new Date().toISOString().slice(0, 10);
-    const timeSuffix = new Date().toISOString().slice(11, 19);
+    const timeSuffix = memCapturedTime || new Date().toISOString().slice(11, 19);
 
     if (editingMemoryId) {
       await editMemory(editingMemoryId, {
@@ -289,6 +312,8 @@ export const TripDetailScreen: React.FC<Props> = ({
         note: memNote.trim() || 'A favorite moment from the journey ✨',
         capturedAt: `${cleanDate}T${timeSuffix}`,
         placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
+        lat: memLat,
+        lng: memLng,
         photoUri: memPhotoUri,
         thumbUri: memThumbUri,
         illustrationKey: memPhotoUri ? undefined : 'torii',
@@ -1148,10 +1173,16 @@ export const TripDetailScreen: React.FC<Props> = ({
               style={styles.previewMemImg}
               resizeMode="cover"
             />
+            {memDateAutoDetected && (
+              <Text style={styles.tinyNote}>
+                ✨ Auto-filled date from photo ({memDate})
+              </Text>
+            )}
             <TouchableOpacity
               onPress={() => {
                 setMemPhotoUri(undefined);
                 setMemThumbUri(undefined);
+                setMemDateAutoDetected(false);
               }}
               style={styles.resetCoverBtn}
             >
@@ -1184,7 +1215,10 @@ export const TripDetailScreen: React.FC<Props> = ({
             <DatePickerField
               label="Date"
               value={memDate}
-              onChange={setMemDate}
+              onChange={(d) => {
+                setMemDate(d);
+                setMemDateAutoDetected(false);
+              }}
               placeholder="Pick date"
               compact
             />
