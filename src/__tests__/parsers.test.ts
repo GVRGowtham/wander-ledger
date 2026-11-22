@@ -976,3 +976,54 @@ Total calculated fare: 69422`;
   });
 });
 
+import {
+  formatFlightItinerarySummary,
+  inferPrimaryDestinationFromLegs,
+} from '../services/ocrParser';
+
+describe('v0.4.4 Multi-Leg Flight Itinerary Parsing (Round-Trip / Open-Jaw / Connecting)', () => {
+  it('extracts all 4 flights from an open-jaw Etihad PDF (BLR->AUH->ZRH + FRA->AUH->BLR) with dates, single fare & ZRH destination', () => {
+    const fourLegEtihadPdf = `ETIHAD AIRWAYS
+Electronic Ticket Receipt
+Date of issue: 12 Sep 2025
+Booking reference: 7CHIQH
+Passenger: SRUTHY SANKARANARAYANAN
+
+Outbound: Bengaluru (BLR) to Zurich (ZRH)
+Fri, 31 Oct 2025  EY 217  22:00 Bengaluru (BLR) -> 00:50 Abu Dhabi (AUH)
+Sat, 01 Nov 2025  EY 73   02:25 Abu Dhabi (AUH) -> 06:40 Zurich (ZRH)
+
+Return: Frankfurt (FRA) to Bengaluru (BLR)
+Sat, 08 Nov 2025  EY 122  10:45 Frankfurt (FRA) -> 19:55 Abu Dhabi (AUH)
+Sun, 09 Nov 2025  EY 216  21:20 Abu Dhabi (AUH) -> 03:00 Bengaluru (BLR)
+
+Baggage Allowance
+EY 217: 30 KG checked baggage
+EY 73: 30 KG checked baggage
+EY 122: 30 KG checked baggage
+EY 216: 30 KG checked baggage
+
+Payment Summary
+Base Fare  INR 52,000
+Taxes & Fees  INR 408,804
+Total Calculated Fare  INR 69,422`;
+
+    const parsed = parseDocumentOcrText(fourLegEtihadPdf, 'INR');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.pnr).toBe('7CHIQH');
+      expect(parsed.ticketAmount).toBe(69422);
+      expect(parsed.ticketCurrency).toBe('INR');
+      expect(parsed.legs?.length).toBe(4);
+      expect(parsed.legs?.map((l) => `${l.flightNumber}:${l.originIata}->${l.destIata}:${l.flightDate}`)).toEqual([
+        'EY 217:BLR->AUH:2025-10-31',
+        'EY 73:AUH->ZRH:2025-11-01',
+        'EY 122:FRA->AUH:2025-11-08',
+        'EY 216:AUH->BLR:2025-11-09',
+      ]);
+
+      expect(formatFlightItinerarySummary(parsed.legs!)).toBe('BLR → AUH → ZRH • FRA → AUH → BLR');
+      expect(inferPrimaryDestinationFromLegs(parsed.legs!)).toBe('ZRH');
+    }
+  });
+});

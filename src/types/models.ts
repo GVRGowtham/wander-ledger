@@ -186,6 +186,20 @@ export interface LoyaltyAccount {
   updatedAt: string;
 }
 
+export interface ParsedFlightLeg {
+  airlineCode: string;
+  airlineName: string;
+  flightNumber: string;
+  originIata: string;
+  destIata: string;
+  flightDate: string; // YYYY-MM-DD
+  seat?: string;
+  cabinClass?: string;
+  distanceMiles: number;
+  estimatedDurationMin: number;
+  loyaltyProgram: string;
+}
+
 export interface ParsedBoardingPass {
   kind: 'boarding_pass';
   source?: 'barcode' | 'ocr';
@@ -207,6 +221,8 @@ export interface ParsedBoardingPass {
   rawBarcode: string;
   ticketAmount?: number;
   ticketCurrency?: string;
+  /** All flight legs when a booking confirmation PDF contains multi-leg / round-trip flights. */
+  legs?: ParsedFlightLeg[];
   rawText?: string;
   imageUri?: string;
 }

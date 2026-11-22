@@ -40,6 +40,8 @@ import { convertCurrency } from '../services/fxService';
 import {
   DetectedMoneyCandidate,
   extractMoneyCandidates,
+  formatFlightItinerarySummary,
+  inferPrimaryDestinationFromLegs,
   mergeOcrTexts,
   parseDocumentOcrText,
 } from '../services/ocrParser';
@@ -48,6 +50,8 @@ import {
   DistanceUnit,
   ExpenseCategory,
   IncomingSharePayload,
+  ParsedBoardingPass,
+  ParsedFlightLeg,
   ScanResult,
   Trip,
 } from '../types/models';
@@ -473,29 +477,148 @@ export const ScannerScreen: React.FC<Props> = ({
     }
   };
 
-  const updateFlightField = (patch: Partial<Extract<ScanResult, { kind: 'boarding_pass' }>>) => {
+  const getFlightLegs = (scan: ParsedBoardingPass): ParsedFlightLeg[] => {
+    if (scan.legs && scan.legs.length > 0) return scan.legs;
+    return [
+      {
+        airlineCode: scan.airlineCode,
+        airlineName: scan.airlineName,
+        flightNumber: scan.flightNumber,
+        originIata: scan.originIata,
+        destIata: scan.destIata,
+        flightDate: scan.flightDate,
+        seat: scan.seat || undefined,
+        cabinClass: scan.cabinClass,
+        distanceMiles: scan.distanceMiles,
+        estimatedDurationMin: scan.estimatedDurationMin,
+        loyaltyProgram: scan.loyaltyProgram,
+      },
+    ];
+  };
+
+  const syncPrimaryFromLegs = (
+    prev: ParsedBoardingPass,
+    legs: ParsedFlightLeg[]
+  ): ParsedBoardingPass => {
+    const first = legs[0];
+    if (!first) return { ...prev, legs };
+    return {
+      ...prev,
+      airlineCode: first.airlineCode,
+      airlineName: first.airlineName,
+      flightNumber: first.flightNumber,
+      originIata: first.originIata,
+      destIata: first.destIata,
+      flightDate: first.flightDate,
+      seat: first.seat ?? prev.seat,
+      distanceMiles: first.distanceMiles,
+      estimatedDurationMin: first.estimatedDurationMin,
+      loyaltyProgram: first.loyaltyProgram,
+      legs,
+    };
+  };
+
+  const updateFlightField = (patch: Partial<ParsedBoardingPass>) => {
     setScanResult((prev) => {
       if (!prev || prev.kind !== 'boarding_pass') return prev;
       const next = { ...prev, ...patch };
-      if (patch.originIata !== undefined || patch.destIata !== undefined) {
-        const o = lookupAirport(next.originIata);
-        const d = lookupAirport(next.destIata);
-        if (o && d) {
-          next.distanceMiles = calculateDistanceMiles(o.lat, o.lng, d.lat, d.lng);
-          next.estimatedDurationMin = estimateFlightDurationMinutes(next.distanceMiles);
+      if (
+        patch.originIata !== undefined ||
+        patch.destIata !== undefined ||
+        patch.flightNumber !== undefined ||
+        patch.flightDate !== undefined
+      ) {
+        const legs = [...getFlightLegs(prev)];
+        const leg0 = { ...legs[0] };
+        if (patch.originIata !== undefined) leg0.originIata = patch.originIata;
+        if (patch.destIata !== undefined) leg0.destIata = patch.destIata;
+        if (patch.flightDate !== undefined) leg0.flightDate = patch.flightDate;
+        if (patch.flightNumber !== undefined) {
+          leg0.flightNumber = patch.flightNumber;
+          const m = patch.flightNumber.trim().toUpperCase().match(/^([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})/);
+          if (m) {
+            const al = lookupAirline(m[1]);
+            leg0.airlineCode = al.code;
+            leg0.airlineName = al.name;
+            leg0.loyaltyProgram = al.loyaltyProgram;
+          }
         }
+        const o = lookupAirport(leg0.originIata);
+        const d = lookupAirport(leg0.destIata);
+        if (o && d) {
+          leg0.distanceMiles = calculateDistanceMiles(o.lat, o.lng, d.lat, d.lng);
+          leg0.estimatedDurationMin = estimateFlightDurationMinutes(leg0.distanceMiles);
+        }
+        legs[0] = leg0;
+        return syncPrimaryFromLegs(next, legs);
       }
+      return next;
+    });
+  };
+
+  const updateFlightLeg = (index: number, patch: Partial<ParsedFlightLeg>) => {
+    setScanResult((prev) => {
+      if (!prev || prev.kind !== 'boarding_pass') return prev;
+      const legs = [...getFlightLegs(prev)];
+      if (!legs[index]) return prev;
+      const updated = { ...legs[index], ...patch };
       if (patch.flightNumber !== undefined) {
         const m = patch.flightNumber.trim().toUpperCase().match(/^([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})/);
         if (m) {
           const al = lookupAirline(m[1]);
-          next.airlineCode = al.code;
-          next.airlineName = al.name;
-          next.loyaltyProgram = al.loyaltyProgram;
+          updated.airlineCode = al.code;
+          updated.airlineName = al.name;
+          updated.loyaltyProgram = al.loyaltyProgram;
         }
       }
-      return next;
+      if (patch.originIata !== undefined || patch.destIata !== undefined) {
+        const o = lookupAirport(updated.originIata);
+        const d = lookupAirport(updated.destIata);
+        if (o && d) {
+          updated.distanceMiles = calculateDistanceMiles(o.lat, o.lng, d.lat, d.lng);
+          updated.estimatedDurationMin = estimateFlightDurationMinutes(updated.distanceMiles);
+        } else {
+          updated.distanceMiles = 0;
+        }
+      }
+      legs[index] = updated;
+      return syncPrimaryFromLegs(prev, legs);
     });
+  };
+
+  const addFlightLeg = () => {
+    setScanResult((prev) => {
+      if (!prev || prev.kind !== 'boarding_pass') return prev;
+      const legs = [...getFlightLegs(prev)];
+      const last = legs[legs.length - 1];
+      const nextOrigin = last?.destIata && last.destIata !== 'TBD' ? last.destIata : '';
+      const newLeg: ParsedFlightLeg = {
+        airlineCode: last?.airlineCode ?? prev.airlineCode,
+        airlineName: last?.airlineName ?? prev.airlineName,
+        flightNumber: `${last?.airlineCode ?? prev.airlineCode} `,
+        originIata: nextOrigin,
+        destIata: '',
+        flightDate: last?.flightDate ?? prev.flightDate,
+        cabinClass: prev.cabinClass,
+        distanceMiles: 0,
+        estimatedDurationMin: 120,
+        loyaltyProgram: last?.loyaltyProgram ?? prev.loyaltyProgram,
+      };
+      legs.push(newLeg);
+      return syncPrimaryFromLegs(prev, legs);
+    });
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  const removeFlightLeg = (index: number) => {
+    setScanResult((prev) => {
+      if (!prev || prev.kind !== 'boarding_pass') return prev;
+      const legs = [...getFlightLegs(prev)];
+      if (legs.length <= 1) return prev;
+      legs.splice(index, 1);
+      return syncPrimaryFromLegs(prev, legs);
+    });
+    Haptics.selectionAsync().catch(() => {});
   };
 
   const updateTransportField = (patch: Partial<Extract<ScanResult, { kind: 'transport' }>>) => {
@@ -527,10 +650,16 @@ export const ScannerScreen: React.FC<Props> = ({
       return { title: 'New Adventure', city: 'Explore', dateStart: today, dateEnd: today };
     }
     if (scanResult.kind === 'boarding_pass') {
-      const destAp = lookupAirport(scanResult.destIata);
-      const city = destAp?.city ?? (scanResult.destIata !== 'TBD' ? scanResult.destIata : scanResult.flightNumber);
-      const start = scanResult.flightDate;
-      const end = addDays(start, 5);
+      const legs = getFlightLegs(scanResult);
+      const primaryDestIata = inferPrimaryDestinationFromLegs(legs);
+      const destAp = lookupAirport(primaryDestIata);
+      const city =
+        destAp?.city ??
+        (primaryDestIata !== 'TBD' ? primaryDestIata : scanResult.flightNumber);
+      const sortedDates = legs.map((l) => l.flightDate).filter(Boolean).sort();
+      const start = sortedDates[0] ?? scanResult.flightDate;
+      const lastDate = sortedDates[sortedDates.length - 1] ?? start;
+      const end = lastDate > start ? lastDate : addDays(start, 5);
       return {
         title: `${city} Trip ${destAp?.flag ?? '✈️'}`,
         city,
@@ -577,7 +706,8 @@ export const ScannerScreen: React.FC<Props> = ({
       const auto = getAutoTripSuggestion();
       const vibeHint =
         scanResult.kind === 'boarding_pass'
-          ? lookupAirport(scanResult.destIata)?.city ?? scanResult.destIata
+          ? lookupAirport(inferPrimaryDestinationFromLegs(getFlightLegs(scanResult)))?.city ??
+            auto.city
           : auto.city;
       const inferred = inferDestinationVibe(vibeHint);
       finalTripId = generateId('trip');
@@ -604,37 +734,44 @@ export const ScannerScreen: React.FC<Props> = ({
     }
 
     if (scanResult.kind === 'boarding_pass') {
-      const originAp = lookupAirport(scanResult.originIata);
-      const destAp = lookupAirport(scanResult.destIata);
-      addFlight({
-        id: generateId('flt'),
-        tripId: finalTripId,
-        airlineCode: scanResult.airlineCode,
-        airlineName: scanResult.airlineName,
-        flightNumber: scanResult.flightNumber,
-        pnr: scanResult.pnr || undefined,
-        originIata: scanResult.originIata.toUpperCase(),
-        originCity: originAp?.city ?? scanResult.originIata,
-        destIata: scanResult.destIata.toUpperCase(),
-        destCity: destAp?.city ?? scanResult.destIata,
-        departureTime: enrichment?.departureTime ?? `${scanResult.flightDate}T10:30:00Z`,
-        arrivalTime: enrichment?.arrivalTime ?? `${scanResult.flightDate}T16:30:00Z`,
-        durationMinutes: enrichment?.durationMinutes ?? scanResult.estimatedDurationMin,
-        seat: scanResult.seat || undefined,
-        cabinClass: scanResult.cabinClass || undefined,
-        terminal: enrichment?.terminal,
-        gate: enrichment?.gate,
-        aircraft: enrichment?.aircraft,
-        status: enrichment?.status ?? 'scheduled',
-        distanceMiles: scanResult.distanceMiles,
-        milesEarned: scanResult.distanceMiles,
-        loyaltyProgram: scanResult.loyaltyProgram,
-        frequentFlyerNumber: scanResult.frequentFlyerNumber,
-        enrichedOnline: Boolean(enrichment?.enrichedOnline),
-        rawBarcode: scanResult.rawBarcode || undefined,
-        createdAt: now,
+      const legs = getFlightLegs(scanResult);
+      legs.forEach((leg, idx) => {
+        const cleanOrigin = (leg.originIata || 'TBD').trim().toUpperCase();
+        const cleanDest = (leg.destIata || 'TBD').trim().toUpperCase();
+        const originAp = lookupAirport(cleanOrigin);
+        const destAp = lookupAirport(cleanDest);
+        const legEnrich = idx === 0 ? enrichment : null;
+        addFlight({
+          id: generateId('flt'),
+          tripId: finalTripId,
+          airlineCode: leg.airlineCode,
+          airlineName: leg.airlineName,
+          flightNumber: leg.flightNumber.trim() || `${leg.airlineCode} Flight`,
+          pnr: scanResult.pnr || undefined,
+          originIata: cleanOrigin,
+          originCity: originAp?.city ?? cleanOrigin,
+          destIata: cleanDest,
+          destCity: destAp?.city ?? cleanDest,
+          departureTime: legEnrich?.departureTime ?? `${leg.flightDate}T10:30:00Z`,
+          arrivalTime: legEnrich?.arrivalTime ?? `${leg.flightDate}T16:30:00Z`,
+          durationMinutes: legEnrich?.durationMinutes ?? leg.estimatedDurationMin,
+          seat: leg.seat || (idx === 0 ? scanResult.seat || undefined : undefined),
+          cabinClass: leg.cabinClass || scanResult.cabinClass || undefined,
+          terminal: legEnrich?.terminal,
+          gate: legEnrich?.gate,
+          aircraft: legEnrich?.aircraft,
+          status: legEnrich?.status ?? 'scheduled',
+          distanceMiles: leg.distanceMiles,
+          milesEarned: leg.distanceMiles,
+          loyaltyProgram: leg.loyaltyProgram,
+          frequentFlyerNumber: scanResult.frequentFlyerNumber,
+          enrichedOnline: Boolean(legEnrich?.enrichedOnline),
+          rawBarcode: idx === 0 ? scanResult.rawBarcode || undefined : undefined,
+          createdAt: now,
+        });
       });
 
+      // Log ONE single combined ticket expense for the entire booking (even when 2–4 flights are added!)
       if (scanResult.ticketAmount && scanResult.ticketAmount > 0) {
         const cleanCurr = (scanResult.ticketCurrency || '').trim().toUpperCase();
         const curr = cleanCurr.length === 3 ? cleanCurr : homeCurrency;
@@ -644,17 +781,23 @@ export const ScannerScreen: React.FC<Props> = ({
           homeCurrency,
           fxRates
         );
+        const routeSummary = formatFlightItinerarySummary(legs);
+        const merchantLabel =
+          legs.length > 1
+            ? `${scanResult.airlineName.split(' ')[0]} (${legs.length} flights • ${routeSummary})`
+            : `${scanResult.airlineName} (${legs[0].flightNumber})`;
+
         addExpense({
           id: generateId('exp'),
           tripId: finalTripId,
-          merchant: `${scanResult.airlineName} (${scanResult.flightNumber})`,
+          merchant: merchantLabel,
           category: 'flights',
           localAmount: scanResult.ticketAmount,
           localCurrency: curr,
           homeAmount: converted,
           homeCurrency,
           fxRateUsed: rate,
-          expenseDate: scanResult.flightDate,
+          expenseDate: legs[0]?.flightDate ?? scanResult.flightDate,
           receiptUri: scanResult.imageUri,
           receiptRawText: scanResult.rawText,
           createdAt: now,
@@ -1009,7 +1152,9 @@ export const ScannerScreen: React.FC<Props> = ({
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.detectedBadge}>
                     {scanResult.kind === 'boarding_pass'
-                      ? scanResult.source === 'ocr'
+                      ? getFlightLegs(scanResult).length > 1
+                        ? `✈️ ${getFlightLegs(scanResult).length} FLIGHTS READ`
+                        : scanResult.source === 'ocr'
                         ? '✈️ FLIGHT BOOKING READ'
                         : '✈️ BOARDING PASS DECODED'
                       : scanResult.kind === 'transport'
@@ -1099,143 +1244,229 @@ export const ScannerScreen: React.FC<Props> = ({
                 </View>
               )}
 
-              {scanResult.kind === 'boarding_pass' && (
-                <View style={{ gap: 8 }}>
-                  <Text style={styles.detectedTitle}>
-                    {scanResult.airlineName.split(' ')[0]} {scanResult.flightNumber} ({scanResult.originIata} →{' '}
-                    {scanResult.destIata})
-                  </Text>
+              {scanResult.kind === 'boarding_pass' && (() => {
+                const flightLegs = getFlightLegs(scanResult);
+                const isMultiLeg = flightLegs.length > 1;
+                const totalMiles = flightLegs.reduce((sum, l) => sum + (l.distanceMiles || 0), 0);
+                const routeHeadline = isMultiLeg
+                  ? formatFlightItinerarySummary(flightLegs)
+                  : `${scanResult.airlineName.split(' ')[0]} ${scanResult.flightNumber} (${scanResult.originIata} → ${scanResult.destIata})`;
+                const activeFareCurr =
+                  (scanResult.ticketCurrency || '').length === 3
+                    ? scanResult.ticketCurrency!
+                    : homeCurrency;
 
-                  <View style={styles.editRow}>
-                    <EditableField
-                      label="Flight #"
-                      value={scanResult.flightNumber}
-                      autoCapitalize="characters"
-                      onChangeText={(v) => updateFlightField({ flightNumber: v.toUpperCase() })}
+                return (
+                  <View style={{ gap: 8 }}>
+                    <Text style={styles.detectedTitle}>{routeHeadline}</Text>
+
+                    {!isMultiLeg ? (
+                      <>
+                        <View style={styles.editRow}>
+                          <EditableField
+                            label="Flight #"
+                            value={scanResult.flightNumber}
+                            autoCapitalize="characters"
+                            onChangeText={(v) => updateFlightField({ flightNumber: v.toUpperCase() })}
+                          />
+                          <EditableField
+                            label="PNR / Ref"
+                            value={scanResult.pnr}
+                            placeholder="Optional"
+                            autoCapitalize="characters"
+                            onChangeText={(v) => updateFlightField({ pnr: v.toUpperCase() })}
+                          />
+                        </View>
+
+                        <View style={styles.editRow}>
+                          <EditableField
+                            label="From (IATA)"
+                            value={scanResult.originIata}
+                            autoCapitalize="characters"
+                            onChangeText={(v) =>
+                              updateFlightField({ originIata: v.toUpperCase().slice(0, 3) })
+                            }
+                          />
+                          <EditableField
+                            label="To (IATA)"
+                            value={scanResult.destIata}
+                            autoCapitalize="characters"
+                            onChangeText={(v) =>
+                              updateFlightField({ destIata: v.toUpperCase().slice(0, 3) })
+                            }
+                          />
+                        </View>
+
+                        <DatePickerField
+                          label="Flight Date"
+                          value={scanResult.flightDate}
+                          onChange={(v) => updateFlightField({ flightDate: v })}
+                          compact
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <EditableField
+                          label="Shared PNR / Booking Ref"
+                          value={scanResult.pnr}
+                          placeholder="Optional"
+                          autoCapitalize="characters"
+                          onChangeText={(v) => updateFlightField({ pnr: v.toUpperCase() })}
+                        />
+
+                        {flightLegs.map((leg, idx) => (
+                          <View key={`leg-${idx}`} style={styles.legCard}>
+                            <View style={styles.legHeaderRow}>
+                              <Text style={styles.legHeaderTitle}>
+                                ✈️ Flight {idx + 1} • {leg.originIata || '???'} → {leg.destIata || '???'}
+                                {leg.distanceMiles > 0
+                                  ? ` (${formatFlightDistance(leg.distanceMiles, distanceUnit)})`
+                                  : ''}
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => removeFlightLeg(idx)}
+                                style={styles.legRemoveBtn}
+                              >
+                                <Text style={styles.legRemoveText}>✕</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.editRow}>
+                              <EditableField
+                                label="Flight #"
+                                value={leg.flightNumber}
+                                autoCapitalize="characters"
+                                onChangeText={(v) =>
+                                  updateFlightLeg(idx, { flightNumber: v.toUpperCase() })
+                                }
+                              />
+                              <EditableField
+                                label="From"
+                                value={leg.originIata}
+                                autoCapitalize="characters"
+                                onChangeText={(v) =>
+                                  updateFlightLeg(idx, { originIata: v.toUpperCase().slice(0, 3) })
+                                }
+                              />
+                              <EditableField
+                                label="To"
+                                value={leg.destIata}
+                                autoCapitalize="characters"
+                                onChangeText={(v) =>
+                                  updateFlightLeg(idx, { destIata: v.toUpperCase().slice(0, 3) })
+                                }
+                              />
+                            </View>
+
+                            <DatePickerField
+                              label={`Flight ${idx + 1} Date`}
+                              value={leg.flightDate}
+                              onChange={(v) => updateFlightLeg(idx, { flightDate: v })}
+                              compact
+                            />
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    <TouchableOpacity
+                      onPress={addFlightLeg}
+                      style={styles.addLegBtn}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.addLegBtnText}>
+                        + Add {isMultiLeg ? 'another flight leg' : 'connecting / return flight'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.editRow}>
+                      <DecimalAmountField
+                        label={isMultiLeg ? 'Total Ticket Fare (1 Spend Entry)' : 'Fare Paid (Optional)'}
+                        value={scanResult.ticketAmount}
+                        placeholder="Leave blank to skip"
+                        onChangeValue={(amt) =>
+                          updateFlightField({
+                            ticketAmount: amt > 0 ? amt : undefined,
+                            ticketCurrency:
+                              amt > 0
+                                ? scanResult.ticketCurrency || homeCurrency
+                                : scanResult.ticketCurrency,
+                          })
+                        }
+                      />
+                      <EditableField
+                        label="Currency"
+                        value={scanResult.ticketCurrency ?? homeCurrency}
+                        placeholder={homeCurrency}
+                        autoCapitalize="characters"
+                        onChangeText={(v) =>
+                          updateFlightField({
+                            ticketCurrency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
+                          })
+                        }
+                      />
+                    </View>
+
+                    <DetectedAmountsBar
+                      candidates={moneyCandidates}
+                      activeAmount={scanResult.ticketAmount}
+                      activeCurrency={scanResult.ticketCurrency ?? homeCurrency}
+                      onSelect={(c) => {
+                        updateFlightField({ ticketAmount: c.amount, ticketCurrency: c.currency });
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
                     />
-                    <EditableField
-                      label="PNR / Ref"
-                      value={scanResult.pnr}
-                      placeholder="Optional"
-                      autoCapitalize="characters"
-                      onChangeText={(v) => updateFlightField({ pnr: v.toUpperCase() })}
-                    />
+
+                    <View style={styles.gridTwo}>
+                      <InfoPair
+                        label={isMultiLeg ? `Total Distance (${flightLegs.length} legs)` : 'Distance & Time'}
+                        value={
+                          totalMiles > 0
+                            ? isMultiLeg
+                              ? formatFlightDistance(totalMiles, distanceUnit)
+                              : `${formatFlightDistance(totalMiles, distanceUnit)} (${formatDuration(
+                                  enrichment?.durationMinutes ?? scanResult.estimatedDurationMin
+                                )})`
+                            : 'Enter IATA codes for distance'
+                        }
+                      />
+                      <InfoPair
+                        label={
+                          scanResult.ticketAmount &&
+                          scanResult.ticketAmount > 0 &&
+                          activeFareCurr !== homeCurrency
+                            ? `Fare in ${homeCurrency}`
+                            : 'Loyalty Miles'
+                        }
+                        value={
+                          scanResult.ticketAmount &&
+                          scanResult.ticketAmount > 0 &&
+                          activeFareCurr !== homeCurrency
+                            ? formatMoney(
+                                convertCurrency(
+                                  scanResult.ticketAmount,
+                                  activeFareCurr,
+                                  homeCurrency,
+                                  fxRates
+                                ).converted,
+                                homeCurrency
+                              )
+                            : `+${totalMiles.toLocaleString()} mi ✨`
+                        }
+                      />
+                    </View>
+
+                    <View style={styles.routeNoteBox}>
+                      <Text style={styles.routeNoteText}>
+                        ✓ Adds {isMultiLeg ? `all ${flightLegs.length} flights` : 'to Bookings timeline'}, World Map & {scanResult.loyaltyProgram}
+                        {scanResult.ticketAmount && scanResult.ticketAmount > 0
+                          ? ` + logs 1 ${formatMoney(scanResult.ticketAmount, activeFareCurr)} expense to Spend`
+                          : ''}
+                      </Text>
+                    </View>
                   </View>
-
-                  <View style={styles.editRow}>
-                    <EditableField
-                      label="From (IATA)"
-                      value={scanResult.originIata}
-                      autoCapitalize="characters"
-                      onChangeText={(v) => updateFlightField({ originIata: v.toUpperCase().slice(0, 3) })}
-                    />
-                    <EditableField
-                      label="To (IATA)"
-                      value={scanResult.destIata}
-                      autoCapitalize="characters"
-                      onChangeText={(v) => updateFlightField({ destIata: v.toUpperCase().slice(0, 3) })}
-                    />
-                  </View>
-
-                  <DatePickerField
-                    label="Flight Date"
-                    value={scanResult.flightDate}
-                    onChange={(v) => updateFlightField({ flightDate: v })}
-                    compact
-                  />
-
-                  <View style={styles.editRow}>
-                    <DecimalAmountField
-                      label="Fare Paid (Optional)"
-                      value={scanResult.ticketAmount}
-                      placeholder="Leave blank to skip"
-                      onChangeValue={(amt) =>
-                        updateFlightField({
-                          ticketAmount: amt > 0 ? amt : undefined,
-                          ticketCurrency:
-                            amt > 0
-                              ? scanResult.ticketCurrency || homeCurrency
-                              : scanResult.ticketCurrency,
-                        })
-                      }
-                    />
-                    <EditableField
-                      label="Currency"
-                      value={scanResult.ticketCurrency ?? homeCurrency}
-                      placeholder={homeCurrency}
-                      autoCapitalize="characters"
-                      onChangeText={(v) =>
-                        updateFlightField({
-                          ticketCurrency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
-                        })
-                      }
-                    />
-                  </View>
-
-                  <DetectedAmountsBar
-                    candidates={moneyCandidates}
-                    activeAmount={scanResult.ticketAmount}
-                    activeCurrency={scanResult.ticketCurrency ?? homeCurrency}
-                    onSelect={(c) => {
-                      updateFlightField({ ticketAmount: c.amount, ticketCurrency: c.currency });
-                      Haptics.selectionAsync().catch(() => {});
-                    }}
-                  />
-
-                  <View style={styles.gridTwo}>
-                    <InfoPair
-                      label="Distance & Time"
-                      value={
-                        scanResult.distanceMiles > 0
-                          ? `${formatFlightDistance(scanResult.distanceMiles, distanceUnit)} (${formatDuration(
-                              enrichment?.durationMinutes ?? scanResult.estimatedDurationMin
-                            )})`
-                          : 'Enter IATA codes for distance'
-                      }
-                    />
-                    <InfoPair
-                      label={
-                        scanResult.ticketAmount &&
-                        scanResult.ticketAmount > 0 &&
-                        (scanResult.ticketCurrency || homeCurrency) !== homeCurrency
-                          ? `Fare in ${homeCurrency}`
-                          : 'Loyalty Miles'
-                      }
-                      value={
-                        scanResult.ticketAmount &&
-                        scanResult.ticketAmount > 0 &&
-                        (scanResult.ticketCurrency || homeCurrency) !== homeCurrency
-                          ? formatMoney(
-                              convertCurrency(
-                                scanResult.ticketAmount,
-                                (scanResult.ticketCurrency || '').length === 3
-                                  ? scanResult.ticketCurrency!
-                                  : homeCurrency,
-                                homeCurrency,
-                                fxRates
-                              ).converted,
-                              homeCurrency
-                            )
-                          : `+${scanResult.distanceMiles.toLocaleString()} mi ✨`
-                      }
-                    />
-                  </View>
-
-                  <View style={styles.routeNoteBox}>
-                    <Text style={styles.routeNoteText}>
-                      ✓ Adds to Bookings timeline, World Map & {scanResult.loyaltyProgram}
-                      {scanResult.ticketAmount && scanResult.ticketAmount > 0
-                        ? ` + logs ${formatMoney(
-                            scanResult.ticketAmount,
-                            (scanResult.ticketCurrency || '').length === 3
-                              ? scanResult.ticketCurrency!
-                              : homeCurrency
-                          )} fare to Spend`
-                        : ''}
-                    </Text>
-                  </View>
-                </View>
-              )}
+                );
+              })()}
 
               {scanResult.kind === 'transport' && (
                 <View style={{ gap: 8 }}>
@@ -2226,5 +2457,54 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '800',
     color: COLORS.ink,
+  },
+  legCard: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 10,
+    gap: 6,
+  },
+  legHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  legHeaderTitle: {
+    fontSize: 11.5,
+    fontWeight: '900',
+    color: COLORS.navy,
+    flex: 1,
+  },
+  legRemoveBtn: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legRemoveText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.inkSoft,
+  },
+  addLegBtn: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.coral,
+    backgroundColor: COLORS.coralSoft,
+    borderRadius: 12,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  addLegBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.coralDark,
   },
 });
