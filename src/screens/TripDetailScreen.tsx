@@ -668,36 +668,38 @@ export const TripDetailScreen: React.FC<Props> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Intuitive Create Instagram Post CTA right inside Memories */}
-            <TouchableOpacity
-              onPress={() => onOpenIgStudio(trip.id)}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
-                colors={['#F58529', '#DD2A7B', '#8134AF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.igBannerBtn}
+            {/* Show Create Instagram Post CTA only once at least one memory exists */}
+            {memories.length > 0 && (
+              <TouchableOpacity
+                onPress={() => onOpenIgStudio(trip.id)}
+                activeOpacity={0.9}
               >
-                <View style={styles.igLogoCircle}>
-                  <InstagramIcon size={20} variant="white" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.igBannerTitle}>Create Instagram Post</Text>
-                  <Text style={styles.igBannerSub} numberOfLines={1}>
-                    Collages, Story cards, Carousels & draft captions ✨
-                  </Text>
-                </View>
-                <Text style={styles.igBannerArrow}>→</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={['#F58529', '#DD2A7B', '#8134AF']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.igBannerBtn}
+                >
+                  <View style={styles.igLogoCircle}>
+                    <InstagramIcon size={20} variant="white" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.igBannerTitle}>Create Instagram Post</Text>
+                    <Text style={styles.igBannerSub} numberOfLines={1}>
+                      Collages, Story cards, Carousels & draft captions ✨
+                    </Text>
+                  </View>
+                  <Text style={styles.igBannerArrow}>→</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
 
             {memories.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={{ fontSize: 32 }}>📸</Text>
                 <Text style={styles.emptyTitle}>No memories captured yet!</Text>
                 <Text style={styles.emptySub}>
-                  Snap a Polaroid photo and write a quick note to start your travelogue.
+                  Add your first photo & note to start your travelogue and unlock Instagram Post Studio for collages, stories & carousels.
                 </Text>
                 <TouchableOpacity
                   onPress={openAddMemoryModal}
@@ -1376,31 +1378,52 @@ export const TripDetailScreen: React.FC<Props> = ({
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={() => {
-            setShareModal(false);
-            onOpenIgStudio(trip.id);
-          }}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={['#F58529', '#DD2A7B', '#8134AF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.igBannerBtn}
+        {memories.length > 0 ? (
+          <TouchableOpacity
+            onPress={() => {
+              setShareModal(false);
+              onOpenIgStudio(trip.id);
+            }}
+            activeOpacity={0.9}
           >
-            <View style={styles.igLogoCircle}>
-              <InstagramIcon size={18} variant="white" />
-            </View>
+            <LinearGradient
+              colors={['#F58529', '#DD2A7B', '#8134AF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.igBannerBtn}
+            >
+              <View style={styles.igLogoCircle}>
+                <InstagramIcon size={18} variant="white" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.igBannerTitle}>Open Instagram Post Studio</Text>
+                <Text style={styles.igBannerSub} numberOfLines={1}>
+                  Export Collages, Stories, Carousels & Captions
+                </Text>
+              </View>
+              <Text style={styles.igBannerArrow}>→</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => {
+              setShareModal(false);
+              setTab('memories');
+              openAddMemoryModal();
+            }}
+            style={styles.igLockedHintBtn}
+            activeOpacity={0.85}
+          >
+            <InstagramIcon size={18} variant="gradient" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.igBannerTitle}>Open Instagram Post Studio</Text>
-              <Text style={styles.igBannerSub} numberOfLines={1}>
-                Export Collages, Stories, Carousels & Captions
+              <Text style={styles.igLockedHintTitle}>Add a memory to unlock IG Post Studio</Text>
+              <Text style={styles.igLockedHintSub}>
+                Tap to capture your first photo & unlock collages & carousels
               </Text>
             </View>
-            <Text style={styles.igBannerArrow}>→</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <Text style={styles.igLockedHintArrow}>+</Text>
+          </TouchableOpacity>
+        )}
       </BottomSheetModal>
 
       {/* MANUAL FLIGHT MODAL (LOST / MISSING BOARDING PASS) */}
@@ -1982,4 +2005,19 @@ const styles = StyleSheet.create({
   igBannerTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
   igBannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600', marginTop: 1 },
   igBannerArrow: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  igLockedHintBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#FDBA74',
+  },
+  igLockedHintTitle: { color: COLORS.ink, fontWeight: '900', fontSize: 13 },
+  igLockedHintSub: { color: COLORS.inkMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  igLockedHintArrow: { color: COLORS.coral, fontSize: 20, fontWeight: '900' },
 });
