@@ -52,7 +52,9 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
+  const processingRef = useRef(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [barcodeEnabled, setBarcodeEnabled] = useState(true);
 
   const [processing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -67,6 +69,12 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
   const [selectedTripId, setSelectedTripId] = useState<string>(trips[0]?.id ?? '');
 
   const homeCurrency = profile?.homeCurrency || 'USD';
+
+  const setBusy = (val: boolean, msg = '') => {
+    processingRef.current = val;
+    setProcessing(val);
+    setStatusMessage(msg);
+  };
 
   const findBestMatchingTrip = (isoDate: string): Trip | undefined => {
     const exact = trips.find((t) => isoDate >= t.startDate && isoDate <= t.endDate);
@@ -84,12 +92,11 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
   };
 
   const handleDecodedBcbp = async (rawData: string) => {
-    if (processing || scanResult) return;
+    if (processingRef.current || scanResult) return;
     const parsed = parseIataBcbp(rawData);
     if (!parsed) return;
 
-    setProcessing(true);
-    setStatusMessage('Decoding boarding pass barcode…');
+    setBusy(true, 'Decoding boarding pass barcode…');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     applyDestinationSuggestion(parsed.flightDate);
@@ -100,11 +107,11 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     setShowRawText(false);
     setEnrichment(enriched);
     setScanResult({ ...parsed, source: 'barcode' });
-    setProcessing(false);
-    setStatusMessage('');
+    setBusy(false);
   };
 
   const handleBarcodeScanned = (event: BarcodeScanningResult) => {
+    if (processingRef.current || scanResult) return;
     if (event?.data) {
       handleDecodedBcbp(event.data);
     }
@@ -123,7 +130,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
     if (!ocrRes.text) {
       const detail = ocrRes.error
         ? `\n\nDetails: ${ocrRes.error}`
-        : '\n\nTip: Hold steady in bright lighting, fill the frame with the confirmation text, or try Pick Screenshot for email confirmations.';
+        : '\n\nTip: Hold steady in bright lighting, fill the frame with the confirmation text, or try Screenshot for email confirmations.';
       Alert.alert('No Readable Text Found', `Could not read text clearly from this image.${detail}`);
       return;
     }
@@ -152,9 +159,10 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
 
   /**
    * Captures directly from the live in-app CameraView viewfinder — NO external camera app popup!
+   * Keeps onBarcodeScanned prop stable during capture so CameraX never calls unbindAll() mid-shot.
    */
   const handleSnapLiveCamera = async () => {
-    if (processing) return;
+    if (processingRef.current) return;
     if (!permission?.granted) {
       const perm = await requestPermission();
       if (!perm.granted) return;
@@ -164,15 +172,33 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
       return;
     }
 
-    setProcessing(true);
-    setStatusMessage('Capturing document frame…');
+    setBusy(true, 'Capturing document frame…');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.9,
-        exif: false,
-      });
+      let photo = null;
+      try {
+        photo = await cameraRef.current.takePictureAsync({
+          quality: 0.85,
+          exif: false,
+        });
+      } catch (firstErr) {
+        // Fallback for Camera2-LIMITED devices that cannot bind Preview + ImageCapture + Barcode ImageAnalysis concurrently
+        if (barcodeEnabled) {
+          setStatusMessage('Switching camera to document mode…');
+          setBarcodeEnabled(false);
+          await new Promise((r) => setTimeout(r, 550));
+          if (cameraRef.current) {
+            photo = await cameraRef.current.takePictureAsync({
+              quality: 0.85,
+              exif: false,
+            });
+          }
+        } else {
+          throw firstErr;
+        }
+      }
+
       if (!photo?.uri) {
         Alert.alert('Capture Failed', 'Could not capture a photo from the live camera. Please try again.');
         return;
@@ -182,8 +208,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
       const msg = err instanceof Error ? err.message : 'Unexpected camera error';
       Alert.alert('Scan Error', `Could not scan from camera: ${msg}`);
     } finally {
-      setProcessing(false);
-      setStatusMessage('');
+      setBusy(false);
     }
   };
 
@@ -191,9 +216,8 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
    * Lets the user pick an existing booking confirmation screenshot or receipt photo from their gallery.
    */
   const handlePickFromGallery = async () => {
-    if (processing) return;
-    setProcessing(true);
-    setStatusMessage('Opening photo library…');
+    if (processingRef.current) return;
+    setBusy(true, 'Opening photo library…');
     try {
       const rawUri = await pickRawDocumentFromLibrary();
       if (!rawUri) return;
@@ -202,8 +226,7 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
       const msg = err instanceof Error ? err.message : 'Unexpected gallery error';
       Alert.alert('Import Error', `Could not read selected image: ${msg}`);
     } finally {
-      setProcessing(false);
-      setStatusMessage('');
+      setBusy(false);
     }
   };
 
@@ -493,12 +516,13 @@ export const ScannerScreen: React.FC<Props> = ({ onClose, onSavedToTrip }) => {
                   <CameraView
                     ref={cameraRef}
                     style={StyleSheet.absoluteFill}
+                    mode="picture"
                     facing="back"
                     onCameraReady={() => setCameraReady(true)}
                     barcodeScannerSettings={{
                       barcodeTypes: ['pdf417', 'aztec', 'qr', 'datamatrix'],
                     }}
-                    onBarcodeScanned={processing ? undefined : handleBarcodeScanned}
+                    onBarcodeScanned={barcodeEnabled ? handleBarcodeScanned : undefined}
                   />
                   {/* Sibling overlay (not CameraView child) */}
                   <View style={styles.reticleWrap} pointerEvents="none">
