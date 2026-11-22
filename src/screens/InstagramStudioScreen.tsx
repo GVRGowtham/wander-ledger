@@ -19,8 +19,8 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
-import * as Sharing from 'expo-sharing';
 import ViewShot, { ViewShotRef } from 'react-native-view-shot';
+import { shareImageWithCaption } from '../services/shareMediaService';
 import { InstagramIcon } from '../components/icons/InstagramIcon';
 import {
   buildCarouselSlides,
@@ -452,7 +452,6 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
     setExporting(true);
     setExportStatus('Copying caption & rendering crisp 1080p image…');
     try {
-      await Clipboard.setStringAsync(caption);
       const currentSlide = carouselSlides[activeSlideIdx] ?? carouselSlides[0];
       const uri = await captureExportJob(
         format === 'carousel' && currentSlide
@@ -464,14 +463,11 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
           : { kind: 'single', jobKey: `share_single_${Date.now()}` }
       );
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/png',
-          dialogTitle: 'Share to Instagram (Caption copied!)',
-        });
-      } else {
-        Alert.alert('Ready to Share', 'Postcard rendered and caption copied to clipboard.');
-      }
+      await shareImageWithCaption({
+        imageUri: uri,
+        caption,
+        title: `${trip.title} ${trip.flagEmoji} — WanderLedger`,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not open share sheet.';

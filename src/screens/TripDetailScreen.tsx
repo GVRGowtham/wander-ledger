@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
+  PixelRatio,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import ViewShot, { ViewShotRef } from 'react-native-view-shot';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { BoardingPassCard } from '../components/cards/BoardingPassCard';
 import { MemoryIllustration } from '../components/cards/MemoryIllustration';
@@ -23,16 +25,28 @@ import {
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
 import { InstagramIcon } from '../components/icons/InstagramIcon';
+import {
+  CanvasImageLoadScope,
+  IgSingleCanvas,
+} from '../components/instagram/IgPostcardCanvas';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
 import { convertCurrency } from '../services/fxService';
+import { generateOfflineIgCaption } from '../services/igCaptionService';
+import {
+  CollageLayoutId,
+  computeNativeExportCanvasWidth,
+  ImageDimensions,
+  PhotoCrop,
+} from '../services/igStudioHelpers';
 import {
   buildManualFlight,
   buildReturnFlight,
 } from '../services/manualFlightBuilder';
 import { pickAndOptimizeMemoryPhoto } from '../services/mediaService';
+import { shareImageWithCaption } from '../services/shareMediaService';
 import {
   CATEGORY_META,
   COLORS,
@@ -160,9 +174,25 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('dining');
 
-  // Share Modal
+  // Share Modal & Auto-Collage Postcard Export
   const [shareModal, setShareModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [sharingPostcard, setSharingPostcard] = useState(false);
+  const [postcardRenderJob, setPostcardRenderJob] = useState<{
+    jobKey: string;
+    memories: Memory[];
+    layout: CollageLayoutId;
+    imageDims: Record<string, ImageDimensions>;
+    photoCrops: Record<string, PhotoCrop>;
+  } | null>(null);
+  const postcardShotRef = useRef<ViewShotRef | null>(null);
+  const postcardReadyResolverRef = useRef<(() => void) | null>(null);
+
+  const handlePostcardImagesReady = useCallback(() => {
+    const resolve = postcardReadyResolverRef.current;
+    postcardReadyResolverRef.current = null;
+    resolve?.();
+  }, []);
 
   if (!trip) {
     return (
@@ -575,23 +605,164 @@ export const TripDetailScreen: React.FC<Props> = ({
   };
 
   const handleSharePostcard = async () => {
-    const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
-    if (!trip.isShared) {
-      saveTripSharing(trip.id, true, trip.coTravelers, token);
-    }
-    const highlights = memories
-      .slice(0, 3)
-      .map((m) => `• ${m.moodSticker} ${m.title}`)
-      .join('\n');
+    if (sharingPostcard) return;
+    setSharingPostcard(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
-    await Share.share({
-      title: `${trip.title} ${trip.flagEmoji} — WanderLedger Postcard`,
-      message: `📮 Greetings from ${trip.title} ${trip.flagEmoji}!\n${trip.startDate} → ${trip.endDate}\n✈️ ${summary.totalMilesFlown.toLocaleString()} miles flown • 📸 ${summary.memoriesCount} memories\n\nHighlights:\n${highlights || '• Exploring and making memories!'}\n\n(Private spend & receipts stay hidden on shared postcards ✨)`,
-    });
+    try {
+      const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
+      if (!trip.isShared) {
+        saveTripSharing(trip.id, true, trip.coTravelers, token);
+      }
+
+      // Prefer memories that have photos so the auto-collage looks vibrant
+      const sortedForCollage = [
+        ...memories.filter((m) => Boolean(m.photoUri)),
+        ...memories.filter((m) => !m.photoUri),
+      ].slice(0, 4);
+
+      // Measure natural photo dimensions for smart layout & face-friendly framing
+      const dimsMap: Record<string, ImageDimensions> = {};
+      await Promise.all(
+        sortedForCollage.map(
+          (m) =>
+            new Promise<void>((resolve) => {
+              if (!m.photoUri) {
+                resolve();
+                return;
+              }
+              const timeout = setTimeout(resolve, 700);
+              Image.getSize(
+                m.photoUri,
+                (width, height) => {
+                  clearTimeout(timeout);
+                  if (width > 0 && height > 0) dimsMap[m.photoUri!] = { width, height };
+                  resolve();
+                },
+                () => {
+                  clearTimeout(timeout);
+                  resolve();
+                }
+              );
+            })
+        )
+      );
+
+      // Pick orientation-aware collage layout & gentle top-bias for portrait photos so faces stay clear
+      const firstUri = sortedForCollage[0]?.photoUri;
+      const firstDims = firstUri ? dimsMap[firstUri] : undefined;
+      const firstIsPortrait = firstDims ? firstDims.height > firstDims.width * 1.05 : false;
+
+      let smartLayout: CollageLayoutId = 'single';
+      if (sortedForCollage.length === 2) {
+        smartLayout = firstIsPortrait ? 'side_by_side' : 'stacked';
+      } else if (sortedForCollage.length === 3) {
+        smartLayout = firstIsPortrait ? 'portrait_left' : 'hero_top';
+      } else if (sortedForCollage.length >= 4) {
+        smartLayout = 'grid_2x2';
+      }
+
+      const smartCrops: Record<string, PhotoCrop> = {};
+      sortedForCollage.forEach((m) => {
+        const d = m.photoUri ? dimsMap[m.photoUri] : undefined;
+        if (d && d.height > d.width * 1.05) {
+          // Slight top bias keeps faces in frame on portrait shots inside horizontal slots
+          smartCrops[m.id] = { offsetX: 0, offsetY: 0.38, zoom: 1 };
+        }
+      });
+
+      const routeStatsCaption = generateOfflineIgCaption({
+        trip,
+        memories: sortedForCollage.length > 0 ? sortedForCollage : memories,
+        flights,
+        tone: 'stats',
+        includeHashtags: false,
+        includeWatermarkTag: false,
+      });
+
+      // Render crisp 1080x1350 postcard collage behind the UI and wait for every photo to decode
+      const readyPromise = new Promise<void>((resolve) => {
+        postcardReadyResolverRef.current = resolve;
+      });
+      setPostcardRenderJob({
+        jobKey: `postcard_${trip.id}_${Date.now()}`,
+        memories: sortedForCollage,
+        layout: smartLayout,
+        imageDims: dimsMap,
+        photoCrops: smartCrops,
+      });
+
+      await readyPromise;
+      await new Promise((r) => setTimeout(r, 45));
+
+      const imageUri = await postcardShotRef.current?.capture();
+      if (!imageUri) {
+        throw new Error('Could not render postcard collage.');
+      }
+
+      setShareModal(false);
+      await shareImageWithCaption({
+        imageUri,
+        caption: routeStatsCaption,
+        title: `${trip.title} ${trip.flagEmoji} — WanderLedger Postcard`,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to share postcard.';
+      Alert.alert('Share Error', msg);
+    } finally {
+      setPostcardRenderJob(null);
+      postcardReadyResolverRef.current = null;
+      setSharingPostcard(false);
+    }
   };
 
+  const postcardExportCanvasWidth = computeNativeExportCanvasWidth(PixelRatio.get());
+
   return (
-    <View style={styles.root}>
+    <View style={styles.screenHost}>
+      {/* OFFSCREEN 1080P AUTO-POSTCARD COLLAGE RENDERER (mounted only while sharing) */}
+      {postcardRenderJob ? (
+        <View
+          pointerEvents="none"
+          collapsable={false}
+          style={styles.offscreenPostcardHost}
+        >
+          <CanvasImageLoadScope
+            key={postcardRenderJob.jobKey}
+            jobKey={postcardRenderJob.jobKey}
+            onAllLoaded={handlePostcardImagesReady}
+          >
+            <ViewShot
+              ref={postcardShotRef}
+              options={{
+                format: 'png',
+                quality: 1,
+                result: 'tmpfile',
+                width: 1080,
+                height: 1350,
+              }}
+            >
+              <IgSingleCanvas
+                trip={trip}
+                memories={postcardRenderJob.memories}
+                flights={flights}
+                format="feed"
+                template="postcard"
+                showWatermark
+                canvasWidth={postcardExportCanvasWidth}
+                layout={postcardRenderJob.layout}
+                paletteId="sunlit"
+                showPostcardNote
+                photoCrops={postcardRenderJob.photoCrops}
+                imageDims={postcardRenderJob.imageDims}
+              />
+            </ViewShot>
+          </CanvasImageLoadScope>
+        </View>
+      ) : null}
+
+      <View style={styles.root}>
       {/* Top Scenic Postcard Header */}
       <View style={styles.topHeader}>
         <DestinationBanner vibe={trip.vibe} coverPhotoUri={trip.coverPhotoUri} height={162} />
@@ -1371,10 +1542,26 @@ export const TripDetailScreen: React.FC<Props> = ({
             📮 Send Read-Only Family Postcard
           </Text>
           <Text style={styles.shareCardSub}>
-            Shares your Memories & trip highlights via WhatsApp/Messages — private receipts & spend stay hidden!
+            Auto-creates a 1080p photo collage postcard with your Route Stats caption in a single WhatsApp / Messages share — private receipts & spend stay hidden!
           </Text>
-          <TouchableOpacity onPress={handleSharePostcard} style={styles.postcardShareBtn}>
-            <Text style={styles.postcardShareText}>Share Postcard Now ✈️</Text>
+          <TouchableOpacity
+            onPress={handleSharePostcard}
+            disabled={sharingPostcard}
+            style={[
+              styles.postcardShareBtn,
+              { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+              sharingPostcard && { opacity: 0.72 },
+            ]}
+            activeOpacity={0.88}
+          >
+            {sharingPostcard ? (
+              <>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.postcardShareText}>Creating Postcard Collage…</Text>
+              </>
+            ) : (
+              <Text style={styles.postcardShareText}>Share Postcard Collage ✈️</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -1554,6 +1741,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           style={styles.input}
         />
       </BottomSheetModal>
+      </View>
     </View>
   );
 };
@@ -1584,7 +1772,14 @@ const TabPill = ({
 );
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
+  screenHost: { flex: 1, backgroundColor: COLORS.canvas, position: 'relative' },
+  offscreenPostcardHost: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 0,
+  },
+  root: { flex: 1, backgroundColor: COLORS.canvas, zIndex: 1 },
   missingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   missingText: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
   backBtn: { backgroundColor: COLORS.coralSoft, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 99 },
