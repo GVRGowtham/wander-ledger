@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WanderLedger",
+    "name": "Wanderer's Ledger",
     "slug": "wander-ledger",
     "scheme": "wanderledger",
     "version": "0.2.0",
@@ -39,20 +39,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow WanderLedger to scan boarding passes, hotel confirmations, receipts, and capture travel memories."
+          "cameraPermission": "Allow Wanderer's Ledger to scan boarding passes, hotel confirmations, receipts, and capture travel memories."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow WanderLedger to import travel memories and receipts from your photo library."
+          "photosPermission": "Allow Wanderer's Ledger to import travel memories and receipts from your photo library."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow WanderLedger to save your Instagram postcards and collages to your photo gallery.",
-          "savePhotosPermission": "Allow WanderLedger to save your Instagram postcards and collages to your photo gallery.",
+          "photosPermission": "Allow Wanderer's Ledger to save your Instagram postcards and collages to your photo gallery.",
+          "savePhotosPermission": "Allow Wanderer's Ledger to save your Instagram postcards and collages to your photo gallery.",
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": ["photo"]
         }

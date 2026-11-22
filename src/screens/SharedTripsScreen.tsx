@@ -26,7 +26,7 @@ export const SharedTripsScreen: React.FC<Props> = ({ onOpenTrip }) => {
     }
     const stats = getSummaryForTrip(trip.id);
     await Share.share({
-      title: `${trip.title} ${trip.flagEmoji} — WanderLedger Postcard`,
+      title: `${trip.title} ${trip.flagEmoji} — Wanderer's Ledger Postcard`,
       message: `📮 Check out our ${trip.title} ${trip.flagEmoji} travelogue!\n${trip.startDate} → ${trip.endDate}\n✈️ ${stats.totalMilesFlown.toLocaleString()} miles • 📸 ${stats.memoriesCount} memories\n(Private spend & receipts stay hidden automatically ✨)`,
     });
   };
@@ -96,7 +96,7 @@ export const SharedTripsScreen: React.FC<Props> = ({ onOpenTrip }) => {
       <View style={styles.infoBanner}>
         <Text style={styles.infoTitle}>📮 Family-Safe Read-Only Postcards</Text>
         <Text style={styles.infoSub}>
-          Whenever you send a Postcard link to family or friends, WanderLedger automatically shares only your Polaroid photos, stories & World Map arcs—keeping your restaurant bills and budgets 100% private.
+          Whenever you send a Postcard link to family or friends, Wanderer's Ledger automatically shares only your Polaroid photos, stories & World Map arcs—keeping your restaurant bills and budgets 100% private.
         </Text>
       </View>
     </ScrollView>

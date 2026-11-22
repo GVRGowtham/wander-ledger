@@ -106,7 +106,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
               resizeMode="cover"
             />
           </View>
-          <Text style={styles.brandTitle}>Welcome to WanderLedger</Text>
+          <Text style={styles.brandTitle}>Welcome to Wanderer's Ledger</Text>
           <Text style={styles.tagline}>
             Your sunlit pocket travelogue — every boarding pass, mile earned, restaurant bill & Polaroid memory in one happy place.
           </Text>

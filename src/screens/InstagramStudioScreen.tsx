@@ -359,7 +359,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
     if (!req.granted) {
       Alert.alert(
         'Gallery Permission Needed',
-        'Allow WanderLedger to save your Instagram postcards and carousel slides to your phone gallery.'
+        "Allow Wanderer's Ledger to save your Instagram postcards and carousel slides to your phone gallery."
       );
       return false;
     }
@@ -466,7 +466,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
       await shareImageWithCaption({
         imageUri: uri,
         caption,
-        title: `${trip.title} ${trip.flagEmoji} — WanderLedger`,
+        title: `${trip.title} ${trip.flagEmoji} — Wanderer's Ledger`,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -1083,9 +1083,9 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
             {/* Watermark Toggle */}
             <View style={styles.toggleRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitle}>✈️ WanderLedger Watermark</Text>
+                <Text style={styles.toggleTitle}>✈️ Wanderer's Ledger Watermark</Text>
                 <Text style={styles.toggleSub}>
-                  Subtle “Stamped with WanderLedger” badge on your export
+                  Subtle “Stamped with Wanderer's Ledger” badge on your export
                 </Text>
               </View>
               <Switch

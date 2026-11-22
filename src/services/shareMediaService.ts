@@ -20,7 +20,7 @@ export interface ShareImageWithCaptionInput {
 export async function shareImageWithCaption(
   input: ShareImageWithCaptionInput
 ): Promise<'combined' | 'image_only' | 'text_only'> {
-  const { imageUri, caption, title = 'WanderLedger Postcard', mimeType = 'image/png' } = input;
+  const { imageUri, caption, title = "Wanderer's Ledger Postcard", mimeType = 'image/png' } = input;
   const normalizedUrl =
     imageUri.startsWith('file://') || imageUri.startsWith('content://')
       ? imageUri

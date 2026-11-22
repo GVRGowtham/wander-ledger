@@ -88,7 +88,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         )
         .join('\n');
       const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
-      const uri = `${baseDir}wanderledger_expenses.csv`;
+      const uri = `${baseDir}wanderers_ledger_expenses.csv`;
       await FileSystem.writeAsStringAsync(uri, header + rows);
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Export Travel Spend CSV' });
@@ -136,7 +136,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             <Text style={styles.avatarText}>{profile?.avatarInitials || 'WL'}</Text>
           </LinearGradient>
           <View style={{ flex: 1 }}>
-            <Text style={styles.passportLabel}>PASSPORT • WANDERLEDGER</Text>
+            <Text style={styles.passportLabel}>PASSPORT • WANDERER'S LEDGER</Text>
             <Text style={styles.userName}>{profile?.displayName || 'Wanderer'}</Text>
             <Text style={styles.userEmail} numberOfLines={1}>
               {profile?.authMode === 'google' && profile?.email

@@ -80,7 +80,7 @@ export function buildHashtags(
 
   const unique = Array.from(new Set(rawTags)).slice(0, includeWatermarkTag ? 7 : 8);
   if (includeWatermarkTag) {
-    unique.push('wanderledger');
+    unique.push('wanderersledger');
   }
   return unique.map((t) => `#${t}`).join(' ');
 }

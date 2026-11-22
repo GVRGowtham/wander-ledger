@@ -704,7 +704,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       await shareImageWithCaption({
         imageUri,
         caption: routeStatsCaption,
-        title: `${trip.title} ${trip.flagEmoji} — WanderLedger Postcard`,
+        title: `${trip.title} ${trip.flagEmoji} — Wanderer's Ledger Postcard`,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {

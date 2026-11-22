@@ -303,7 +303,7 @@ const WatermarkBar: React.FC<{ dark?: boolean; scale?: number }> = ({
         dark && { color: '#FDE68A' },
       ]}
     >
-      ✈️ STAMPED WITH WANDERLEDGER
+      ✈️ STAMPED WITH WANDERER'S LEDGER
     </Text>
   </View>
 );

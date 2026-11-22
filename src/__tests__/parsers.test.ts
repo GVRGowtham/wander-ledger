@@ -319,7 +319,7 @@ describe('Instagram Draft Caption Studio (100% Offline, Privacy-Safe)', () => {
     });
     expect(aesthetic.toLowerCase()).toContain('kyoto');
     expect(aesthetic).toContain('Fushimi Inari');
-    expect(aesthetic).toContain('#wanderledger');
+    expect(aesthetic).toContain('#wanderersledger');
     expect(aesthetic).not.toContain('3200');
 
     const stats = generateOfflineIgCaption({
@@ -339,8 +339,8 @@ describe('Instagram Draft Caption Studio (100% Offline, Privacy-Safe)', () => {
   it('respects watermark toggle in generated hashtags', () => {
     const withTag = buildHashtags(sampleTrip, sampleMemories, true);
     const withoutTag = buildHashtags(sampleTrip, sampleMemories, false);
-    expect(withTag).toContain('#wanderledger');
-    expect(withoutTag).not.toContain('#wanderledger');
+    expect(withTag).toContain('#wanderersledger');
+    expect(withoutTag).not.toContain('#wanderersledger');
   });
 });
 

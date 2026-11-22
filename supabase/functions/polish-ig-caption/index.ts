@@ -59,7 +59,7 @@ serve(async (req) => {
             .join('\n')}`
         : '',
       includeHashtags
-        ? `End with 5-7 natural travel hashtags${includeWatermarkTag ? ' including #wanderledger' : ''}.`
+        ? `End with 5-7 natural travel hashtags${includeWatermarkTag ? ' including #wanderersledger' : ''}.`
         : 'Do NOT include any hashtags.',
       'Return ONLY the final Instagram caption text—no quotes around the whole message, no markdown fences, no commentary.',
     ]
