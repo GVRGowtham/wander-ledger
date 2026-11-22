@@ -51,6 +51,7 @@ interface Props {
   onClose: () => void;
   onSavedToTrip: (tripId: string) => void;
   incomingShare?: IncomingSharePayload | null;
+  onIncomingShareConsumed?: () => void;
 }
 
 type CameraMode = 'document' | 'boarding_pass';
@@ -59,6 +60,7 @@ export const ScannerScreen: React.FC<Props> = ({
   onClose,
   onSavedToTrip,
   incomingShare,
+  onIncomingShareConsumed,
 }) => {
   const {
     profile,
@@ -250,6 +252,7 @@ export const ScannerScreen: React.FC<Props> = ({
         Alert.alert('Shared File Error', msg);
       } finally {
         setBusy(false);
+        onIncomingShareConsumed?.();
       }
     })();
   }, [incomingShare]);

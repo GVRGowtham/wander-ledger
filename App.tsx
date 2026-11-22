@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -39,13 +39,25 @@ const MainShell: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainTab>('trips');
   const [overlay, setOverlay] = useState<OverlayRoute>({ name: 'none' });
   const { resolvedSharedPayloads, clearSharedPayloads } = useIncomingShare();
+  const lastShareSigRef = useRef<string | null>(null);
 
   // Route incoming Android Share -> Wanderer's Ledger payloads (PDF, screenshots, confirmation text)
   // straight into Smart Scan for 1-tap zero-typing extraction!
+  // IMPORTANT: Do NOT call clearSharedPayloads() here — expo-sharing deletes the cached file
+  // immediately on clearSharedPayloads(). Wait until ScannerScreen finishes reading the file!
   useEffect(() => {
     if (!ready || !profile || !resolvedSharedPayloads || resolvedSharedPayloads.length === 0) {
+      lastShareSigRef.current = null;
       return;
     }
+
+    const sig = resolvedSharedPayloads
+      .map((p) => `${p.contentUri ?? ''}|${p.originalName ?? ''}|${p.value ?? ''}`)
+      .join(';;');
+    if (lastShareSigRef.current === sig) {
+      return;
+    }
+    lastShareSigRef.current = sig;
 
     const imageUris: string[] = [];
     let pdfUri: string | undefined;
@@ -67,8 +79,6 @@ const MainShell: React.FC = () => {
       }
     }
 
-    clearSharedPayloads();
-
     if (pdfUri || imageUris.length > 0 || textParts.length > 0) {
       setOverlay({
         name: 'scanner',
@@ -80,6 +90,9 @@ const MainShell: React.FC = () => {
           fileName,
         },
       });
+    } else {
+      clearSharedPayloads();
+      lastShareSigRef.current = null;
     }
   }, [ready, profile, resolvedSharedPayloads, clearSharedPayloads]);
 
@@ -126,6 +139,11 @@ const MainShell: React.FC = () => {
   const openNewTrip = () => setOverlay({ name: 'new_trip' });
   const openWelcome = () => setOverlay({ name: 'welcome' });
 
+  const handleIncomingShareConsumed = () => {
+    clearSharedPayloads();
+    lastShareSigRef.current = null;
+  };
+
   const renderContent = () => {
     if (overlay.name === 'welcome') {
       return <WelcomeScreen isRevisit onDone={() => setOverlay({ name: 'none' })} />;
@@ -134,8 +152,15 @@ const MainShell: React.FC = () => {
       return (
         <ScannerScreen
           incomingShare={overlay.incomingShare}
-          onClose={() => setOverlay({ name: 'none' })}
-          onSavedToTrip={(tripId) => setOverlay({ name: 'trip', tripId })}
+          onIncomingShareConsumed={handleIncomingShareConsumed}
+          onClose={() => {
+            handleIncomingShareConsumed();
+            setOverlay({ name: 'none' });
+          }}
+          onSavedToTrip={(tripId) => {
+            handleIncomingShareConsumed();
+            setOverlay({ name: 'trip', tripId });
+          }}
         />
       );
     }
