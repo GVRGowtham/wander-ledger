@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { UserProfile } from '../types/models';
+import { DistanceUnit, UserProfile } from '../types/models';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -38,7 +38,11 @@ export async function loadSavedProfile(): Promise<UserProfile | null> {
   try {
     const raw = await AsyncStorage.getItem(PROFILE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as UserProfile;
+    const parsed = JSON.parse(raw) as UserProfile;
+    if (!parsed.distanceUnit) {
+      parsed.distanceUnit = 'km';
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -68,7 +72,8 @@ export async function clearProfile(): Promise<void> {
 export async function signInWithGoogle(
   homeCurrency = 'USD',
   customEmail?: string,
-  customName?: string
+  customName?: string,
+  distanceUnit: DistanceUnit = 'km'
 ): Promise<UserProfile> {
   const sb = getSupabaseClient();
 
@@ -106,7 +111,7 @@ export async function signInWithGoogle(
                 avatarInitials: getInitials(name),
                 avatarUrl: u.user_metadata?.avatar_url as string | undefined,
                 homeCurrency,
-                distanceUnit: 'mi',
+                distanceUnit,
                 wifiOnlyPhotoSync: true,
                 authMode: 'google',
                 lastSyncedAt: new Date().toISOString(),
@@ -130,7 +135,7 @@ export async function signInWithGoogle(
     displayName,
     avatarInitials: getInitials(displayName),
     homeCurrency,
-    distanceUnit: 'mi',
+    distanceUnit,
     wifiOnlyPhotoSync: true,
     authMode: 'local_test',
     lastSyncedAt: new Date().toISOString(),
@@ -140,12 +145,13 @@ export async function signInWithGoogle(
 }
 
 /**
- * Starts a frictionless, offline-first local WanderLedger session with no login wall.
+ * Starts a frictionless, offline-first local Wanderer's Ledger session with no login wall.
  * If the user leaves firstName blank, addresses them warmly as "Wanderer".
  */
 export async function startLocalSession(
   homeCurrency = 'USD',
-  firstName?: string
+  firstName?: string,
+  distanceUnit: DistanceUnit = 'km'
 ): Promise<UserProfile> {
   const displayName = firstName?.trim() || 'Wanderer';
   const profile: UserProfile = {
@@ -154,7 +160,7 @@ export async function startLocalSession(
     displayName,
     avatarInitials: getInitials(displayName),
     homeCurrency,
-    distanceUnit: 'mi',
+    distanceUnit,
     wifiOnlyPhotoSync: true,
     authMode: 'local_test',
     lastSyncedAt: new Date().toISOString(),

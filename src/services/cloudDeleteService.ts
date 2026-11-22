@@ -138,10 +138,10 @@ export async function updateMemoryInCloud(
 }
 
 /**
- * Deletes a flight, stay, or expense row from Supabase Postgres when cloud sync is active.
+ * Deletes a flight, transport, stop, stay, or expense row from Supabase Postgres when cloud sync is active.
  */
 export async function deleteEntityFromCloud(
-  table: 'flights' | 'stays' | 'expenses',
+  table: 'flights' | 'transports' | 'trip_stops' | 'stays' | 'expenses',
   id: string
 ): Promise<{ synced: boolean }> {
   const sb = getSupabaseClient();

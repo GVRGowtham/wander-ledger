@@ -331,9 +331,20 @@ describe('Instagram Draft Caption Studio (100% Offline, Privacy-Safe)', () => {
       includeWatermarkTag: false,
     });
     expect(stats).toContain('LAX → HND');
-    expect(stats).toContain('5,478');
+    expect(stats).toContain('8,816 km');
     expect(stats).not.toContain('#');
     expect(stats).not.toContain('3200');
+
+    const statsMi = generateOfflineIgCaption({
+      trip: sampleTrip,
+      memories: sampleMemories,
+      flights: sampleFlights,
+      distanceUnit: 'mi',
+      tone: 'stats',
+      includeHashtags: false,
+      includeWatermarkTag: false,
+    });
+    expect(statsMi).toContain('5,478 miles');
   });
 
   it('respects watermark toggle in generated hashtags', () => {
@@ -626,6 +637,211 @@ Total Paid: ₹48,500`;
     }
   });
 });
+
+import {
+  buildJourneyRouteTrail,
+  buildJourneyTimeline,
+  convertToKm,
+  formatDistance,
+  formatFlightDistance,
+  matchStopForDate,
+  suggestStopsFromBookings,
+} from '../services/distanceUtils';
+import { Stay, TransportLeg, TripStop } from '../types/models';
+
+describe('v0.4.0 Multi-Mode Travel, Distance Units (km/mi) & Multi-Hop Stops', () => {
+  it('converts and formats distances cleanly in km (default) and mi', () => {
+    expect(formatDistance(260, 'km')).toBe('260 km');
+    expect(formatDistance(260, 'mi')).toBe('162 mi');
+    expect(formatFlightDistance(1000, 'km')).toBe('1,609 km');
+    expect(formatFlightDistance(1000, 'mi')).toBe('1,000 mi');
+    expect(convertToKm(100, 'mi')).toBe(161);
+    expect(convertToKm(100, 'km')).toBe(100);
+  });
+
+  it('auto-matches EXIF photo dates to the right TripStop and suggests stops from bookings', () => {
+    const stops: TripStop[] = [
+      { id: 's1', tripId: 't1', cityName: 'Zurich', startDate: '2025-11-01', endDate: '2025-11-03', sortOrder: 0, createdAt: '' },
+      { id: 's2', tripId: 't1', cityName: 'Lucerne', startDate: '2025-11-03', endDate: '2025-11-05', sortOrder: 1, createdAt: '' },
+      { id: 's3', tripId: 't1', cityName: 'Interlaken', startDate: '2025-11-06', endDate: '2025-11-08', sortOrder: 2, createdAt: '' },
+    ];
+    expect(matchStopForDate(stops, '2025-11-02T14:22:00')?.cityName).toBe('Zurich');
+    // Transition day prefers arriving stop
+    expect(matchStopForDate(stops, '2025-11-03T18:10:00')?.cityName).toBe('Lucerne');
+    expect(matchStopForDate(stops, '2025-11-07')?.cityName).toBe('Interlaken');
+    expect(matchStopForDate(stops, '2025-11-12')).toBeUndefined();
+
+    const transports: TransportLeg[] = [
+      {
+        id: 'trn1',
+        tripId: 't1',
+        mode: 'train',
+        title: 'SBB InterCity',
+        origin: 'Zurich HB',
+        destination: 'Zermatt',
+        startDate: '2025-11-09',
+        createdAt: '',
+      },
+    ];
+    const suggested = suggestStopsFromBookings([], transports, [], stops);
+    expect(suggested.map((s) => s.cityName)).toContain('Zermatt');
+  });
+
+  it('sorts flights, trains, car rentals, and stays into one chronological journey timeline', () => {
+    const flights: Flight[] = [
+      {
+        id: 'f1', tripId: 't1', airlineCode: 'LX', airlineName: 'SWISS', flightNumber: 'LX 147',
+        originIata: 'BLR', originCity: 'Bengaluru', destIata: 'ZRH', destCity: 'Zurich',
+        departureTime: '2025-11-01T02:00:00Z', arrivalTime: '2025-11-01T08:00:00Z',
+        durationMinutes: 540, status: 'completed', distanceMiles: 4700, milesEarned: 4700,
+        enrichedOnline: false, createdAt: '',
+      },
+    ];
+    const transports: TransportLeg[] = [
+      {
+        id: 'trn1', tripId: 't1', mode: 'train', title: 'SBB IC8',
+        origin: 'Zurich HB', destination: 'Lucerne', startDate: '2025-11-03', distanceKm: 55, createdAt: '',
+      },
+    ];
+    const stays: Stay[] = [
+      {
+        id: 'st1', tripId: 't1', name: 'Hotel Schweizerhof', stayType: 'hotel',
+        checkIn: '2025-11-01', checkOut: '2025-11-03', nights: 2,
+        costCash: 500, currency: 'CHF', homeCost: 560, pointsRedeemed: 0, createdAt: '',
+      },
+      {
+        id: 'st2', tripId: 't1', name: 'Lake Lucerne Hotel', stayType: 'hotel',
+        checkIn: '2025-11-03', checkOut: '2025-11-05', nights: 2,
+        costCash: 420, currency: 'CHF', homeCost: 470, pointsRedeemed: 0, createdAt: '',
+      },
+    ];
+
+    const timeline = buildJourneyTimeline(flights, transports, stays);
+    expect(timeline.map((i) => i.kind)).toEqual(['flight', 'stay', 'transport', 'stay']);
+    const trail = buildJourneyRouteTrail(flights, transports, []);
+    expect(trail).toContain('BLR → ZRH');
+  });
+
+  it('parses IRCTC train tickets, Sixt car rentals, and IndianOil / Shell fuel bills offline', () => {
+    const irctcTicket = `IRCTC Electronic Reservation Slip
+Train No: 20608 Vande Bharat Exp
+PNR: 4518293041
+From Station: Bengaluru
+To Station: Mysuru
+Date: 15 Nov 2025
+Coach: C4 / 22
+Total Fare: ₹1,150`;
+    const parsedTrain = parseDocumentOcrText(irctcTicket, 'INR');
+    expect(parsedTrain.kind).toBe('transport');
+    if (parsedTrain.kind === 'transport') {
+      expect(parsedTrain.mode).toBe('train');
+      expect(parsedTrain.origin).toContain('Bengaluru');
+      expect(parsedTrain.destination).toContain('Mysuru');
+      expect(parsedTrain.referenceCode).toBe('4518293041');
+      expect(parsedTrain.totalAmount).toBe(1150);
+      expect(parsedTrain.currency).toBe('INR');
+    }
+
+    const sixtRental = `SIXT CAR RENTAL
+Reservation: SX992014
+Pickup Location: Zurich Airport
+Drop-off Location: Geneva Airport
+Pickup Date: 2025-11-01
+Return Date: 2025-11-05
+Vehicle: VW Golf Automatic
+Total Price: CHF 380.00`;
+    const parsedCar = parseDocumentOcrText(sixtRental, 'CHF');
+    expect(parsedCar.kind).toBe('transport');
+    if (parsedCar.kind === 'transport') {
+      expect(parsedCar.mode).toBe('rental_car');
+      expect(parsedCar.operatorName).toContain('Sixt');
+      expect(parsedCar.startDate).toBe('2025-11-01');
+      expect(parsedCar.endDate).toBe('2025-11-05');
+      expect(parsedCar.totalAmount).toBe(380);
+    }
+
+    const fuelReceipt = `IndianOil Petrol Pump
+NH-75 Highway
+Petrol 32.5 Litres
+Date: 2025-11-16
+Grand Total: ₹3,340.00`;
+    const parsedFuel = parseDocumentOcrText(fuelReceipt, 'INR');
+    expect(parsedFuel.kind).toBe('receipt');
+    if (parsedFuel.kind === 'receipt') {
+      expect(parsedFuel.category).toBe('fuel');
+      expect(parsedFuel.amount).toBe(3340);
+      expect(parsedFuel.currency).toBe('INR');
+    }
+
+    const aiTransport = mapAiJsonToScanResult(
+      {
+        kind: 'transport',
+        mode: 'train',
+        operatorName: 'SBB',
+        origin: 'Zurich HB',
+        destination: 'Lucerne',
+        startDate: '2025-11-03',
+        totalAmount: 29,
+        currency: 'CHF',
+      },
+      'raw',
+      'CHF'
+    );
+    expect(aiTransport?.kind).toBe('transport');
+  });
+
+  it('adapts IG Studio Route Stats and captions for road trips and user km/mi preference', () => {
+    const roadTrip: Trip = {
+      id: 'trip_coorg',
+      ownerId: 'u1',
+      title: 'Coorg Coffee Road Trip',
+      destinationCity: 'Coorg',
+      destinationCountry: 'India',
+      countryCode: 'IN',
+      flagEmoji: '🇮🇳',
+      startDate: '2025-11-14',
+      endDate: '2025-11-16',
+      homeCurrency: 'INR',
+      budget: 25000,
+      vibe: 'alpine',
+      isShared: false,
+      coTravelers: [],
+      lat: 12.33,
+      lng: 75.8,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const driveLeg: TransportLeg = {
+      id: 'trn_drive',
+      tripId: 'trip_coorg',
+      mode: 'own_car',
+      title: 'Own Car Road Trip',
+      origin: 'Bengaluru',
+      destination: 'Coorg',
+      startDate: '2025-11-14',
+      distanceKm: 520,
+      createdAt: '',
+    };
+    const kmStats = getRouteStatsItems(roadTrip, [], [], [driveLeg], 'km');
+    expect(kmStats[0]).toEqual({ value: '520', label: 'KM TRAVELED' });
+    const miStats = getRouteStatsItems(roadTrip, [], [], [driveLeg], 'mi');
+    expect(miStats[0]).toEqual({ value: '323', label: 'MILES TRAVELED' });
+
+    const captionKm = generateOfflineIgCaption({
+      trip: roadTrip,
+      memories: [],
+      flights: [],
+      transports: [driveLeg],
+      distanceUnit: 'km',
+      tone: 'stats',
+      includeHashtags: false,
+      includeWatermarkTag: false,
+    });
+    expect(captionKm).toContain('Bengaluru → Coorg');
+    expect(captionKm).toContain('520 km');
+  });
+});
+
 
 
 

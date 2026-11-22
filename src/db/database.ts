@@ -5,11 +5,14 @@ import {
   LoyaltyAccount,
   Memory,
   Stay,
+  TransportLeg,
   Trip,
   TripStatus,
+  TripStop,
   TripSummaryStats,
 } from '../types/models';
 import { DEFAULT_USD_RATES, FxRatesMap } from '../services/fxService';
+import { milesToKm } from '../services/distanceUtils';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
@@ -77,6 +80,36 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS transports (
+      id TEXT PRIMARY KEY NOT NULL,
+      trip_id TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'train',
+      title TEXT NOT NULL,
+      operator_name TEXT,
+      reference_code TEXT,
+      origin TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      seat_or_vehicle TEXT,
+      distance_km INTEGER,
+      cost_amount REAL,
+      currency TEXT,
+      home_cost REAL,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS trip_stops (
+      id TEXT PRIMARY KEY NOT NULL,
+      trip_id TEXT NOT NULL,
+      city_name TEXT NOT NULL,
+      start_date TEXT,
+      end_date TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS stays (
       id TEXT PRIMARY KEY NOT NULL,
       trip_id TEXT NOT NULL,
@@ -120,6 +153,7 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY NOT NULL,
       trip_id TEXT NOT NULL,
+      stop_id TEXT,
       title TEXT NOT NULL,
       note TEXT NOT NULL,
       captured_at TEXT NOT NULL,
@@ -165,6 +199,16 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       value TEXT NOT NULL
     );
   `);
+
+  // Safe non-destructive migration for existing v0.1-v0.3 databases: ensure memories.stop_id exists
+  try {
+    const cols = db.getAllSync<{ name: string }>('PRAGMA table_info(memories)');
+    if (!cols.some((c) => c.name === 'stop_id')) {
+      db.execSync('ALTER TABLE memories ADD COLUMN stop_id TEXT');
+    }
+  } catch {
+    // Ignore if already migrated
+  }
 }
 
 export function getTripStatus(trip: Pick<Trip, 'startDate' | 'endDate'>): TripStatus {
@@ -340,6 +384,8 @@ export function updateTripSharing(
 export function deleteTrip(tripId: string): void {
   const db = getDb();
   db.runSync('DELETE FROM flights WHERE trip_id = ?', [tripId]);
+  db.runSync('DELETE FROM transports WHERE trip_id = ?', [tripId]);
+  db.runSync('DELETE FROM trip_stops WHERE trip_id = ?', [tripId]);
   db.runSync('DELETE FROM stays WHERE trip_id = ?', [tripId]);
   db.runSync('DELETE FROM expenses WHERE trip_id = ?', [tripId]);
   db.runSync('DELETE FROM memories WHERE trip_id = ?', [tripId]);
@@ -465,6 +511,128 @@ export function insertFlight(f: Flight): void {
   if (f.milesEarned > 0 && f.loyaltyProgram) {
     creditLoyaltyProgram(f.loyaltyProgram, 'airline', f.milesEarned, 'mi', f.frequentFlyerNumber);
   }
+}
+
+// --- TRANSPORTS (Train, Bus, Ferry, Rental Car, Own Car) ---
+
+export function listTransports(tripId?: string): TransportLeg[] {
+  const db = getDb();
+  const rows = tripId
+    ? db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM transports WHERE trip_id = ? ORDER BY start_date ASC, created_at ASC',
+        [tripId]
+      )
+    : db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM transports ORDER BY start_date DESC, created_at DESC'
+      );
+
+  return rows.map((r) => ({
+    id: String(r.id),
+    tripId: String(r.trip_id),
+    mode: (r.mode as TransportLeg['mode']) || 'train',
+    title: String(r.title),
+    operatorName: (r.operator_name as string) || undefined,
+    referenceCode: (r.reference_code as string) || undefined,
+    origin: String(r.origin),
+    destination: String(r.destination),
+    startDate: String(r.start_date),
+    endDate: (r.end_date as string) || undefined,
+    seatOrVehicle: (r.seat_or_vehicle as string) || undefined,
+    distanceKm:
+      r.distance_km !== null && r.distance_km !== undefined ? Number(r.distance_km) : undefined,
+    costAmount:
+      r.cost_amount !== null && r.cost_amount !== undefined ? Number(r.cost_amount) : undefined,
+    currency: (r.currency as string) || undefined,
+    homeCost:
+      r.home_cost !== null && r.home_cost !== undefined ? Number(r.home_cost) : undefined,
+    notes: (r.notes as string) || undefined,
+    createdAt: String(r.created_at),
+  }));
+}
+
+export function insertTransport(t: TransportLeg): void {
+  const db = getDb();
+  db.runSync(
+    `INSERT OR REPLACE INTO transports (
+      id, trip_id, mode, title, operator_name, reference_code,
+      origin, destination, start_date, end_date, seat_or_vehicle,
+      distance_km, cost_amount, currency, home_cost, notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      t.id,
+      t.tripId,
+      t.mode,
+      t.title,
+      t.operatorName ?? null,
+      t.referenceCode ?? null,
+      t.origin,
+      t.destination,
+      t.startDate,
+      t.endDate ?? null,
+      t.seatOrVehicle ?? null,
+      t.distanceKm ?? null,
+      t.costAmount ?? null,
+      t.currency ?? null,
+      t.homeCost ?? null,
+      t.notes ?? null,
+      t.createdAt,
+    ]
+  );
+}
+
+export function deleteTransport(transportId: string): void {
+  const db = getDb();
+  db.runSync('DELETE FROM transports WHERE id = ?', [transportId]);
+  enqueueSyncMutation('transports', transportId, 'delete', { transportId });
+}
+
+// --- TRIP STOPS / MULTI-HOP JOURNEY ---
+
+export function listTripStops(tripId?: string): TripStop[] {
+  const db = getDb();
+  const rows = tripId
+    ? db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM trip_stops WHERE trip_id = ? ORDER BY sort_order ASC, start_date ASC, created_at ASC',
+        [tripId]
+      )
+    : db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM trip_stops ORDER BY sort_order ASC, start_date ASC'
+      );
+
+  return rows.map((r) => ({
+    id: String(r.id),
+    tripId: String(r.trip_id),
+    cityName: String(r.city_name),
+    startDate: (r.start_date as string) || undefined,
+    endDate: (r.end_date as string) || undefined,
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: String(r.created_at),
+  }));
+}
+
+export function insertTripStop(s: TripStop): void {
+  const db = getDb();
+  db.runSync(
+    `INSERT OR REPLACE INTO trip_stops (
+      id, trip_id, city_name, start_date, end_date, sort_order, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      s.id,
+      s.tripId,
+      s.cityName,
+      s.startDate ?? null,
+      s.endDate ?? null,
+      s.sortOrder,
+      s.createdAt,
+    ]
+  );
+}
+
+export function deleteTripStop(stopId: string): void {
+  const db = getDb();
+  db.runSync('UPDATE memories SET stop_id = NULL WHERE stop_id = ?', [stopId]);
+  db.runSync('DELETE FROM trip_stops WHERE id = ?', [stopId]);
+  enqueueSyncMutation('trip_stops', stopId, 'delete', { stopId });
 }
 
 // --- STAYS ---
@@ -606,6 +774,7 @@ export function listMemories(tripId?: string): Memory[] {
   return rows.map((r) => ({
     id: String(r.id),
     tripId: String(r.trip_id),
+    stopId: (r.stop_id as string) || undefined,
     title: String(r.title),
     note: String(r.note),
     capturedAt: String(r.captured_at),
@@ -626,12 +795,13 @@ export function insertMemory(m: Memory): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO memories (
-      id, trip_id, title, note, captured_at, place_name, lat, lng,
+      id, trip_id, stop_id, title, note, captured_at, place_name, lat, lng,
       photo_uri, thumb_uri, illustration_key, mood_sticker, is_highlight, author_name, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       m.id,
       m.tripId,
+      m.stopId ?? null,
       m.title,
       m.note,
       m.capturedAt,
@@ -650,6 +820,7 @@ export function insertMemory(m: Memory): void {
 }
 
 export interface MemoryEditablePatch {
+  stopId?: string | null;
   title?: string;
   note?: string;
   placeName?: string;
@@ -674,6 +845,8 @@ export function updateMemory(
   const prevPhotoUri = (row.photo_uri as string) || undefined;
   const prevThumbUri = (row.thumb_uri as string) || undefined;
 
+  const nextStopId =
+    patch.stopId !== undefined ? patch.stopId || null : (row.stop_id as string) || null;
   const nextTitle = patch.title !== undefined ? patch.title : String(row.title);
   const nextNote = patch.note !== undefined ? patch.note : String(row.note);
   const nextPlace =
@@ -693,10 +866,11 @@ export function updateMemory(
 
   db.runSync(
     `UPDATE memories
-     SET title = ?, note = ?, place_name = ?, mood_sticker = ?, captured_at = ?,
+     SET stop_id = ?, title = ?, note = ?, place_name = ?, mood_sticker = ?, captured_at = ?,
          photo_uri = ?, thumb_uri = ?, illustration_key = ?
      WHERE id = ?`,
     [
+      nextStopId,
       nextTitle,
       nextNote,
       nextPlace,
@@ -712,6 +886,7 @@ export function updateMemory(
   const updated: Memory = {
     id: String(row.id),
     tripId: String(row.trip_id),
+    stopId: nextStopId || undefined,
     title: nextTitle,
     note: nextNote,
     capturedAt: nextCapturedAt,
@@ -747,6 +922,7 @@ export function deleteMemory(memoryId: string): Memory | null {
   const mem: Memory = {
     id: String(row.id),
     tripId: String(row.trip_id),
+    stopId: (row.stop_id as string) || undefined,
     title: String(row.title),
     note: String(row.note),
     capturedAt: String(row.captured_at),
@@ -878,13 +1054,18 @@ export function loadCachedFxRates(): FxRatesMap {
 export function getTripSummary(tripId: string): TripSummaryStats {
   const expenses = listExpenses(tripId);
   const flights = listFlights(tripId);
+  const transports = listTransports(tripId);
   const stays = listStays(tripId);
   const memories = listMemories(tripId);
 
   const totalSpentHome =
     expenses.reduce((acc, e) => acc + e.homeAmount, 0) +
-    stays.reduce((acc, s) => acc + s.homeCost, 0);
+    stays.reduce((acc, s) => acc + s.homeCost, 0) +
+    transports.reduce((acc, t) => acc + (t.homeCost ?? 0), 0);
   const totalMilesFlown = flights.reduce((acc, f) => acc + f.distanceMiles, 0);
+  const totalDistanceKm =
+    milesToKm(totalMilesFlown) +
+    transports.reduce((acc, t) => acc + (t.distanceKm ?? 0), 0);
   const totalPointsEarned =
     flights.reduce((acc, f) => acc + f.milesEarned, 0) +
     expenses.reduce((acc, e) => acc + (e.pointsEarned ?? 0), 0);
@@ -893,9 +1074,11 @@ export function getTripSummary(tripId: string): TripSummaryStats {
   return {
     totalSpentHome: Math.round(totalSpentHome * 100) / 100,
     totalMilesFlown,
+    totalDistanceKm,
     totalPointsEarned,
     memoriesCount: memories.length,
     flightsCount: flights.length,
+    transportsCount: transports.length,
     staysCount: stays.length,
     receiptsCount,
   };
@@ -957,13 +1140,15 @@ export function purgeLegacySeedDataIfNeeded(): void {
 }
 
 /**
- * Clears all local travelogue records (trips, flights, stays, expenses, memories, loyalty vault)
+ * Clears all local travelogue records (trips, flights, transports, stops, stays, expenses, memories, loyalty vault)
  * for fresh local testing.
  */
 export function clearAllLocalData(): void {
   const db = getDb();
   db.execSync(`
     DELETE FROM flights;
+    DELETE FROM transports;
+    DELETE FROM trip_stops;
     DELETE FROM stays;
     DELETE FROM expenses;
     DELETE FROM memories;

@@ -15,6 +15,7 @@ import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { COLORS, SHADOWS } from '../theme/tokens';
+import { DistanceUnit } from '../types/models';
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD'];
 
@@ -22,21 +23,21 @@ const HOW_IT_WORKS = [
   {
     emoji: '📷',
     title: 'Smart Magic Scan',
-    desc: 'Auto-scan boarding pass barcodes live, or snap booking confirmations & receipts offline.',
+    desc: 'Scan boarding passes, train tickets, car rentals, hotel PDFs & fuel/food receipts offline.',
     bg: '#FFF7ED',
     border: '#FED7AA',
   },
   {
     emoji: '📸',
     title: 'Polaroid Memories & IG Studio',
-    desc: 'Save clean photo stories and turn them into Instagram collages, carousels & draft captions.',
+    desc: 'Tag memories to trip stops and turn them into Instagram collages, carousels & draft captions.',
     bg: '#FFF1F2',
     border: '#FECDD3',
   },
   {
     emoji: '🧾',
-    title: 'Private Spend & Miles',
-    desc: 'Multi-currency bills stay tucked privately in Spend while flight miles & points track automatically.',
+    title: 'Private Spend, Fuel & Miles',
+    desc: 'Multi-currency bills & petrol logs stay tucked privately in Spend while miles track automatically.',
     bg: '#ECFDF5',
     border: '#A7F3D0',
   },
@@ -58,6 +59,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
   const { profile, startLocalTravelogue, updateProfileSettings } = useApp();
   const keyboardHeight = useKeyboardHeight();
   const [homeCurrency, setHomeCurrency] = useState(profile?.homeCurrency || 'USD');
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(profile?.distanceUnit || 'km');
   const [firstName, setFirstName] = useState(
     profile && profile.displayName !== 'Wanderer' ? profile.displayName : ''
   );
@@ -74,10 +76,11 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
           displayName: cleanName,
           avatarInitials: initials,
           homeCurrency,
+          distanceUnit,
         });
         onDone?.();
       } else {
-        await startLocalTravelogue(homeCurrency, firstName);
+        await startLocalTravelogue(homeCurrency, firstName, distanceUnit);
       }
     } finally {
       setLoading(false);
@@ -108,7 +111,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
           </View>
           <Text style={styles.brandTitle}>Welcome to Wanderer's Ledger</Text>
           <Text style={styles.tagline}>
-            Your sunlit pocket travelogue — every boarding pass, mile earned, restaurant bill & Polaroid memory in one happy place.
+            Your sunlit pocket travelogue — every flight, train, road trip, hotel bill & Polaroid memory in one happy place.
           </Text>
         </View>
       </View>
@@ -135,7 +138,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
         ))}
       </View>
 
-      {/* Optional First Name + Home Currency */}
+      {/* Optional First Name + Home Currency + Distance Unit */}
       <View style={styles.setupCard}>
         <Text style={styles.setupTitle}>Quick Setup (Optional)</Text>
 
@@ -161,6 +164,28 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
                 activeOpacity={0.8}
               >
                 <Text style={[styles.currText, active && styles.currTextActive]}>{c}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Distance Unit 📏</Text>
+        <View style={styles.currencyWrap}>
+          {(
+            [
+              { id: 'km', label: 'Kilometers (km)' },
+              { id: 'mi', label: 'Miles (mi)' },
+            ] as const
+          ).map((u) => {
+            const active = distanceUnit === u.id;
+            return (
+              <TouchableOpacity
+                key={u.id}
+                onPress={() => setDistanceUnit(u.id)}
+                style={[styles.currChip, active && styles.currChipActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.currText, active && styles.currTextActive]}>{u.label}</Text>
               </TouchableOpacity>
             );
           })}

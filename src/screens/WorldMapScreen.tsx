@@ -9,6 +9,7 @@ import {
 import { WorldMapSvg } from '../components/map/WorldMapSvg';
 import { useApp } from '../context/AppContext';
 import { getTripStatus } from '../db/database';
+import { formatDistance, formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
 }
 
 export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
-  const { trips, allFlights, getSummaryForTrip, getMemoriesForTrip } = useApp();
+  const { profile, trips, allFlights, allTransports, getSummaryForTrip, getMemoriesForTrip } = useApp();
   const [selectedId, setSelectedId] = useState<string | null>(trips[0]?.id ?? null);
 
   const selectedTrip = useMemo(
@@ -24,9 +25,13 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
     [trips, selectedId]
   );
 
-  const totalMiles = allFlights.reduce((sum, f) => sum + f.distanceMiles, 0);
-  const earthCircumferenceMiles = 24901;
-  const earthLaps = (totalMiles / earthCircumferenceMiles).toFixed(2);
+  const distanceUnit = profile?.distanceUnit ?? 'km';
+  const totalDistanceKm =
+    allFlights.reduce((sum, f) => sum + milesToKm(f.distanceMiles), 0) +
+    allTransports.reduce((sum, t) => sum + (t.distanceKm ?? 0), 0);
+  const totalDistanceDisplay = formatDistanceValue(totalDistanceKm, distanceUnit);
+  const earthCircumferenceKm = 40075;
+  const earthLaps = (totalDistanceKm / earthCircumferenceKm).toFixed(2);
   const countriesCount = new Set(trips.map((t) => t.countryCode)).size;
   const citiesCount = new Set(trips.map((t) => t.destinationCity)).size;
 
@@ -113,7 +118,7 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
 
           <View style={styles.postcardFooter}>
             <Text style={styles.footerStat}>
-              ✈️ {selectedSummary.totalMilesFlown.toLocaleString()} mi • 📸{' '}
+              🧭 {formatDistance(selectedSummary.totalDistanceKm, distanceUnit)} • 📸{' '}
               {selectedSummary.memoriesCount} memories
             </Text>
             <Text style={styles.footerSpend}>
@@ -125,7 +130,7 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         <View style={styles.postcard}>
           <Text style={styles.cityTitle}>🧭 Your map is waiting for its first pin!</Text>
           <Text style={styles.subtitle}>
-            Add a trip or log a flight (even without a boarding pass) to draw your first geodesic arc across the globe.
+            Add a trip or log a flight, train, or road trip to light up your world map.
           </Text>
         </View>
       )}
@@ -142,9 +147,11 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statNum, { color: COLORS.emerald }]}>
-            {totalMiles.toLocaleString()}
+            {totalDistanceDisplay.toLocaleString()}
           </Text>
-          <Text style={styles.statLabel}>Miles Flown</Text>
+          <Text style={styles.statLabel}>
+            {distanceUnit === 'mi' ? 'Miles Traveled' : 'Km Traveled'}
+          </Text>
         </View>
       </View>
     </ScrollView>

@@ -10,8 +10,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
 import { getTripDayProgress, getTripStatus } from '../db/database';
+import { formatDistance, milesToKm } from '../services/distanceUtils';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
-import { Trip } from '../types/models';
+import { DistanceUnit, Trip } from '../types/models';
 
 interface Props {
   onOpenTrip: (tripId: string) => void;
@@ -26,7 +27,7 @@ export const TripsHubScreen: React.FC<Props> = ({
   onOpenScanner,
   onOpenPassport,
 }) => {
-  const { profile, trips, allFlights, getSummaryForTrip } = useApp();
+  const { profile, trips, allFlights, allTransports, getSummaryForTrip } = useApp();
 
   const activeTrips = trips.filter((t) => getTripStatus(t) === 'active');
   const upcomingTrips = trips
@@ -34,8 +35,11 @@ export const TripsHubScreen: React.FC<Props> = ({
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
   const pastTrips = trips.filter((t) => getTripStatus(t) === 'past');
 
+  const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
   const uniqueCountries = new Set(trips.map((t) => t.countryCode)).size;
-  const totalMiles = allFlights.reduce((s, f) => s + f.distanceMiles, 0);
+  const totalDistanceKm =
+    allFlights.reduce((s, f) => s + milesToKm(f.distanceMiles), 0) +
+    allTransports.reduce((s, t) => s + (t.distanceKm ?? 0), 0);
 
   const firstName = profile?.displayName.split(' ')[0] || 'Wanderer';
   const heroTrip = activeTrips[0];
@@ -59,7 +63,7 @@ export const TripsHubScreen: React.FC<Props> = ({
             </Text>
             <Text style={styles.subGreeting} numberOfLines={1}>
               {uniqueCountries} {uniqueCountries === 1 ? 'country' : 'countries'} •{' '}
-              {totalMiles.toLocaleString()} mi explored
+              {formatDistance(totalDistanceKm, distanceUnit)} explored
             </Text>
           </View>
         </TouchableOpacity>
@@ -74,6 +78,7 @@ export const TripsHubScreen: React.FC<Props> = ({
         <ActiveHeroCard
           trip={heroTrip}
           summary={getSummaryForTrip(heroTrip.id)}
+          distanceUnit={distanceUnit}
           onOpen={() => onOpenTrip(heroTrip.id)}
           onScan={onOpenScanner}
         />
@@ -86,14 +91,14 @@ export const TripsHubScreen: React.FC<Props> = ({
         />
       ) : (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyEmoji}>🌴✈️📸</Text>
+          <Text style={styles.emptyEmoji}>🌴✈️🚆🚗</Text>
           <Text style={styles.emptyTitle}>Where to first, {firstName}?</Text>
           <Text style={styles.emptySub}>
-            Scan a boarding pass to auto-create your first trip, or dream one up manually!
+            Scan a flight, train ticket, hotel PDF or receipt — or plan a road trip manually!
           </Text>
           <TouchableOpacity onPress={onOpenScanner} style={styles.emptyPrimaryBtn} activeOpacity={0.88}>
             <Text style={styles.emptyPrimaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
-              📷 Scan Boarding Pass to Start
+              📷 Smart Scan a Ticket or PDF
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onNewTrip} style={styles.emptySecondaryBtn} activeOpacity={0.85}>
@@ -120,6 +125,7 @@ export const TripsHubScreen: React.FC<Props> = ({
             {upcomingTrips.map((trip) => {
               const { daysUntil } = getTripDayProgress(trip);
               const stats = getSummaryForTrip(trip.id);
+              const legsCount = stats.flightsCount + stats.transportsCount;
               return (
                 <TouchableOpacity
                   key={trip.id}
@@ -137,7 +143,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                     {trip.title}
                   </Text>
                   <Text style={styles.upcomingSub} numberOfLines={1}>
-                    {trip.startDate} • {stats.flightsCount} flights
+                    {trip.startDate} • {legsCount} {legsCount === 1 ? 'leg' : 'legs'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -191,7 +197,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                     {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, trip.homeCurrency)}
                   </Text>
                   <Text style={styles.pastMiles}>
-                    ✈️ {stats.totalMilesFlown.toLocaleString()} mi
+                    🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -206,9 +212,10 @@ export const TripsHubScreen: React.FC<Props> = ({
 const ActiveHeroCard: React.FC<{
   trip: Trip;
   summary: ReturnType<ReturnType<typeof useApp>['getSummaryForTrip']>;
+  distanceUnit: DistanceUnit;
   onOpen: () => void;
   onScan: () => void;
-}> = ({ trip, summary, onOpen, onScan }) => {
+}> = ({ trip, summary, distanceUnit, onOpen, onScan }) => {
   const { currentDay, totalDays } = getTripDayProgress(trip);
   const pct = trip.budget > 0 ? Math.min(100, Math.round((summary.totalSpentHome / trip.budget) * 100)) : 0;
 
@@ -262,12 +269,12 @@ const ActiveHeroCard: React.FC<{
           </View>
 
           <View style={[styles.metricBox, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
-            <Text style={styles.metricLabel}>Miles & Points</Text>
+            <Text style={styles.metricLabel}>Distance & Pts</Text>
             <Text style={[styles.metricValue, { color: '#0369A1' }]}>
-              +{summary.totalPointsEarned.toLocaleString()} ✨
+              {formatDistance(summary.totalDistanceKm, distanceUnit)}
             </Text>
             <Text style={styles.metricSub}>
-              {summary.totalMilesFlown.toLocaleString()} mi flown
+              +{summary.totalPointsEarned.toLocaleString()} pts ✨
             </Text>
           </View>
         </View>

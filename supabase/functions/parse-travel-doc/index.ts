@@ -43,11 +43,12 @@ serve(async (req) => {
       'You are an accurate travel document parser. Extract structured JSON from the OCR text below.',
       preferredKind
         ? `The user indicated this document is a "${preferredKind}".`
-        : 'Determine whether kind is "flight", "hotel", or "receipt".',
+        : 'Determine whether kind is "flight", "transport" (train/bus/ferry/car rental), "hotel", or "receipt".',
       'Return ONLY valid JSON matching ONE of these schemas:',
       '- For flight: {"kind":"flight","airlineCode":"2-char","flightNumber":"e.g. LX 38","originIata":"3-char","destIata":"3-char","flightDate":"YYYY-MM-DD","pnr":"","seat":"","cabinClass":"Economy","passengerName":"Traveler","ticketAmount":0,"ticketCurrency":"USD"}',
+      '- For transport: {"kind":"transport","mode":"train|bus|ferry|rental_car","operatorName":"","origin":"","destination":"","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","referenceCode":"","seatOrVehicle":"","totalAmount":0,"currency":"USD"}',
       '- For hotel: {"kind":"hotel","hotelName":"","confirmationCode":"","checkIn":"YYYY-MM-DD","checkOut":"YYYY-MM-DD","nights":1,"totalAmount":0,"currency":"USD","address":"","cityHint":""}',
-      '- For receipt: {"kind":"receipt","merchant":"","amount":0,"currency":"USD","date":"YYYY-MM-DD","category":"dining|lodging|transit|flights|activities|shopping|other"}',
+      '- For receipt: {"kind":"receipt","merchant":"","amount":0,"currency":"USD","date":"YYYY-MM-DD","category":"dining|lodging|transit|flights|fuel|activities|shopping|other"}',
       `Use defaultCurrency "${defaultCurrency}" only if no currency appears in the text.`,
       'Use grand total / total paid (tax inclusive) for amounts.',
       'OCR TEXT:',

@@ -11,6 +11,7 @@ import {
   ParsedBoardingPass,
   ParsedHotelConfirmation,
   ParsedReceipt,
+  ParsedTransport,
   ScanResult,
 } from '../types/models';
 
@@ -220,6 +221,13 @@ export function mergeOcrTexts(pages: string[]): string {
 
 export function inferExpenseCategory(text: string): ExpenseCategory {
   const q = text.toLowerCase();
+  if (
+    /(petrol|diesel|unleaded|gas\s*station|fuel|shell\b|\bbp\b|indianoil|indian\s*oil|hpcl|bpcl|bharat\s*petroleum|hindustan\s*petroleum|chevron|exxon|mobil|texaco|supercharger|ev\s*charging|fastag|highway\s*toll|toll\s*plaza|\blitres?\b|\bliters?\b|\bgallons?\b)/.test(
+      q
+    )
+  ) {
+    return 'fuel';
+  }
   if (/(hotel|resort|inn|suites|ryokan|airbnb|check-in|nights|homestay|villa)/.test(q)) return 'lodging';
   if (/(ramen|cafe|coffee|matcha|restaurant|bistro|bar|pizza|sushi|burger|bakery|dining|kitchen|grill|tavern|tea|gyoza)/.test(q)) {
     return 'dining';
@@ -235,6 +243,159 @@ export function inferExpenseCategory(text: string): ExpenseCategory {
     return 'shopping';
   }
   return 'dining';
+}
+
+export function isTransportConfirmationText(text: string): boolean {
+  const q = text.toLowerCase();
+
+  // Car Rental detection (Sixt, Hertz, Avis, Enterprise, Europcar, Zoomcar, etc.)
+  const carRentalVendor =
+    /\b(sixt|hertz|avis|enterprise|europcar|alamo|budget\s*rent|national\s*car|zoomcar|revv|myles|turo|rentalcars)\b/.test(
+      q
+    );
+  const carRentalSignals = [
+    /pick[\s-]?up|pickup\s*date|pickup\s*location/,
+    /drop[\s-]?off|return\s*date|return\s*location/,
+    /rental\s*agreement|car\s*rental|vehicle\s*group|reservation|booking\s*(?:id|ref|number)/,
+  ].filter((r) => r.test(q)).length;
+  if (carRentalVendor && carRentalSignals >= 1) return true;
+  if (carRentalSignals >= 2 && /\b(car|vehicle|suv|sedan|hatchback|automatic|rental)\b/.test(q)) {
+    return true;
+  }
+
+  // Train / Bus / Ferry e-ticket detection (IRCTC, SBB, Eurostar, Shinkansen, Amtrak, RedBus, FlixBus, etc.)
+  const railBusVendor =
+    /\b(irctc|indian\s*railways|vande\s*bharat|shatabdi|rajdhani|sbb\s*cff|sbb|eurostar|shinkansen|jr\s*east|jr\s*west|amtrak|trenitalia|italo|sncf|tgv|deutsche\s*bahn|db\s*bahn|eurail|swiss\s*travel\s*pass|redbus|flixbus|greyhound|national\s*express|ksrtc|ferry\s*ticket|blue\s*star\s*ferries)\b/.test(
+      q
+    );
+  const railSignals = [
+    /\b(train\s*no|train\s*number|coach|berth|platform|wagon|car\s*\d+|seat\s*no|boarding\s*station|from\s*station|to\s*station)\b/,
+    /\b(pnr|booking\s*ref|ticket\s*no|e-?ticket|electronic\s*reservation|confirmation)\b/,
+    /\b(bus\s*operator|boarding\s*point|dropping\s*point|sleeper|ferry|port\s*of\s*departure)\b/,
+  ].filter((r) => r.test(q)).length;
+
+  if (railBusVendor && (railSignals >= 1 || /→|->|\bto\b/i.test(text))) return true;
+  if (railSignals >= 2 && !/\b(airline|airways|flight\s*no|airport)\b/.test(q)) return true;
+
+  return false;
+}
+
+function parseTransportConfirmationOcr(
+  rawText: string,
+  currency: string,
+  totalAmount: number,
+  imageUri?: string
+): ParsedTransport {
+  const q = rawText.toLowerCase();
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const today = new Date().toISOString().slice(0, 10);
+
+  let mode: ParsedTransport['mode'] = 'train';
+  if (
+    /\b(sixt|hertz|avis|enterprise|europcar|alamo|budget\s*rent|zoomcar|turo|car\s*rental|rental\s*agreement|pick[\s-]?up.*drop[\s-]?off)\b/i.test(
+      rawText
+    )
+  ) {
+    mode = 'rental_car';
+  } else if (/\b(redbus|flixbus|greyhound|national\s*express|ksrtc|bus\s*ticket|bus\s*operator|boarding\s*point)\b/i.test(rawText)) {
+    mode = 'bus';
+  } else if (/\b(ferry|catamaran|hydrofoil|port\s*of\s*departure)\b/i.test(rawText)) {
+    mode = 'ferry';
+  }
+
+  // Operator detection
+  const knownOperators: Array<{ rx: RegExp; name: string }> = [
+    { rx: /\birctc|indian\s*railways/i, name: 'IRCTC / Indian Railways' },
+    { rx: /\bsbb\s*cff|\bsbb\b/i, name: 'SBB Swiss Railways' },
+    { rx: /\beurostar\b/i, name: 'Eurostar' },
+    { rx: /\bshinkansen|\bjr\s*(?:east|west|central)/i, name: 'JR Shinkansen' },
+    { rx: /\bamtrak\b/i, name: 'Amtrak' },
+    { rx: /\btrenitalia\b/i, name: 'Trenitalia' },
+    { rx: /\bsncf|\btgv\b/i, name: 'SNCF TGV' },
+    { rx: /\bdeutsche\s*bahn|\bdb\s*bahn\b/i, name: 'Deutsche Bahn' },
+    { rx: /\bredbus\b/i, name: 'RedBus' },
+    { rx: /\bflixbus\b/i, name: 'FlixBus' },
+    { rx: /\bsixt\b/i, name: 'Sixt Car Rental' },
+    { rx: /\bhertz\b/i, name: 'Hertz' },
+    { rx: /\bavis\b/i, name: 'Avis' },
+    { rx: /\benterprise\b/i, name: 'Enterprise' },
+    { rx: /\beuropcar\b/i, name: 'Europcar' },
+    { rx: /\bzoomcar\b/i, name: 'Zoomcar' },
+  ];
+  const matchedOp = knownOperators.find((op) => op.rx.test(rawText));
+  const operatorName =
+    matchedOp?.name ??
+    lines.find((l) => /[A-Za-z]{3,}/.test(l) && l.length <= 42) ??
+    (mode === 'rental_car' ? 'Car Rental' : mode === 'bus' ? 'Bus' : mode === 'ferry' ? 'Ferry' : 'Train');
+
+  // Extract origin & destination
+  let origin = '';
+  let destination = '';
+  const fromMatch = rawText.match(
+    /(?:from(?:\s*station)?|boarding(?:\s*point|\s*station)?|pick[\s-]?up(?:\s*location)?|departure\s*station)[\s:]+([^\n\r,|]{2,36})/i
+  );
+  const toMatch = rawText.match(
+    /(?:to(?:\s*station)?|dropping(?:\s*point)?|drop[\s-]?off(?:\s*location)?|arrival\s*station|destination)[\s:]+([^\n\r,|]{2,36})/i
+  );
+  if (fromMatch) origin = fromMatch[1].trim();
+  if (toMatch) destination = toMatch[1].trim();
+
+  if (!origin || !destination) {
+    const arrowLine = lines.find((l) => /([A-Za-z][A-Za-z\s.]{1,24})\s*(?:→|->|—|–)\s*([A-Za-z][A-Za-z\s.]{1,24})/.test(l));
+    if (arrowLine) {
+      const am = arrowLine.match(/([A-Za-z][A-Za-z\s.]{1,24})\s*(?:→|->|—|–)\s*([A-Za-z][A-Za-z\s.]{1,24})/);
+      if (am) {
+        origin = origin || am[1].trim();
+        destination = destination || am[2].trim();
+      }
+    }
+  }
+  origin = origin || 'Start';
+  destination = destination || (mode === 'rental_car' ? origin : 'Destination');
+
+  // Dates
+  const allDates: string[] = [];
+  for (const line of lines) {
+    const d = parseDateFromString(line);
+    if (d && !allDates.includes(d)) allDates.push(d);
+  }
+  const startDate = allDates[0] ?? today;
+  const endDate = allDates.find((d) => d > startDate);
+
+  // Reference / PNR / Booking ID (must contain at least 1 digit so words like "SLIP" never match)
+  const pnrMatch = rawText.match(/\bpnr\b[\s:#-]*([A-Z0-9-]*\d[A-Z0-9-]{3,13})\b/i);
+  const refMatch =
+    pnrMatch ??
+    rawText.match(
+      /(?:\bbooking\s*(?:id|ref(?:erence)?|no\.?|number)?\b|\breservation\s*(?:id|no\.?|code|#|:)\b|\bticket\s*(?:no\.?|number|#)\b|\btrain\s*(?:no\.?|number)\b)[\s:#-]*([A-Z0-9-]*\d[A-Z0-9-]{2,13})\b/i
+    );
+  const referenceCode = refMatch ? refMatch[1].toUpperCase() : undefined;
+
+  // Seat / Coach / Vehicle
+  const vehicleMatch =
+    mode === 'rental_car'
+      ? rawText.match(/(?:vehicle|car\s*model|group|model)[\s:]+([^\n\r]{3,32})/i)
+      : rawText.match(/(?:coach|berth|seat|class|wagon|car)[\s:#-]*([A-Z0-9/\s-]{2,20})/i);
+  const seatOrVehicle = vehicleMatch ? vehicleMatch[1].trim() : undefined;
+
+  return {
+    kind: 'transport',
+    mode,
+    operatorName: toTitleCaseIfUpper(operatorName),
+    origin: toTitleCaseIfUpper(origin),
+    destination: toTitleCaseIfUpper(destination),
+    startDate,
+    endDate,
+    referenceCode,
+    seatOrVehicle,
+    totalAmount,
+    currency,
+    rawText,
+    imageUri,
+  };
 }
 
 export function isHotelConfirmationText(text: string): boolean {
@@ -431,7 +592,7 @@ export function parseDocumentOcrText(
   rawText: string,
   defaultCurrency = 'USD',
   imageUri?: string,
-  forceKind?: 'flight' | 'hotel' | 'receipt'
+  forceKind?: 'flight' | 'transport' | 'hotel' | 'receipt'
 ): ScanResult {
   const lines = rawText
     .split(/\r?\n/)
@@ -446,9 +607,17 @@ export function parseDocumentOcrText(
     forceKind === 'hotel' ||
     (!forceKind && isHotelConfirmationText(rawText));
 
+  const isTransport =
+    forceKind === 'transport' ||
+    (!forceKind && !isHotel && isTransportConfirmationText(rawText));
+
   const isFlight =
     forceKind === 'flight' ||
-    (!forceKind && !isHotel && isFlightConfirmationText(rawText));
+    (!forceKind && !isHotel && !isTransport && isFlightConfirmationText(rawText));
+
+  if (isTransport) {
+    return parseTransportConfirmationOcr(rawText, currency, totalAmount, imageUri);
+  }
 
   if (isFlight) {
     return parseFlightConfirmationOcr(rawText, currency, totalAmount, imageUri);

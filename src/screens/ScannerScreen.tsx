@@ -35,10 +35,17 @@ import {
   runMultiImageOcrAndSave,
 } from '../services/documentImportService';
 import { enrichFlightDetails, FlightEnrichmentResult } from '../services/flightEnricher';
+import { formatFlightDistance } from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
 import { mergeOcrTexts, parseDocumentOcrText } from '../services/ocrParser';
-import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
-import { IncomingSharePayload, ScanResult, Trip } from '../types/models';
+import { CATEGORY_META, COLORS, formatMoney, SHADOWS, TRANSPORT_MODE_META } from '../theme/tokens';
+import {
+  DistanceUnit,
+  ExpenseCategory,
+  IncomingSharePayload,
+  ScanResult,
+  Trip,
+} from '../types/models';
 
 interface Props {
   onClose: () => void;
@@ -59,10 +66,12 @@ export const ScannerScreen: React.FC<Props> = ({
     fxRates,
     addTrip,
     addFlight,
+    addTransport,
     addStay,
     addExpense,
   } = useApp();
   const keyboardHeight = useKeyboardHeight();
+  const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
@@ -141,7 +150,12 @@ export const ScannerScreen: React.FC<Props> = ({
       setEnrichment(enriched);
       setScanResult(parsed);
     } else {
-      const scanDate = parsed.kind === 'hotel' ? parsed.checkIn : parsed.date;
+      const scanDate =
+        parsed.kind === 'hotel'
+          ? parsed.checkIn
+          : parsed.kind === 'transport'
+          ? parsed.startDate
+          : parsed.date;
       applyDestinationSuggestion(scanDate);
       setEnrichment(null);
       setScanResult(parsed);
@@ -373,7 +387,7 @@ export const ScannerScreen: React.FC<Props> = ({
   const handleParsePastedText = async () => {
     const clean = pastedText.trim();
     if (clean.length < 6) {
-      Alert.alert('Paste Confirmation Text', 'Paste a flight email, hotel booking confirmation, or receipt text first.');
+      Alert.alert('Paste Confirmation Text', 'Paste a flight email, train ticket, car rental, hotel booking, or receipt text first.');
       return;
     }
     setPasteModal(false);
@@ -395,7 +409,7 @@ export const ScannerScreen: React.FC<Props> = ({
     }
   };
 
-  const handleSwitchParsedKind = async (kind: 'flight' | 'hotel' | 'receipt') => {
+  const handleSwitchParsedKind = async (kind: 'flight' | 'transport' | 'hotel' | 'receipt') => {
     if (!lastRawOcrText) return;
     const reparsed = parseDocumentOcrText(lastRawOcrText, homeCurrency, lastImageUri, kind);
     if (reparsed.kind === 'boarding_pass') {
@@ -417,6 +431,8 @@ export const ScannerScreen: React.FC<Props> = ({
       const preferredKind =
         scanResult?.kind === 'boarding_pass'
           ? 'flight'
+          : scanResult?.kind === 'transport'
+          ? 'transport'
           : scanResult?.kind === 'hotel'
           ? 'hotel'
           : scanResult?.kind === 'receipt'
@@ -474,6 +490,10 @@ export const ScannerScreen: React.FC<Props> = ({
     });
   };
 
+  const updateTransportField = (patch: Partial<Extract<ScanResult, { kind: 'transport' }>>) => {
+    setScanResult((prev) => (prev && prev.kind === 'transport' ? { ...prev, ...patch } : prev));
+  };
+
   const updateHotelField = (patch: Partial<Extract<ScanResult, { kind: 'hotel' }>>) => {
     setScanResult((prev) => {
       if (!prev || prev.kind !== 'hotel') return prev;
@@ -508,6 +528,17 @@ export const ScannerScreen: React.FC<Props> = ({
         city,
         dateStart: start,
         dateEnd: end,
+      };
+    }
+    if (scanResult.kind === 'transport') {
+      const city = scanResult.destination || scanResult.origin || scanResult.operatorName;
+      const inferred = inferDestinationVibe(city);
+      const modeEmoji = TRANSPORT_MODE_META[scanResult.mode].emoji;
+      return {
+        title: `${city} Trip ${inferred.flag || modeEmoji}`,
+        city,
+        dateStart: scanResult.startDate,
+        dateEnd: scanResult.endDate || addDays(scanResult.startDate, 4),
       };
     }
     if (scanResult.kind === 'hotel') {
@@ -620,6 +651,33 @@ export const ScannerScreen: React.FC<Props> = ({
           createdAt: now,
         });
       }
+    } else if (scanResult.kind === 'transport') {
+      const { converted: homeCost } =
+        scanResult.totalAmount > 0
+          ? convertCurrency(scanResult.totalAmount, scanResult.currency, homeCurrency, fxRates)
+          : { converted: 0 };
+      const modeLabel = TRANSPORT_MODE_META[scanResult.mode].label;
+      addTransport({
+        id: generateId('trn'),
+        tripId: finalTripId,
+        mode: scanResult.mode,
+        title: `${scanResult.operatorName || modeLabel}${
+          scanResult.seatOrVehicle && scanResult.mode === 'rental_car'
+            ? ` • ${scanResult.seatOrVehicle}`
+            : ''
+        }`,
+        operatorName: scanResult.operatorName || undefined,
+        referenceCode: scanResult.referenceCode || undefined,
+        origin: scanResult.origin || 'Start',
+        destination: scanResult.destination || 'Destination',
+        startDate: scanResult.startDate,
+        endDate: scanResult.endDate || undefined,
+        seatOrVehicle: scanResult.seatOrVehicle || undefined,
+        costAmount: scanResult.totalAmount > 0 ? scanResult.totalAmount : undefined,
+        currency: scanResult.totalAmount > 0 ? scanResult.currency : undefined,
+        homeCost: scanResult.totalAmount > 0 ? homeCost : undefined,
+        createdAt: now,
+      });
     } else if (scanResult.kind === 'hotel') {
       const { converted } = convertCurrency(
         scanResult.totalAmount,
@@ -935,6 +993,8 @@ export const ScannerScreen: React.FC<Props> = ({
                       ? scanResult.source === 'ocr'
                         ? '✈️ FLIGHT BOOKING READ'
                         : '✈️ BOARDING PASS DECODED'
+                      : scanResult.kind === 'transport'
+                      ? `${TRANSPORT_MODE_META[scanResult.mode].emoji} ${TRANSPORT_MODE_META[scanResult.mode].label.toUpperCase()} READ`
                       : scanResult.kind === 'hotel'
                       ? '🏨 HOTEL CONFIRMATION READ'
                       : '🧾 RECEIPT READ'}
@@ -981,6 +1041,7 @@ export const ScannerScreen: React.FC<Props> = ({
                   {(
                     [
                       { id: 'flight', label: '✈️ Flight', active: scanResult.kind === 'boarding_pass' },
+                      { id: 'transport', label: '🚆 Travel', active: scanResult.kind === 'transport' },
                       { id: 'hotel', label: '🏨 Hotel', active: scanResult.kind === 'hotel' },
                       { id: 'receipt', label: '🧾 Spend', active: scanResult.kind === 'receipt' },
                     ] as const
@@ -1065,10 +1126,10 @@ export const ScannerScreen: React.FC<Props> = ({
                       label="Distance & Time"
                       value={
                         scanResult.distanceMiles > 0
-                          ? `${scanResult.distanceMiles.toLocaleString()} mi (${formatDuration(
+                          ? `${formatFlightDistance(scanResult.distanceMiles, distanceUnit)} (${formatDuration(
                               enrichment?.durationMinutes ?? scanResult.estimatedDurationMin
                             )})`
-                          : 'Enter IATA codes for miles'
+                          : 'Enter IATA codes for distance'
                       }
                     />
                     <InfoPair
@@ -1086,8 +1147,111 @@ export const ScannerScreen: React.FC<Props> = ({
 
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
-                      ✓ Adds to Bookings tab, World Map & {scanResult.loyaltyProgram}
+                      ✓ Adds to Bookings timeline, World Map & {scanResult.loyaltyProgram}
                       {scanResult.ticketAmount ? ' + logs fare to Spend' : ''}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {scanResult.kind === 'transport' && (
+                <View style={{ gap: 8 }}>
+                  <View style={styles.typeSwitchRow}>
+                    {(['train', 'bus', 'ferry', 'rental_car'] as const).map((m) => {
+                      const meta = TRANSPORT_MODE_META[m];
+                      const active = scanResult.mode === m;
+                      return (
+                        <TouchableOpacity
+                          key={m}
+                          onPress={() => updateTransportField({ mode: m })}
+                          style={[
+                            styles.typeSwitchChip,
+                            active && { backgroundColor: meta.color, borderColor: meta.color },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.typeSwitchText,
+                              active && { color: '#FFFFFF' },
+                            ]}
+                          >
+                            {meta.emoji} {meta.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <EditableField
+                    label={scanResult.mode === 'rental_car' ? 'Rental Company' : 'Operator / Train'}
+                    value={scanResult.operatorName}
+                    onChangeText={(v) => updateTransportField({ operatorName: v })}
+                  />
+
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label={scanResult.mode === 'rental_car' ? 'Pickup' : 'From'}
+                      value={scanResult.origin}
+                      onChangeText={(v) => updateTransportField({ origin: v })}
+                    />
+                    <EditableField
+                      label={scanResult.mode === 'rental_car' ? 'Drop-off' : 'To'}
+                      value={scanResult.destination}
+                      onChangeText={(v) => updateTransportField({ destination: v })}
+                    />
+                  </View>
+
+                  <View style={styles.editRow}>
+                    <DatePickerField
+                      label="Start Date"
+                      value={scanResult.startDate}
+                      onChange={(v) => updateTransportField({ startDate: v })}
+                      compact
+                    />
+                    <DatePickerField
+                      label="End Date (Opt.)"
+                      value={scanResult.endDate || scanResult.startDate}
+                      onChange={(v) => updateTransportField({ endDate: v })}
+                      compact
+                    />
+                  </View>
+
+                  <View style={styles.editRow}>
+                    <EditableField
+                      label="Total Paid"
+                      value={String(scanResult.totalAmount || '')}
+                      keyboardType="decimal-pad"
+                      onChangeText={(v) =>
+                        updateTransportField({ totalAmount: parseFloat(v) || 0 })
+                      }
+                    />
+                    <EditableField
+                      label="Currency"
+                      value={scanResult.currency}
+                      onChangeText={(v) =>
+                        updateTransportField({ currency: v.toUpperCase().slice(0, 3) })
+                      }
+                    />
+                    <EditableField
+                      label="PNR / Ref"
+                      value={scanResult.referenceCode || ''}
+                      placeholder="Optional"
+                      onChangeText={(v) =>
+                        updateTransportField({ referenceCode: v.toUpperCase() })
+                      }
+                    />
+                  </View>
+
+                  <EditableField
+                    label={scanResult.mode === 'rental_car' ? 'Vehicle (Opt.)' : 'Coach / Seat (Opt.)'}
+                    value={scanResult.seatOrVehicle || ''}
+                    placeholder="Optional"
+                    onChangeText={(v) => updateTransportField({ seatOrVehicle: v })}
+                  />
+
+                  <View style={styles.routeNoteBox}>
+                    <Text style={styles.routeNoteText}>
+                      ✓ Adds to your Chronological Bookings Timeline & Trip Spend overview
                     </Text>
                   </View>
                 </View>
@@ -1132,8 +1296,40 @@ export const ScannerScreen: React.FC<Props> = ({
                         homeCurrency
                       )}
                     />
-                    <InfoPair label="Category" value={scanResult.category.toUpperCase()} />
+                    <InfoPair
+                      label="Category"
+                      value={`${CATEGORY_META[scanResult.category]?.emoji ?? '✨'} ${CATEGORY_META[scanResult.category]?.label ?? scanResult.category}`}
+                    />
                   </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+                  >
+                    {(Object.keys(CATEGORY_META) as ExpenseCategory[]).map((cat) => {
+                      const meta = CATEGORY_META[cat];
+                      const active = scanResult.category === cat;
+                      return (
+                        <TouchableOpacity
+                          key={cat}
+                          onPress={() => updateReceiptField({ category: cat })}
+                          style={[
+                            styles.typeSwitchChip,
+                            active && styles.typeSwitchChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.typeSwitchText,
+                              active && { color: '#FFFFFF' },
+                            ]}
+                          >
+                            {meta.emoji} {meta.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
                       🔒 Tucked safely inside the Spend tab (keeps Polaroid Memories clean!)

@@ -17,6 +17,7 @@ const VALID_CATEGORIES = new Set<ExpenseCategory>([
   'lodging',
   'dining',
   'transit',
+  'fuel',
   'activities',
   'shopping',
   'other',
@@ -34,7 +35,7 @@ export async function extractDocumentWithAi(
   rawText: string,
   defaultCurrency = 'USD',
   imageUri?: string,
-  preferredKind?: 'flight' | 'hotel' | 'receipt'
+  preferredKind?: 'flight' | 'transport' | 'hotel' | 'receipt'
 ): Promise<AiExtractionOutcome> {
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const supabaseAnon = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -150,6 +151,31 @@ export function mapAiJsonToScanResult(
       rawBarcode: '',
       ticketAmount: ticketAmount > 0 ? ticketAmount : undefined,
       ticketCurrency: ticketAmount > 0 ? curr(obj.ticketCurrency) : undefined,
+      rawText,
+      imageUri,
+    };
+  }
+
+  if (obj.kind === 'transport') {
+    const validModes = new Set(['train', 'bus', 'ferry', 'rental_car']);
+    const rawMode = String(obj.mode || 'train').toLowerCase();
+    const mode = (validModes.has(rawMode) ? rawMode : 'train') as
+      | 'train'
+      | 'bus'
+      | 'ferry'
+      | 'rental_car';
+    return {
+      kind: 'transport',
+      mode,
+      operatorName: String(obj.operatorName || 'Transit').trim(),
+      origin: String(obj.origin || 'Origin').trim(),
+      destination: String(obj.destination || 'Destination').trim(),
+      startDate: isoDate(obj.startDate, today),
+      endDate: obj.endDate ? isoDate(obj.endDate, today) : undefined,
+      referenceCode: obj.referenceCode ? String(obj.referenceCode).trim().toUpperCase() : undefined,
+      seatOrVehicle: obj.seatOrVehicle ? String(obj.seatOrVehicle).trim() : undefined,
+      totalAmount: num(obj.totalAmount),
+      currency: curr(obj.currency),
       rawText,
       imageUri,
     };

@@ -25,8 +25,14 @@ import {
   resolveLayoutForCount,
   RouteOverlayMode,
 } from '../../services/igStudioHelpers';
+import {
+  formatDistance,
+  formatDistanceValue,
+  getTransportModeEmoji,
+  milesToKm,
+} from '../../services/distanceUtils';
 import { COLORS } from '../../theme/tokens';
-import { Flight, Memory, Trip } from '../../types/models';
+import { DistanceUnit, Flight, Memory, TransportLeg, Trip } from '../../types/models';
 
 export type { IgFormat, IgTemplate };
 
@@ -311,13 +317,26 @@ const WatermarkBar: React.FC<{ dark?: boolean; scale?: number }> = ({
 const FlightArcGraphic: React.FC<{
   origin: string;
   dest: string;
-  miles: number;
+  distanceKm: number;
+  distanceUnit?: DistanceUnit;
+  modeEmoji?: string;
+  subtitleVerb?: string;
   lightText?: boolean;
   scale?: number;
-}> = ({ origin, dest, miles, lightText = true, scale = 1 }) => {
+}> = ({
+  origin,
+  dest,
+  distanceKm,
+  distanceUnit = 'km',
+  modeEmoji = '✈️',
+  subtitleVerb = 'across the sky',
+  lightText = true,
+  scale = 1,
+}) => {
   const strokeColor = lightText ? '#FDE047' : '#F97316';
   const textColor = lightText ? '#FFFFFF' : COLORS.ink;
   const subColor = lightText ? 'rgba(255,255,255,0.85)' : COLORS.inkMuted;
+  const endpointFontSize = origin.length > 4 || dest.length > 4 ? 14 * scale : 20 * scale;
 
   return (
     <View
@@ -332,7 +351,13 @@ const FlightArcGraphic: React.FC<{
       ]}
     >
       <View style={[styles.arcEndpoints, { gap: 8 * scale }]}>
-        <Text style={[styles.arcCode, { color: textColor, fontSize: 20 * scale }]}>{origin}</Text>
+        <Text
+          style={[styles.arcCode, { color: textColor, fontSize: endpointFontSize, maxWidth: 88 * scale }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {origin}
+        </Text>
         <View style={styles.arcSvgBox}>
           <Svg width="100%" height={32 * scale} viewBox="0 0 140 36">
             <Path
@@ -345,13 +370,19 @@ const FlightArcGraphic: React.FC<{
             <Circle cx={8} cy={28} r={4} fill={strokeColor} />
             <Circle cx={132} cy={28} r={4} fill={strokeColor} />
           </Svg>
-          <Text style={[styles.arcPlane, { fontSize: 13 * scale, top: 1 * scale }]}>✈️</Text>
+          <Text style={[styles.arcPlane, { fontSize: 13 * scale, top: 1 * scale }]}>{modeEmoji}</Text>
         </View>
-        <Text style={[styles.arcCode, { color: textColor, fontSize: 20 * scale }]}>{dest}</Text>
+        <Text
+          style={[styles.arcCode, { color: textColor, fontSize: endpointFontSize, maxWidth: 88 * scale }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {dest}
+        </Text>
       </View>
-      {miles > 0 && (
+      {distanceKm > 0 && (
         <Text style={[styles.arcMiles, { color: subColor, fontSize: 9.5 * scale }]}>
-          {miles.toLocaleString()} miles across the sky
+          {formatDistance(distanceKm, distanceUnit)} {subtitleVerb}
         </Text>
       )}
     </View>
@@ -362,6 +393,8 @@ export interface SingleCanvasProps {
   trip: Trip;
   memories: Memory[];
   flights: Flight[];
+  transports?: TransportLeg[];
+  distanceUnit?: DistanceUnit;
   format: 'story' | 'feed';
   template: IgTemplate;
   showWatermark: boolean;
@@ -381,6 +414,8 @@ export interface SingleCanvasProps {
 export interface CarouselSlideCanvasProps {
   trip: Trip;
   flights: Flight[];
+  transports?: TransportLeg[];
+  distanceUnit?: DistanceUnit;
   allSelectedMemories: Memory[];
   slide: CarouselSlideSpec;
   showWatermark: boolean;
@@ -401,6 +436,8 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
   trip,
   memories,
   flights,
+  transports = [],
+  distanceUnit = 'km',
   format,
   template,
   showWatermark,
@@ -420,7 +457,10 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
   const height = Math.round(format === 'story' ? (canvasWidth * 16) / 9 : (canvasWidth * 5) / 4);
   const days = getTripDaysCount(trip.startDate, trip.endDate);
   const totalMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
+  const totalDistanceKm =
+    milesToKm(totalMiles) + transports.reduce((sum, t) => sum + (t.distanceKm || 0), 0);
   const primaryFlight = flights[0];
+  const primaryTransport = transports[0];
   const palette = getPaletteSpec(paletteId);
   const editorialDateRange = formatEditorialDateRange(trip.startDate, trip.endDate);
 
@@ -824,9 +864,10 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
             gap: 5 * s,
           }}
         >
-          {totalMiles > 0 && (
+          {totalDistanceKm > 0 && (
             <Text style={{ fontSize: 9.5 * s, fontWeight: '800', color: palette.inkMuted }}>
-              ✈️ {totalMiles.toLocaleString()} mi • 📸 {memories.length} memories
+              {primaryFlight ? '✈️' : primaryTransport ? getTransportModeEmoji(primaryTransport.mode) : '🧭'}{' '}
+              {formatDistance(totalDistanceKm, distanceUnit)} • 📸 {memories.length} memories
             </Text>
           )}
           {showWatermark && <WatermarkBar dark={palette.dark} scale={s} />}
@@ -836,7 +877,7 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
   }
 
   // =========================================================================
-  // TEMPLATE 2: FLIGHT ROUTE & STATS RECAP
+  // TEMPLATE 2: FLIGHT / JOURNEY ROUTE & STATS RECAP
   // =========================================================================
   if (template === 'route') {
     const backdropMem =
@@ -845,7 +886,7 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
         : undefined) ?? memories.find((m) => m.photoUri);
     const heroPhoto = backdropMem?.photoUri ?? trip.coverPhotoUri;
     const backdropCropKey = backdropMem ? `route_${backdropMem.id}` : '__route_backdrop__';
-    const statItems = getRouteStatsItems(trip, memories, flights);
+    const statItems = getRouteStatsItems(trip, memories, flights, transports, distanceUnit);
 
     const renderCenterpiece = () => {
       if (primaryFlight) {
@@ -853,7 +894,28 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
           <FlightArcGraphic
             origin={primaryFlight.originIata}
             dest={primaryFlight.destIata}
-            miles={totalMiles}
+            distanceKm={totalDistanceKm}
+            distanceUnit={distanceUnit}
+            modeEmoji="✈️"
+            subtitleVerb="across the sky"
+            lightText
+            scale={s}
+          />
+        );
+      }
+      if (primaryTransport) {
+        return (
+          <FlightArcGraphic
+            origin={primaryTransport.origin}
+            dest={primaryTransport.destination}
+            distanceKm={totalDistanceKm}
+            distanceUnit={distanceUnit}
+            modeEmoji={getTransportModeEmoji(primaryTransport.mode)}
+            subtitleVerb={
+              primaryTransport.mode === 'own_car' || primaryTransport.mode === 'rental_car'
+                ? 'on the open road'
+                : 'on the journey'
+            }
             lightText
             scale={s}
           />
@@ -1510,6 +1572,8 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
 export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
   trip,
   flights,
+  transports = [],
+  distanceUnit = 'km',
   allSelectedMemories,
   slide,
   showWatermark,
@@ -1525,7 +1589,11 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
   const height = Math.round((canvasWidth * 5) / 4);
   const days = getTripDaysCount(trip.startDate, trip.endDate);
   const totalMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
+  const totalDistanceKm =
+    milesToKm(totalMiles) + transports.reduce((sum, t) => sum + (t.distanceKm || 0), 0);
+  const totalDistanceDisplay = formatDistanceValue(totalDistanceKm, distanceUnit);
   const primaryFlight = flights[0];
+  const primaryTransport = transports[0];
   const palette = getPaletteSpec(paletteId);
   const editorialDateRange = formatEditorialDateRange(trip.startDate, trip.endDate);
 
@@ -1813,7 +1881,25 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
           <FlightArcGraphic
             origin={primaryFlight.originIata}
             dest={primaryFlight.destIata}
-            miles={totalMiles}
+            distanceKm={totalDistanceKm}
+            distanceUnit={distanceUnit}
+            modeEmoji="✈️"
+            subtitleVerb="across the sky"
+            lightText
+            scale={s}
+          />
+        ) : primaryTransport ? (
+          <FlightArcGraphic
+            origin={primaryTransport.origin}
+            dest={primaryTransport.destination}
+            distanceKm={totalDistanceKm}
+            distanceUnit={distanceUnit}
+            modeEmoji={getTransportModeEmoji(primaryTransport.mode)}
+            subtitleVerb={
+              primaryTransport.mode === 'own_car' || primaryTransport.mode === 'rental_car'
+                ? 'on the open road'
+                : 'on the journey'
+            }
             lightText
             scale={s}
           />
@@ -1844,10 +1930,10 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
           <View style={[styles.glassDivider, { height: 24 * s }]} />
           <View style={styles.glassStat}>
             <Text style={[styles.glassStatVal, { fontSize: 15.5 * s }]}>
-              {totalMiles > 0 ? totalMiles.toLocaleString() : '1'}
+              {totalDistanceDisplay > 0 ? totalDistanceDisplay.toLocaleString() : '1'}
             </Text>
             <Text style={[styles.glassStatLbl, { fontSize: 8 * s, marginTop: 2 * s }]}>
-              {totalMiles > 0 ? 'MILES' : 'STAMP'}
+              {totalDistanceDisplay > 0 ? (distanceUnit === 'mi' ? 'MILES' : 'KM') : 'STAMP'}
             </Text>
           </View>
         </View>

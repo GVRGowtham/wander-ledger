@@ -1,4 +1,5 @@
-import { Flight, Memory, Trip } from '../types/models';
+import { DistanceUnit, Flight, Memory, TransportLeg, Trip } from '../types/models';
+import { formatDistanceValue, milesToKm } from './distanceUtils';
 
 export type IgFormat = 'story' | 'feed' | 'carousel';
 export type IgTemplate = 'scrapbook' | 'route' | 'postcard';
@@ -300,10 +301,16 @@ export interface RouteStatItem {
 export function getRouteStatsItems(
   trip: Trip,
   memories: Memory[],
-  flights: Flight[]
+  flights: Flight[],
+  transports: TransportLeg[] = [],
+  distanceUnit: DistanceUnit = 'km'
 ): RouteStatItem[] {
   const days = getTripDaysCount(trip.startDate, trip.endDate);
-  const totalMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
+  const flightMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
+  const totalDistanceKm =
+    milesToKm(flightMiles) +
+    transports.reduce((sum, t) => sum + (t.distanceKm || 0), 0);
+  const displayDistance = formatDistanceValue(totalDistanceKm, distanceUnit);
   const memCount = memories.length;
 
   const uniquePlaces = new Set(
@@ -312,9 +319,18 @@ export function getRouteStatsItems(
       .filter((p): p is string => Boolean(p && p.length > 0))
   ).size;
 
-  if (totalMiles > 0) {
+  if (displayDistance > 0) {
+    const isFlightOnly = flightMiles > 0 && transports.every((t) => !t.distanceKm);
+    const label =
+      distanceUnit === 'mi'
+        ? isFlightOnly
+          ? 'MILES FLOWN'
+          : 'MILES TRAVELED'
+        : isFlightOnly
+        ? 'KM FLOWN'
+        : 'KM TRAVELED';
     return [
-      { value: totalMiles.toLocaleString(), label: 'MILES FLOWN' },
+      { value: displayDistance.toLocaleString(), label },
       { value: String(days), label: days === 1 ? 'DAY' : 'DAYS' },
       { value: String(Math.max(1, memCount)), label: memCount === 1 ? 'MEMORY' : 'MEMORIES' },
     ];

@@ -17,6 +17,7 @@ import ViewShot, { ViewShotRef } from 'react-native-view-shot';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { BoardingPassCard } from '../components/cards/BoardingPassCard';
 import { MemoryIllustration } from '../components/cards/MemoryIllustration';
+import { TransportCard } from '../components/cards/TransportCard';
 import { DatePickerField } from '../components/forms/DatePickerField';
 import {
   createEmptyFlightDraft,
@@ -24,6 +25,10 @@ import {
   ManualFlightDraft,
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
+import {
+  TransportDraft,
+  TransportFormFields,
+} from '../components/forms/TransportFormFields';
 import { InstagramIcon } from '../components/icons/InstagramIcon';
 import {
   CanvasImageLoadScope,
@@ -33,6 +38,14 @@ import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
+import {
+  buildJourneyRouteTrail,
+  buildJourneyTimeline,
+  convertToKm,
+  formatDistance,
+  matchStopForDate,
+  suggestStopsFromBookings,
+} from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
 import { generateOfflineIgCaption } from '../services/igCaptionService';
 import {
@@ -53,8 +66,15 @@ import {
   formatMoney,
   MOOD_STICKERS,
   SHADOWS,
+  TRANSPORT_MODE_META,
 } from '../theme/tokens';
-import { ExpenseCategory, Memory, Stay, TripVibe } from '../types/models';
+import {
+  DistanceUnit,
+  ExpenseCategory,
+  Memory,
+  Stay,
+  TripVibe,
+} from '../types/models';
 
 interface Props {
   tripId: string;
@@ -93,6 +113,8 @@ export const TripDetailScreen: React.FC<Props> = ({
     profile,
     fxRates,
     getFlightsForTrip,
+    getTransportsForTrip,
+    getStopsForTrip,
     getStaysForTrip,
     getExpensesForTrip,
     getMemoriesForTrip,
@@ -100,6 +122,10 @@ export const TripDetailScreen: React.FC<Props> = ({
     editTrip,
     addFlight,
     removeFlight,
+    addTransport,
+    removeTransport,
+    addTripStop,
+    removeTripStop,
     addStay,
     removeStay,
     addMemory,
@@ -113,7 +139,9 @@ export const TripDetailScreen: React.FC<Props> = ({
   } = useApp();
 
   const trip = trips.find((t) => t.id === tripId);
+  const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
   const [tab, setTab] = useState<InnerTab>('memories');
+  const [selectedStopFilterId, setSelectedStopFilterId] = useState<string | null>(null);
   const [expandedReceiptId, setExpandedReceiptId] = useState<string | null>(null);
 
   // Edit Trip Modal
@@ -129,6 +157,8 @@ export const TripDetailScreen: React.FC<Props> = ({
   // Add / Edit Memory Modal
   const [memoryModal, setMemoryModal] = useState(false);
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
+  const [memStopId, setMemStopId] = useState<string | undefined>(undefined);
+  const [memStopAutoMatched, setMemStopAutoMatched] = useState<string | null>(null);
   const [memTitle, setMemTitle] = useState('');
   const [memNote, setMemNote] = useState('');
   const [memPlace, setMemPlace] = useState('');
@@ -141,8 +171,9 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [memPhotoUri, setMemPhotoUri] = useState<string | undefined>(undefined);
   const [memThumbUri, setMemThumbUri] = useState<string | undefined>(undefined);
 
-  // Manual Flight Modal (Lost / Missing Boarding Pass)
+  // Unified Add Travel Modal (Flight OR Train / Bus / Ferry / Rental Car / Own Car)
   const [flightModal, setFlightModal] = useState(false);
+  const [travelModalMode, setTravelModalMode] = useState<'flight' | 'transport'>('flight');
   const [flightDraft, setFlightDraft] = useState<ManualFlightDraft>(() =>
     createEmptyFlightDraft(
       trip?.startDate || new Date().toISOString().slice(0, 10),
@@ -151,6 +182,27 @@ export const TripDetailScreen: React.FC<Props> = ({
       trip?.destinationCity || ''
     )
   );
+  const [transportDraft, setTransportDraft] = useState<TransportDraft>({
+    mode: 'train',
+    title: '',
+    operatorName: '',
+    origin: '',
+    destination: trip?.destinationCity || '',
+    startDate: trip?.startDate || new Date().toISOString().slice(0, 10),
+    endDate: trip?.endDate || '',
+    referenceCode: '',
+    seatOrVehicle: '',
+    distanceInput: '',
+    costAmount: '',
+    currency: trip?.homeCurrency || 'USD',
+    notes: '',
+  });
+
+  // Add Stop / Hop Modal
+  const [stopModal, setStopModal] = useState(false);
+  const [stopCity, setStopCity] = useState('');
+  const [stopStartDate, setStopStartDate] = useState(trip?.startDate || '');
+  const [stopEndDate, setStopEndDate] = useState(trip?.endDate || '');
 
   // Manual Stay Modal
   const [stayModal, setStayModal] = useState(false);
@@ -206,10 +258,27 @@ export const TripDetailScreen: React.FC<Props> = ({
   }
 
   const flights = getFlightsForTrip(trip.id);
+  const transports = getTransportsForTrip(trip.id);
+  const stops = getStopsForTrip(trip.id);
   const stays = getStaysForTrip(trip.id);
   const expenses = getExpensesForTrip(trip.id);
   const memories = getMemoriesForTrip(trip.id);
   const summary = getSummaryForTrip(trip.id);
+
+  const stopMap = new Map(stops.map((s) => [s.id, s]));
+  const activeStopFilter =
+    selectedStopFilterId && stopMap.has(selectedStopFilterId)
+      ? selectedStopFilterId
+      : null;
+  const visibleMemories = activeStopFilter
+    ? memories.filter((m) => m.stopId === activeStopFilter)
+    : memories;
+
+  const fuelExpenses = expenses.filter((e) => e.category === 'fuel');
+  const fuelSpentHome = fuelExpenses.reduce((sum, e) => sum + e.homeAmount, 0);
+  const timelineItems = buildJourneyTimeline(flights, transports, stays);
+  const routeTrail = buildJourneyRouteTrail(flights, transports, stops);
+  const suggestedStops = suggestStopsFromBookings(flights, transports, stays, stops);
 
   // Spend breakdown by category
   const catTotals: Record<string, number> = {};
@@ -218,6 +287,11 @@ export const TripDetailScreen: React.FC<Props> = ({
   }
   for (const s of stays) {
     catTotals.lodging = (catTotals.lodging ?? 0) + s.homeCost;
+  }
+  for (const t of transports) {
+    if (t.homeCost && t.homeCost > 0) {
+      catTotals.transit = (catTotals.transit ?? 0) + t.homeCost;
+    }
   }
   const grandTotal = Math.max(1, summary.totalSpentHome);
 
@@ -262,13 +336,78 @@ export const TripDetailScreen: React.FC<Props> = ({
     setEditModal(false);
   };
 
+  // --- STOPS / HOPS ---
+  const openAddStopModal = () => {
+    setStopCity('');
+    setStopStartDate(trip.startDate);
+    setStopEndDate(trip.endDate);
+    setStopModal(true);
+  };
+
+  const handleSaveStop = () => {
+    const clean = stopCity.trim();
+    if (!clean) {
+      Alert.alert('City or stop name needed', 'Enter a city, town, or hop name (e.g. Lucerne).');
+      return;
+    }
+    const newId = generateId('stop');
+    addTripStop({
+      id: newId,
+      tripId: trip.id,
+      cityName: clean,
+      startDate: stopStartDate.trim() || undefined,
+      endDate: stopEndDate.trim() || undefined,
+      sortOrder: stops.length,
+      createdAt: new Date().toISOString(),
+    });
+    // If adding a stop while Memory modal is open, auto-select it!
+    if (memoryModal) {
+      setMemStopId(newId);
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setStopModal(false);
+  };
+
+  const handleAcceptSuggestedStop = (cityName: string, startDate?: string, endDate?: string) => {
+    addTripStop({
+      id: generateId('stop'),
+      tripId: trip.id,
+      cityName,
+      startDate,
+      endDate,
+      sortOrder: stops.length,
+      createdAt: new Date().toISOString(),
+    });
+    Haptics.selectionAsync().catch(() => {});
+  };
+
+  const handleDeleteStop = (stopId: string, cityName: string) => {
+    Alert.alert(`Remove stop "${cityName}"?`, 'Memories tagged to this stop will stay in your trip (untagged).', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          if (selectedStopFilterId === stopId) setSelectedStopFilterId(null);
+          removeTripStop(stopId);
+        },
+      },
+    ]);
+  };
+
   // --- MEMORIES (ADD + EDIT + DELETE) ---
   const openAddMemoryModal = () => {
+    const defaultDate = new Date().toISOString().slice(0, 10);
+    const matched = activeStopFilter
+      ? stopMap.get(activeStopFilter)
+      : matchStopForDate(stops, defaultDate);
     setEditingMemoryId(null);
+    setMemStopId(matched?.id);
+    setMemStopAutoMatched(null);
     setMemTitle('');
     setMemNote('');
-    setMemPlace('');
-    setMemDate(new Date().toISOString().slice(0, 10));
+    setMemPlace(matched ? matched.cityName : '');
+    setMemDate(defaultDate);
     setMemCapturedTime(undefined);
     setMemDateAutoDetected(false);
     setMemLat(undefined);
@@ -281,6 +420,8 @@ export const TripDetailScreen: React.FC<Props> = ({
 
   const openEditMemoryModal = (m: Memory) => {
     setEditingMemoryId(m.id);
+    setMemStopId(m.stopId);
+    setMemStopAutoMatched(null);
     setMemTitle(m.title);
     setMemNote(m.note);
     setMemPlace(m.placeName || '');
@@ -301,11 +442,21 @@ export const TripDetailScreen: React.FC<Props> = ({
       setMemPhotoUri(res.photoUri);
       setMemThumbUri(res.thumbUri);
       if (res.capturedAt) {
-        setMemDate(res.capturedAt.slice(0, 10));
+        const photoDay = res.capturedAt.slice(0, 10);
+        setMemDate(photoDay);
         setMemCapturedTime(res.capturedAt.slice(11, 19));
         setMemDateAutoDetected(true);
+        const matched = matchStopForDate(stops, photoDay);
+        if (matched) {
+          setMemStopId(matched.id);
+          setMemStopAutoMatched(matched.cityName);
+          if (!memPlace.trim()) setMemPlace(matched.cityName);
+        } else {
+          setMemStopAutoMatched(null);
+        }
       } else {
         setMemDateAutoDetected(false);
+        setMemStopAutoMatched(null);
       }
       if (res.lat !== undefined && res.lng !== undefined) {
         setMemLat(res.lat);
@@ -322,12 +473,17 @@ export const TripDetailScreen: React.FC<Props> = ({
     }
     const cleanDate = memDate.trim() || new Date().toISOString().slice(0, 10);
     const timeSuffix = memCapturedTime || new Date().toISOString().slice(11, 19);
+    const selectedStop = memStopId ? stopMap.get(memStopId) : undefined;
+    const defaultPlace = selectedStop
+      ? `${selectedStop.cityName}, ${trip.destinationCountry}`
+      : `${trip.destinationCity}, ${trip.destinationCountry}`;
 
     if (editingMemoryId) {
       await editMemory(editingMemoryId, {
-        title: memTitle.trim() || `${trip.destinationCity} Moment`,
+        stopId: memStopId ?? null,
+        title: memTitle.trim() || `${selectedStop?.cityName || trip.destinationCity} Moment`,
         note: memNote.trim() || 'A favorite moment from the journey ✨',
-        placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
+        placeName: memPlace.trim() || defaultPlace,
         moodSticker: memMood,
         capturedAt: `${cleanDate}T${timeSuffix}`,
         photoUri: memPhotoUri ?? null,
@@ -338,10 +494,11 @@ export const TripDetailScreen: React.FC<Props> = ({
       addMemory({
         id: generateId('mem'),
         tripId: trip.id,
-        title: memTitle.trim() || `${trip.destinationCity} Moment`,
+        stopId: memStopId,
+        title: memTitle.trim() || `${selectedStop?.cityName || trip.destinationCity} Moment`,
         note: memNote.trim() || 'A favorite moment from the journey ✨',
         capturedAt: `${cleanDate}T${timeSuffix}`,
-        placeName: memPlace.trim() || `${trip.destinationCity}, ${trip.destinationCountry}`,
+        placeName: memPlace.trim() || defaultPlace,
         lat: memLat,
         lng: memLng,
         photoUri: memPhotoUri,
@@ -356,6 +513,8 @@ export const TripDetailScreen: React.FC<Props> = ({
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setEditingMemoryId(null);
+    setMemStopId(undefined);
+    setMemStopAutoMatched(null);
     setMemTitle('');
     setMemNote('');
     setMemPlace('');
@@ -383,12 +542,12 @@ export const TripDetailScreen: React.FC<Props> = ({
   };
 
   // --- EXPENSES ---
-  const openExpenseModal = () => {
+  const openExpenseModal = (presetCategory: ExpenseCategory = 'dining') => {
     setExpMerchant('');
     setExpAmount('');
     setExpCurrency(trip.homeCurrency || 'USD');
     setExpDate(new Date().toISOString().slice(0, 10));
-    setExpCategory('dining');
+    setExpCategory(presetCategory);
     setExpenseModal(true);
   };
 
@@ -435,12 +594,85 @@ export const TripDetailScreen: React.FC<Props> = ({
     );
   };
 
-  // --- FLIGHTS & STAYS ---
-  const openManualFlightModal = () => {
+  // --- FLIGHTS, TRANSPORTS & STAYS ---
+  const openManualFlightModal = (initialMode: 'flight' | 'transport' = 'flight') => {
+    setTravelModalMode(initialMode);
     setFlightDraft(
       createEmptyFlightDraft(trip.startDate, trip.endDate, trip.homeCurrency, trip.destinationCity)
     );
+    setTransportDraft({
+      mode: 'train',
+      title: '',
+      operatorName: '',
+      origin: '',
+      destination: trip.destinationCity,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      referenceCode: '',
+      seatOrVehicle: '',
+      distanceInput: '',
+      costAmount: '',
+      currency: trip.homeCurrency,
+      notes: '',
+    });
     setFlightModal(true);
+  };
+
+  const handleSaveTransport = () => {
+    if (
+      !transportDraft.origin.trim() &&
+      !transportDraft.destination.trim() &&
+      !transportDraft.title.trim()
+    ) {
+      Alert.alert(
+        'Add route or title',
+        'Enter at least an origin, destination, or transport name.'
+      );
+      return;
+    }
+    const modeMeta = TRANSPORT_MODE_META[transportDraft.mode];
+    const costNum = parseFloat(transportDraft.costAmount) || 0;
+    const tCurr = (transportDraft.currency || trip.homeCurrency).toUpperCase();
+    const { converted: homeCost } =
+      costNum > 0
+        ? convertCurrency(costNum, tCurr, trip.homeCurrency, fxRates)
+        : { converted: 0 };
+    const distVal = parseFloat(transportDraft.distanceInput);
+    const distanceKm =
+      !Number.isNaN(distVal) && distVal > 0
+        ? convertToKm(distVal, distanceUnit)
+        : undefined;
+
+    addTransport({
+      id: generateId('trn'),
+      tripId: trip.id,
+      mode: transportDraft.mode,
+      title:
+        transportDraft.title.trim() ||
+        `${modeMeta.label} to ${transportDraft.destination.trim() || trip.destinationCity}`,
+      operatorName: transportDraft.operatorName.trim() || undefined,
+      referenceCode: transportDraft.referenceCode.trim().toUpperCase() || undefined,
+      origin: transportDraft.origin.trim() || 'Start',
+      destination: transportDraft.destination.trim() || trip.destinationCity,
+      startDate: transportDraft.startDate.trim() || trip.startDate,
+      endDate: transportDraft.endDate.trim() || undefined,
+      seatOrVehicle: transportDraft.seatOrVehicle.trim() || undefined,
+      distanceKm,
+      costAmount: costNum > 0 ? costNum : undefined,
+      currency: costNum > 0 ? tCurr : undefined,
+      homeCost: costNum > 0 ? homeCost : undefined,
+      notes: transportDraft.notes.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setFlightModal(false);
+  };
+
+  const handleDeleteTransport = (transportId: string, label: string) => {
+    Alert.alert(`Remove "${label}"?`, 'Removes this travel leg from your journey timeline.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => removeTransport(transportId) },
+    ]);
   };
 
   const handleSaveManualFlight = () => {
@@ -675,6 +907,8 @@ export const TripDetailScreen: React.FC<Props> = ({
         trip,
         memories: sortedForCollage.length > 0 ? sortedForCollage : memories,
         flights,
+        transports,
+        distanceUnit,
         tone: 'stats',
         includeHashtags: false,
         includeWatermarkTag: false,
@@ -747,6 +981,8 @@ export const TripDetailScreen: React.FC<Props> = ({
                 trip={trip}
                 memories={postcardRenderJob.memories}
                 flights={flights}
+                transports={transports}
+                distanceUnit={distanceUnit}
                 format="feed"
                 template="postcard"
                 showWatermark
@@ -793,12 +1029,12 @@ export const TripDetailScreen: React.FC<Props> = ({
           </Text>
           <Text style={styles.tripDates} numberOfLines={1}>
             {trip.startDate} → {trip.endDate} • {formatMoney(summary.totalSpentHome, trip.homeCurrency)} •{' '}
-            {summary.totalMilesFlown.toLocaleString()} mi
+            {formatDistance(summary.totalDistanceKm, distanceUnit)}
           </Text>
         </View>
       </View>
 
-      {/* 3 Focused Tabs: 📸 Memories | ✈️ Bookings | 🧾 Spend */}
+      {/* 3 Focused Tabs: 📸 Memories | 🧭 Bookings | 🧾 Spend */}
       <View style={styles.tabsWrap}>
         <TabPill
           active={tab === 'memories'}
@@ -807,7 +1043,7 @@ export const TripDetailScreen: React.FC<Props> = ({
         />
         <TabPill
           active={tab === 'bookings'}
-          label={`✈️ Bookings (${flights.length + stays.length})`}
+          label={`🧭 Bookings (${flights.length + transports.length + stays.length})`}
           onPress={() => setTab('bookings')}
         />
         <TabPill
@@ -838,6 +1074,57 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={styles.actionPillText}>+ Memory</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Stop / Hop Filter Strip (shown when trip has multi-hop stops) */}
+            {stops.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+              >
+                <TouchableOpacity
+                  onPress={() => setSelectedStopFilterId(null)}
+                  style={[
+                    styles.stopFilterPill,
+                    activeStopFilter === null && styles.stopFilterPillActive,
+                  ]}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.stopFilterText,
+                      activeStopFilter === null && styles.stopFilterTextActive,
+                    ]}
+                  >
+                    All ({memories.length})
+                  </Text>
+                </TouchableOpacity>
+                {stops.map((s) => {
+                  const count = memories.filter((m) => m.stopId === s.id).length;
+                  const active = activeStopFilter === s.id;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      onPress={() => setSelectedStopFilterId(active ? null : s.id)}
+                      style={[
+                        styles.stopFilterPill,
+                        active && styles.stopFilterPillActive,
+                      ]}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.stopFilterText,
+                          active && styles.stopFilterTextActive,
+                        ]}
+                      >
+                        📍 {s.cityName} ({count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
 
             {/* Show Create Instagram Post CTA only once at least one memory exists */}
             {memories.length > 0 && (
@@ -880,85 +1167,187 @@ export const TripDetailScreen: React.FC<Props> = ({
                   <Text style={styles.emptyBtnText}>📸 Capture First Memory</Text>
                 </TouchableOpacity>
               </View>
+            ) : visibleMemories.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={{ fontSize: 28 }}>📍</Text>
+                <Text style={styles.emptyTitle}>No memories in this stop yet</Text>
+                <Text style={styles.emptySub}>
+                  Tap "+ Memory" to add a Polaroid for {stopMap.get(activeStopFilter!)?.cityName}, or switch back to All.
+                </Text>
+              </View>
             ) : (
-              memories.map((m, idx) => (
-                <View
-                  key={m.id}
-                  style={[
-                    styles.polaroidCard,
-                    { transform: [{ rotate: idx % 2 === 0 ? '-0.6deg' : '0.6deg' }] },
-                  ]}
-                >
-                  <View style={styles.tapeStrip} />
-                  <MemoryIllustration
-                    photoUri={m.photoUri}
-                    illustrationKey={m.illustrationKey}
-                    height={175}
-                  />
-                  <View style={styles.polaroidBody}>
-                    <View style={styles.rowBetween}>
-                      <Text style={styles.polaroidTitle}>{m.title}</Text>
-                      <Text style={styles.polaroidDate}>{m.capturedAt.slice(0, 10)}</Text>
-                    </View>
-                    {m.placeName ? (
-                      <Text style={styles.polaroidPlace} numberOfLines={1}>
-                        📍 {m.placeName}
-                      </Text>
-                    ) : null}
-                    <Text style={styles.polaroidNote}>{m.note}</Text>
-                    <View style={styles.polaroidFooter}>
-                      <View style={styles.moodTag}>
-                        <Text style={styles.moodTagText}>{m.moodSticker}</Text>
+              visibleMemories.map((m, idx) => {
+                const taggedStop = m.stopId ? stopMap.get(m.stopId) : undefined;
+                return (
+                  <View
+                    key={m.id}
+                    style={[
+                      styles.polaroidCard,
+                      { transform: [{ rotate: idx % 2 === 0 ? '-0.6deg' : '0.6deg' }] },
+                    ]}
+                  >
+                    <View style={styles.tapeStrip} />
+                    <MemoryIllustration
+                      photoUri={m.photoUri}
+                      illustrationKey={m.illustrationKey}
+                      height={175}
+                    />
+                    <View style={styles.polaroidBody}>
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.polaroidTitle}>{m.title}</Text>
+                        <Text style={styles.polaroidDate}>{m.capturedAt.slice(0, 10)}</Text>
                       </View>
-                      <View style={styles.memoryActionGroup}>
-                        {m.authorName ? (
-                          <Text style={styles.authorTag}>by {m.authorName}</Text>
+                      <View style={styles.polaroidMetaRow}>
+                        {taggedStop ? (
+                          <View style={styles.stopTagBadge}>
+                            <Text style={styles.stopTagBadgeText}>📍 {taggedStop.cityName}</Text>
+                          </View>
                         ) : null}
-                        <TouchableOpacity
-                          onPress={() => openEditMemoryModal(m)}
-                          style={styles.memEditPill}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.editAction}>✏️ Edit</Text>
-                        </TouchableOpacity>
-                        {m.photoUri && (
+                        {m.placeName ? (
+                          <Text style={styles.polaroidPlace} numberOfLines={1}>
+                            {taggedStop ? m.placeName : `📍 ${m.placeName}`}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.polaroidNote}>{m.note}</Text>
+                      <View style={styles.polaroidFooter}>
+                        <View style={styles.moodTag}>
+                          <Text style={styles.moodTagText}>{m.moodSticker}</Text>
+                        </View>
+                        <View style={styles.memoryActionGroup}>
+                          {m.authorName ? (
+                            <Text style={styles.authorTag}>by {m.authorName}</Text>
+                          ) : null}
                           <TouchableOpacity
-                            onPress={() => {
-                              setTripCoverPhoto(trip.id, m.photoUri!);
-                              Alert.alert('Trip Cover Updated ⭐', 'Your postcard banner now shows this memory!');
-                            }}
-                            style={styles.memActionPill}
+                            onPress={() => openEditMemoryModal(m)}
+                            style={styles.memEditPill}
                             activeOpacity={0.8}
                           >
-                            <Text style={styles.coverAction}>⭐ Cover</Text>
+                            <Text style={styles.editAction}>✏️ Edit</Text>
                           </TouchableOpacity>
-                        )}
-                        <TouchableOpacity
-                          onPress={() => handleDeleteMemory(m)}
-                          style={styles.memDeletePill}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.deleteAction}>🗑️ Delete</Text>
-                        </TouchableOpacity>
+                          {m.photoUri && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setTripCoverPhoto(trip.id, m.photoUri!);
+                                Alert.alert('Trip Cover Updated ⭐', 'Your postcard banner now shows this memory!');
+                              }}
+                              style={styles.memActionPill}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.coverAction}>⭐ Cover</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => handleDeleteMemory(m)}
+                            style={styles.memDeletePill}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.deleteAction}>🗑️ Delete</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         )}
 
-        {/* TAB 2: PERFORATED FLIGHTS & COZY STAYS */}
+        {/* TAB 2: MULTI-HOP STOPS & CHRONOLOGICAL JOURNEY TIMELINE */}
         {tab === 'bookings' && (
           <View style={styles.sectionGap}>
+            {/* Trip Stops / Multi-Hop Strip */}
+            <View style={styles.stopsCard}>
+              <View style={styles.rowBetween}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stopsTitle}>🗺️ Trip Stops / Hops</Text>
+                  <Text style={styles.tinyNote}>
+                    Optional — tag multi-city hops & auto-match memory photos by date
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={openAddStopModal}
+                  style={styles.actionPillSoft}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionPillSoftText}>+ Stop</Text>
+                </TouchableOpacity>
+              </View>
+
+              {routeTrail ? (
+                <View style={styles.routeTrailBox}>
+                  <Text style={styles.routeTrailText}>{routeTrail}</Text>
+                </View>
+              ) : null}
+
+              {stops.length > 0 && (
+                <View style={styles.stopsChipsWrap}>
+                  {stops.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      onLongPress={() => handleDeleteStop(s.id, s.cityName)}
+                      onPress={() => handleDeleteStop(s.id, s.cityName)}
+                      style={styles.stopChip}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.stopChipText}>
+                        📍 {s.cityName}
+                        {s.startDate ? ` • ${s.startDate.slice(5)}` : ''}
+                      </Text>
+                      <Text style={styles.stopChipX}>✕</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {suggestedStops.length > 0 && (
+                <View style={{ gap: 6 }}>
+                  <Text style={styles.suggestLabel}>✨ 1-TAP SUGGESTED STOPS FROM YOUR BOOKINGS</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6 }}
+                  >
+                    {suggestedStops.map((sug) => (
+                      <TouchableOpacity
+                        key={sug.cityName}
+                        onPress={() =>
+                          handleAcceptSuggestedStop(sug.cityName, sug.startDate, sug.endDate)
+                        }
+                        style={styles.suggestChip}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.suggestChipText}>
+                          + 📍 {sug.cityName}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {/* Quick Action Bar for Travel, Stay & Scan */}
             <View style={styles.sectionHeaderRow}>
               <View style={styles.sectionHeaderLeft}>
-                <Text style={styles.subHeading}>✈️ Flights</Text>
+                <Text style={styles.subHeading}>🧭 Journey Timeline</Text>
+                <Text style={styles.tinyNote}>Flights, trains, cars & stays in date order</Text>
               </View>
               <View style={styles.actionGroup}>
-                <TouchableOpacity onPress={openManualFlightModal} style={styles.actionPillSoft} activeOpacity={0.85}>
-                  <Text style={styles.actionPillSoftText}>+ Manual</Text>
+                <TouchableOpacity
+                  onPress={() => openManualFlightModal('flight')}
+                  style={styles.actionPillSoft}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionPillSoftText}>+ Travel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={openManualStayModal}
+                  style={styles.actionPillSoft}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionPillSoftText}>+ Stay</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill} activeOpacity={0.85}>
                   <Text style={styles.actionPillText}>📷 Scan</Text>
@@ -966,95 +1355,132 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
             </View>
 
-            {flights.length === 0 ? (
+            {timelineItems.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Text style={{ fontSize: 28 }}>✈️</Text>
-                <Text style={styles.emptyTitle}>No flights logged yet</Text>
+                <Text style={{ fontSize: 30 }}>✈️🚆🚗🏨</Text>
+                <Text style={styles.emptyTitle}>No travel or stays logged yet</Text>
                 <Text style={styles.emptySub}>
-                  Scan a boarding pass or booking confirmation, or log whatever details you remember manually!
+                  Scan a boarding pass, train e-ticket, car rental or hotel PDF — or log a flight, road trip, or stay manually!
                 </Text>
-                <TouchableOpacity onPress={openManualFlightModal} style={styles.emptyBtn} activeOpacity={0.88}>
-                  <Text style={styles.emptyBtnText}>✍️ Add Flight Manually</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              flights.map((f) => (
-                <View key={f.id} style={{ gap: 6 }}>
-                  <BoardingPassCard flight={f} />
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                   <TouchableOpacity
-                    onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
-                    style={styles.subtleRemoveRow}
-                    activeOpacity={0.75}
+                    onPress={() => openManualFlightModal('flight')}
+                    style={styles.emptyBtn}
+                    activeOpacity={0.88}
                   >
-                    <Text style={styles.subtleRemoveText}>🗑️ Remove flight</Text>
+                    <Text style={styles.emptyBtnText}>✈️ Add Flight</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => openManualFlightModal('transport')}
+                    style={styles.emptyBtn}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={styles.emptyBtnText}>🚆 Train / 🚗 Car</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={openManualStayModal}
+                    style={styles.emptyBtn}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={styles.emptyBtnText}>🏨 Add Stay</Text>
                   </TouchableOpacity>
                 </View>
-              ))
-            )}
-
-            <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
-              <View style={styles.sectionHeaderLeft}>
-                <Text style={styles.subHeading}>🏨 Hotels & Stays</Text>
-              </View>
-              <View style={styles.actionGroup}>
-                <TouchableOpacity onPress={openManualStayModal} style={styles.actionPillSoft} activeOpacity={0.85}>
-                  <Text style={styles.actionPillSoftText}>+ Manual</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={onOpenScanner} style={styles.actionPill} activeOpacity={0.85}>
-                  <Text style={styles.actionPillText}>📷 Scan</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {stays.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Text style={{ fontSize: 28 }}>🏨</Text>
-                <Text style={styles.emptyTitle}>No stays logged yet</Text>
-                <Text style={styles.emptySub}>
-                  Scan a hotel confirmation or add your hotel/Airbnb details manually.
-                </Text>
-                <TouchableOpacity onPress={openManualStayModal} style={styles.emptyBtn} activeOpacity={0.88}>
-                  <Text style={styles.emptyBtnText}>✍️ Add Stay Manually</Text>
-                </TouchableOpacity>
               </View>
             ) : (
-              stays.map((s) => {
+              timelineItems.map((item) => {
+                if (item.kind === 'flight') {
+                  const f = item.flight;
+                  return (
+                    <View key={`tl_f_${f.id}`} style={{ gap: 6 }}>
+                      <View style={styles.timelineDateHeader}>
+                        <View style={[styles.timelineDot, { backgroundColor: COLORS.sky }]} />
+                        <Text style={styles.timelineDateText}>{item.dateLabel} • FLIGHT</Text>
+                      </View>
+                      <BoardingPassCard flight={f} distanceUnit={distanceUnit} />
+                      <TouchableOpacity
+                        onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
+                        style={styles.subtleRemoveRow}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.subtleRemoveText}>🗑️ Remove flight</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+
+                if (item.kind === 'transport') {
+                  const t = item.transport;
+                  const meta = TRANSPORT_MODE_META[t.mode];
+                  return (
+                    <View key={`tl_t_${t.id}`} style={{ gap: 6 }}>
+                      <View style={styles.timelineDateHeader}>
+                        <View style={[styles.timelineDot, { backgroundColor: meta.color }]} />
+                        <Text style={styles.timelineDateText}>
+                          {item.dateLabel} • {meta.label.toUpperCase()}
+                        </Text>
+                      </View>
+                      <TransportCard
+                        transport={t}
+                        distanceUnit={distanceUnit}
+                        homeCurrency={trip.homeCurrency}
+                        fuelSpentHome={fuelSpentHome}
+                        fuelCount={fuelExpenses.length}
+                        onLogFuel={() => openExpenseModal('fuel')}
+                      />
+                      <TouchableOpacity
+                        onPress={() => handleDeleteTransport(t.id, t.title)}
+                        style={styles.subtleRemoveRow}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.subtleRemoveText}>🗑️ Remove travel leg</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+
+                const s = item.stay;
                 const cpp =
                   s.pointsRedeemed > 0 && s.cashValueEstimate
                     ? (((s.cashValueEstimate - s.costCash) / s.pointsRedeemed) * 100).toFixed(2)
                     : null;
                 return (
-                  <View key={s.id} style={styles.stayCard}>
-                    <View style={styles.rowBetween}>
-                      <View style={styles.stayBadge}>
-                        <Text style={styles.stayBadgeText}>🏨 {s.nights} NIGHTS</Text>
-                      </View>
-                      <View style={styles.actionGroup}>
-                        {s.confirmationCode ? (
-                          <Text style={styles.confCode}>#{s.confirmationCode}</Text>
-                        ) : null}
-                        <TouchableOpacity
-                          onPress={() => handleDeleteStay(s.id, s.name)}
-                          style={styles.memDeletePill}
-                        >
-                          <Text style={styles.deleteAction}>🗑️</Text>
-                        </TouchableOpacity>
-                      </View>
+                  <View key={`tl_s_${s.id}`} style={{ gap: 6 }}>
+                    <View style={styles.timelineDateHeader}>
+                      <View style={[styles.timelineDot, { backgroundColor: COLORS.indigo }]} />
+                      <Text style={styles.timelineDateText}>{item.dateLabel} • STAY CHECK-IN</Text>
                     </View>
-                    <Text style={styles.stayName}>{s.name}</Text>
-                    <Text style={styles.stayDates}>
-                      Check-in {s.checkIn} → Check-out {s.checkOut}
-                    </Text>
-                    {s.address ? (
-                      <Text style={styles.stayAddr}>📍 {s.address} (Saved offline)</Text>
-                    ) : null}
-                    <View style={styles.stayCostBox}>
-                      <Text style={styles.stayCostText}>
-                        {s.pointsRedeemed > 0
-                          ? `${(s.pointsRedeemed / 1000).toFixed(0)}k pts + ${formatMoney(s.costCash, s.currency)}`
-                          : formatMoney(s.costCash, s.currency)}
+                    <View style={styles.stayCard}>
+                      <View style={styles.rowBetween}>
+                        <View style={styles.stayBadge}>
+                          <Text style={styles.stayBadgeText}>🏨 {s.nights} NIGHTS</Text>
+                        </View>
+                        <View style={styles.actionGroup}>
+                          {s.confirmationCode ? (
+                            <Text style={styles.confCode}>#{s.confirmationCode}</Text>
+                          ) : null}
+                          <TouchableOpacity
+                            onPress={() => handleDeleteStay(s.id, s.name)}
+                            style={styles.memDeletePill}
+                          >
+                            <Text style={styles.deleteAction}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <Text style={styles.stayName}>{s.name}</Text>
+                      <Text style={styles.stayDates}>
+                        Check-in {s.checkIn} → Check-out {s.checkOut}
                       </Text>
-                      {cpp && <Text style={styles.cppText}>{cpp}¢/pt value 🔥</Text>}
+                      {s.address ? (
+                        <Text style={styles.stayAddr}>📍 {s.address} (Saved offline)</Text>
+                      ) : null}
+                      <View style={styles.stayCostBox}>
+                        <Text style={styles.stayCostText}>
+                          {s.pointsRedeemed > 0
+                            ? `${(s.pointsRedeemed / 1000).toFixed(0)}k pts + ${formatMoney(s.costCash, s.currency)}`
+                            : formatMoney(s.costCash, s.currency)}
+                        </Text>
+                        {cpp && <Text style={styles.cppText}>{cpp}¢/pt value 🔥</Text>}
+                      </View>
                     </View>
                   </View>
                 );
@@ -1110,7 +1536,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
               <View style={styles.actionGroup}>
                 <TouchableOpacity
-                  onPress={openExpenseModal}
+                  onPress={() => openExpenseModal('dining')}
                   style={styles.actionPillSoft}
                   activeOpacity={0.85}
                 >
@@ -1348,7 +1774,8 @@ export const TripDetailScreen: React.FC<Props> = ({
             />
             {memDateAutoDetected && (
               <Text style={styles.tinyNote}>
-                ✨ Auto-filled date from photo ({memDate})
+                ✨ Auto-filled date ({memDate})
+                {memStopAutoMatched ? ` & matched stop "${memStopAutoMatched}"` : ''} from photo
               </Text>
             )}
             <TouchableOpacity
@@ -1356,6 +1783,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                 setMemPhotoUri(undefined);
                 setMemThumbUri(undefined);
                 setMemDateAutoDetected(false);
+                setMemStopAutoMatched(null);
               }}
               style={styles.resetCoverBtn}
             >
@@ -1391,12 +1819,55 @@ export const TripDetailScreen: React.FC<Props> = ({
               onChange={(d) => {
                 setMemDate(d);
                 setMemDateAutoDetected(false);
+                if (!memStopId) {
+                  const matched = matchStopForDate(stops, d);
+                  if (matched) setMemStopId(matched.id);
+                }
               }}
               placeholder="Pick date"
               compact
             />
           </View>
         </View>
+
+        <Text style={styles.fieldLabel}>Trip Stop / Hop (Optional)</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+        >
+          <TouchableOpacity
+            onPress={() => setMemStopId(undefined)}
+            style={[styles.moodChip, !memStopId && styles.moodChipActive]}
+          >
+            <Text style={[styles.moodChipText, !memStopId && { color: '#FFFFFF' }]}>
+              None
+            </Text>
+          </TouchableOpacity>
+          {stops.map((s) => {
+            const active = memStopId === s.id;
+            return (
+              <TouchableOpacity
+                key={s.id}
+                onPress={() => {
+                  setMemStopId(s.id);
+                  if (!memPlace.trim()) setMemPlace(s.cityName);
+                }}
+                style={[styles.moodChip, active && styles.moodChipActive]}
+              >
+                <Text style={[styles.moodChipText, active && { color: '#FFFFFF' }]}>
+                  📍 {s.cityName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            onPress={openAddStopModal}
+            style={[styles.moodChip, { borderStyle: 'dashed', borderColor: COLORS.coral }]}
+          >
+            <Text style={[styles.moodChipText, { color: COLORS.coralDark }]}>+ Stop</Text>
+          </TouchableOpacity>
+        </ScrollView>
 
         <Text style={styles.fieldLabel}>Story / Reflection</Text>
         <TextInput
@@ -1613,18 +2084,109 @@ export const TripDetailScreen: React.FC<Props> = ({
         )}
       </BottomSheetModal>
 
-      {/* MANUAL FLIGHT MODAL (LOST / MISSING BOARDING PASS) */}
+      {/* UNIFIED ADD TRAVEL MODAL (FLIGHT OR TRAIN / BUS / FERRY / RENTAL / OWN CAR) */}
       <BottomSheetModal
         visible={flightModal}
-        title="✈️ Add Flight Manually"
+        title={travelModalMode === 'flight' ? '✈️ Add Flight' : '🚆 Add Train / Car / Road Trip'}
         onClose={() => setFlightModal(false)}
         footer={
-          <TouchableOpacity onPress={handleSaveManualFlight} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-            <Text style={styles.modalPrimaryText}>Save Flight to Trip ✈️</Text>
+          <TouchableOpacity
+            onPress={travelModalMode === 'flight' ? handleSaveManualFlight : handleSaveTransport}
+            style={styles.modalPrimaryBtn}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.modalPrimaryText}>
+              {travelModalMode === 'flight' ? 'Save Flight to Trip ✈️' : 'Save Travel Leg 🧭'}
+            </Text>
           </TouchableOpacity>
         }
       >
-        <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+          <TouchableOpacity
+            onPress={() => setTravelModalMode('flight')}
+            style={[
+              styles.moodChip,
+              { flex: 1, alignItems: 'center' },
+              travelModalMode === 'flight' && styles.moodChipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.moodChipText,
+                travelModalMode === 'flight' && { color: '#FFFFFF' },
+              ]}
+            >
+              ✈️ Flight
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setTravelModalMode('transport')}
+            style={[
+              styles.moodChip,
+              { flex: 1, alignItems: 'center' },
+              travelModalMode === 'transport' && styles.moodChipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.moodChipText,
+                travelModalMode === 'transport' && { color: '#FFFFFF' },
+              ]}
+            >
+              🚆 Train / Bus / 🚗 Car
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {travelModalMode === 'flight' ? (
+          <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
+        ) : (
+          <TransportFormFields
+            draft={transportDraft}
+            onChange={(patch) => setTransportDraft((prev) => ({ ...prev, ...patch }))}
+            distanceUnit={distanceUnit}
+          />
+        )}
+      </BottomSheetModal>
+
+      {/* ADD STOP / HOP MODAL */}
+      <BottomSheetModal
+        visible={stopModal}
+        title="📍 Add Trip Stop / Hop"
+        onClose={() => setStopModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveStop} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
+            <Text style={styles.modalPrimaryText}>Add Stop to Trip 📍</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.tinyNote}>
+          Add cities or stops on multi-hop trips. Adding dates lets Wanderer's Ledger auto-match photo memories to the right stop!
+        </Text>
+        <Text style={styles.fieldLabel}>City / Stop Name</Text>
+        <TextInput
+          value={stopCity}
+          onChangeText={setStopCity}
+          placeholder="e.g. Lucerne, Kyoto, Coorg"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <DatePickerField
+            label="Arrival Date (Opt.)"
+            value={stopStartDate}
+            onChange={setStopStartDate}
+            placeholder="Pick date"
+            compact
+          />
+          <DatePickerField
+            label="Departure Date (Opt.)"
+            value={stopEndDate}
+            onChange={setStopEndDate}
+            placeholder="Pick date"
+            compact
+          />
+        </View>
       </BottomSheetModal>
 
       {/* MANUAL STAY / HOTEL MODAL */}
@@ -2215,4 +2777,139 @@ const styles = StyleSheet.create({
   igLockedHintTitle: { color: COLORS.ink, fontWeight: '900', fontSize: 13 },
   igLockedHintSub: { color: COLORS.inkMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   igLockedHintArrow: { color: COLORS.coral, fontSize: 20, fontWeight: '900' },
+
+  // Multi-Hop Stops & Chronological Journey Timeline
+  stopFilterPill: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 99,
+  },
+  stopFilterPillActive: {
+    backgroundColor: COLORS.navy,
+    borderColor: COLORS.navy,
+  },
+  stopFilterText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
+  stopFilterTextActive: {
+    color: '#FFFFFF',
+  },
+  polaroidMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  stopTagBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  stopTagBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0369A1',
+  },
+  stopsCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    gap: 10,
+    ...SHADOWS.card,
+  },
+  stopsTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  routeTrailBox: {
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  routeTrailText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.ink,
+    lineHeight: 18,
+  },
+  stopsChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  stopChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.indigoSoft,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 99,
+  },
+  stopChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.indigo,
+  },
+  stopChipX: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.indigo,
+    opacity: 0.7,
+  },
+  suggestLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.coralDark,
+    letterSpacing: 0.5,
+  },
+  suggestChip: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#FDBA74',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 99,
+  },
+  suggestChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.coralDark,
+  },
+  timelineDateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingLeft: 4,
+    marginTop: 2,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  timelineDateText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.inkMuted,
+    letterSpacing: 0.6,
+  },
 });

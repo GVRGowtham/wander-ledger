@@ -2,14 +2,16 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatDuration } from '../../db/airportsData';
+import { formatFlightDistance } from '../../services/distanceUtils';
 import { COLORS, SHADOWS } from '../../theme/tokens';
-import { Flight } from '../../types/models';
+import { DistanceUnit, Flight } from '../../types/models';
 
 interface Props {
   flight: Flight;
+  distanceUnit?: DistanceUnit;
 }
 
-export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
+export const BoardingPassCard: React.FC<Props> = ({ flight, distanceUnit = 'km' }) => {
   const depDateLabel = flight.departureTime.slice(0, 10);
   const rawTime = flight.departureTime.length >= 16 ? flight.departureTime.slice(11, 16) : '';
   const hasRealTime = Boolean(rawTime && rawTime !== '00:00');
@@ -57,7 +59,9 @@ export const BoardingPassCard: React.FC<Props> = ({ flight }) => {
               <Text style={styles.planeMini}>✈️</Text>
             </View>
             <Text style={styles.milesText}>
-              {flight.distanceMiles > 0 ? `${flight.distanceMiles.toLocaleString()} mi` : 'Route logged'}
+              {flight.distanceMiles > 0
+                ? formatFlightDistance(flight.distanceMiles, distanceUnit)
+                : 'Route logged'}
             </Text>
           </View>
 

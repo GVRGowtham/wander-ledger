@@ -1,4 +1,9 @@
-import { Flight, Memory, Trip } from '../types/models';
+import { DistanceUnit, Flight, Memory, TransportLeg, Trip } from '../types/models';
+import {
+  formatDistanceValue,
+  getTransportModeEmoji,
+  milesToKm,
+} from './distanceUtils';
 import {
   formatEditorialDateRange,
   formatLocationLabel,
@@ -25,6 +30,8 @@ export interface DraftCaptionInput {
   trip: Trip;
   memories: Memory[];
   flights: Flight[];
+  transports?: TransportLeg[];
+  distanceUnit?: DistanceUnit;
   tone: CaptionTone;
   includeHashtags: boolean;
   includeWatermarkTag: boolean;
@@ -87,10 +94,19 @@ export function buildHashtags(
 
 /**
  * Generates a ready-to-paste Instagram caption 100% offline from the user's trip,
- * selected Polaroid memories, and flight routes. Strictly excludes private spend/budgets.
+ * selected Polaroid memories, flights, and ground/rail transport routes. Strictly excludes private spend/budgets.
  */
 export function generateOfflineIgCaption(input: DraftCaptionInput): string {
-  const { trip, memories, flights, tone, includeHashtags, includeWatermarkTag } = input;
+  const {
+    trip,
+    memories,
+    flights,
+    transports = [],
+    distanceUnit = 'km',
+    tone,
+    includeHashtags,
+    includeWatermarkTag,
+  } = input;
   const variant = Math.abs(input.variantIndex ?? 0) % 3;
 
   const city = trip.destinationCity;
@@ -99,7 +115,11 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
   const dateRangeLabel = formatEditorialDateRange(trip.startDate, trip.endDate);
   const flag = trip.flagEmoji || '✈️';
   const days = getTripDaysCount(trip.startDate, trip.endDate);
-  const totalMiles = flights.reduce((acc, f) => acc + (f.distanceMiles || 0), 0);
+  const totalDistanceKm =
+    flights.reduce((acc, f) => acc + milesToKm(f.distanceMiles || 0), 0) +
+    transports.reduce((acc, t) => acc + (t.distanceKm || 0), 0);
+  const distanceVal = formatDistanceValue(totalDistanceKm, distanceUnit);
+  const distanceWord = distanceUnit === 'mi' ? 'miles' : 'km';
 
   const places = uniqueStrings(memories.map((m) => m.placeName)).slice(0, 3);
   const titles = uniqueStrings(memories.map((m) => m.title)).slice(0, 3);
@@ -108,10 +128,23 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
     .find((m) => m.note && m.note.trim().length > 6 && !isGenericPlaceholderNote(m.note))
     ?.note.trim();
 
-  const routeSummary =
+  const flightRouteSummary =
     flights.length > 0
       ? uniqueStrings(flights.map((f) => `${f.originIata} → ${f.destIata}`)).slice(0, 2).join(' • ')
       : '';
+  const transportRouteSummary =
+    transports.length > 0
+      ? uniqueStrings(
+          transports.map((t) => `${getTransportModeEmoji(t.mode)} ${t.origin} → ${t.destination}`)
+        )
+          .slice(0, 2)
+          .join(' • ')
+      : '';
+  const routeLine = flightRouteSummary
+    ? `✈️ Route: ${flightRouteSummary}${transportRouteSummary ? ` • ${transportRouteSummary}` : ''}`
+    : transportRouteSummary
+    ? `Route: ${transportRouteSummary}`
+    : `🗺️ Destination: ${locationLabel}`;
 
   let body = '';
 
@@ -168,15 +201,17 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
     lines.push(`📍 ${locationLabel}`);
     body = lines.join('\n\n');
   } else {
-    // 'stats' — Flight Route & Miles Flex (ZERO private spend!)
+    // 'stats' — Journey Route & Distance Flex (ZERO private spend!)
     const openers = [
       `Trip wrapped: ${trip.title} ${flag}`,
       `New passport stamp unlocked: ${country} ${flag}`,
       `${city} by the numbers ${flag}✈️`,
     ];
     const statLines = [
-      routeSummary ? `✈️ Route: ${routeSummary}` : `🗺️ Destination: ${locationLabel}`,
-      totalMiles > 0 ? `🌍 Distance flown: ${totalMiles.toLocaleString()} miles` : null,
+      routeLine,
+      distanceVal > 0
+        ? `🌍 Distance ${flights.length > 0 && transports.length === 0 ? 'flown' : 'traveled'}: ${distanceVal.toLocaleString()} ${distanceWord}`
+        : null,
       `🗓️ ${days} ${days === 1 ? 'day' : 'days'} (${dateRangeLabel})`,
       memories.length > 0
         ? `📸 ${memories.length} core ${memories.length === 1 ? 'memory' : 'memories'} captured`

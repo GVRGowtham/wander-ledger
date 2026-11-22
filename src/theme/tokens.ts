@@ -1,4 +1,4 @@
-import { ExpenseCategory } from '../types/models';
+import { ExpenseCategory, TransportMode } from '../types/models';
 
 export const COLORS = {
   // Warm Sunlit Postcard Canvas
@@ -62,9 +62,51 @@ export const CATEGORY_META: Record<
   dining: { label: 'Food & Drink', emoji: '🍜', color: '#F97316', bg: '#FFEDD5' },
   transit: { label: 'Transit', emoji: '🚄', color: '#10B981', bg: '#D1FAE5' },
   flights: { label: 'Flights', emoji: '✈️', color: '#0EA5E9', bg: '#E0F2FE' },
+  fuel: { label: 'Fuel & Tolls', emoji: '⛽', color: '#D97706', bg: '#FEF3C7' },
   activities: { label: 'Experiences', emoji: '🎟️', color: '#EC4899', bg: '#FCE7F3' },
   shopping: { label: 'Souvenirs', emoji: '🛍️', color: '#8B5CF6', bg: '#EDE9FE' },
   other: { label: 'Other', emoji: '✨', color: '#78716C', bg: '#F5F5F4' },
+};
+
+export const TRANSPORT_MODE_META: Record<
+  TransportMode,
+  { label: string; emoji: string; color: string; bg: string; subtitle: string }
+> = {
+  train: {
+    label: 'Train',
+    emoji: '🚆',
+    color: '#0D9488',
+    bg: '#CCFBF1',
+    subtitle: 'IRCTC • SBB • Eurostar • Shinkansen',
+  },
+  bus: {
+    label: 'Bus',
+    emoji: '🚌',
+    color: '#0284C7',
+    bg: '#E0F2FE',
+    subtitle: 'RedBus • FlixBus • Coach',
+  },
+  ferry: {
+    label: 'Ferry',
+    emoji: '⛴️',
+    color: '#2563EB',
+    bg: '#DBEAFE',
+    subtitle: 'Boat • Cruise • Island Ferry',
+  },
+  rental_car: {
+    label: 'Rental Car',
+    emoji: '🚗',
+    color: '#EA580C',
+    bg: '#FFEDD5',
+    subtitle: 'Sixt • Hertz • Avis • Zoomcar',
+  },
+  own_car: {
+    label: 'Own Car',
+    emoji: '🚘',
+    color: '#D97706',
+    bg: '#FEF3C7',
+    subtitle: 'Road Trip • Fuel & Tolls',
+  },
 };
 
 export const MOOD_STICKERS = [

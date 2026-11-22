@@ -15,9 +15,12 @@ export type ExpenseCategory =
   | 'dining'
   | 'transit'
   | 'flights'
+  | 'fuel'
   | 'activities'
   | 'shopping'
   | 'other';
+
+export type TransportMode = 'train' | 'bus' | 'ferry' | 'rental_car' | 'own_car';
 
 export interface UserProfile {
   id: string;
@@ -84,6 +87,36 @@ export interface Flight {
   createdAt: string;
 }
 
+export interface TransportLeg {
+  id: string;
+  tripId: string;
+  mode: TransportMode;
+  title: string; // e.g., "SBB InterCity 8" / "Sixt VW Golf" / "Road Trip in Swift"
+  operatorName?: string; // e.g., "IRCTC", "SBB", "Sixt", "Hertz"
+  referenceCode?: string; // PNR / Train No / Booking Ref
+  origin: string; // e.g., "Zurich HB" / "Bengaluru"
+  destination: string; // e.g., "Lucerne" / "Coorg"
+  startDate: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  endDate?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  seatOrVehicle?: string; // e.g., "Coach B4 • 32" or "VW Golf" or "KA-01-XX"
+  distanceKm?: number; // Stored canonically in km, displayed in user's km/mi preference
+  costAmount?: number; // Ticket / rental cost in local currency
+  currency?: string;
+  homeCost?: number; // Converted cost in trip home currency
+  notes?: string;
+  createdAt: string;
+}
+
+export interface TripStop {
+  id: string;
+  tripId: string;
+  cityName: string;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface Stay {
   id: string;
   tripId: string;
@@ -127,6 +160,7 @@ export interface Expense {
 export interface Memory {
   id: string;
   tripId: string;
+  stopId?: string; // Optional TripStop / hop tag
   title: string;
   note: string;
   capturedAt: string; // ISO date or YYYY-MM-DDTHH:mm
@@ -203,10 +237,27 @@ export interface ParsedHotelConfirmation {
   imageUri?: string;
 }
 
+export interface ParsedTransport {
+  kind: 'transport';
+  mode: 'train' | 'bus' | 'ferry' | 'rental_car';
+  operatorName: string;
+  origin: string;
+  destination: string;
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  referenceCode?: string;
+  seatOrVehicle?: string;
+  totalAmount: number;
+  currency: string;
+  rawText: string;
+  imageUri?: string;
+}
+
 export type ScanResult =
   | ParsedBoardingPass
   | ParsedReceipt
-  | ParsedHotelConfirmation;
+  | ParsedHotelConfirmation
+  | ParsedTransport;
 
 export interface IncomingSharePayload {
   id: string;
@@ -219,9 +270,11 @@ export interface IncomingSharePayload {
 export interface TripSummaryStats {
   totalSpentHome: number;
   totalMilesFlown: number;
+  totalDistanceKm: number;
   totalPointsEarned: number;
   memoriesCount: number;
   flightsCount: number;
+  transportsCount: number;
   staysCount: number;
   receiptsCount: number;
 }

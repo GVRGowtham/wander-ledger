@@ -18,18 +18,23 @@ import {
   ManualFlightDraft,
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
+import {
+  TransportDraft,
+  TransportFormFields,
+} from '../components/forms/TransportFormFields';
 import { useApp } from '../context/AppContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { AirportInfo, inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
+import { convertToKm } from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
 import {
   buildManualFlight,
   buildReturnFlight,
   resolveAirportOrCity,
 } from '../services/manualFlightBuilder';
-import { COLORS, SHADOWS } from '../theme/tokens';
-import { Stay, TripVibe } from '../types/models';
+import { COLORS, SHADOWS, TRANSPORT_MODE_META } from '../theme/tokens';
+import { DistanceUnit, Stay, TripVibe } from '../types/models';
 
 interface Props {
   onBack: () => void;
@@ -64,6 +69,8 @@ export const NewTripScreen: React.FC<Props> = ({
     fxRates,
     addTrip,
     addFlight,
+    addTransport,
+    addTripStop,
     addStay,
     addExpense,
     addMemory,
@@ -71,12 +78,14 @@ export const NewTripScreen: React.FC<Props> = ({
   const keyboardHeight = useKeyboardHeight();
 
   const homeCurrency = profile?.homeCurrency || 'USD';
+  const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
   const today = new Date();
   const fmt = (offset: number) =>
     new Date(today.getTime() + offset * 86400000).toISOString().slice(0, 10);
 
   const [destination, setDestination] = useState('');
   const [title, setTitle] = useState('');
+  const [stopsInput, setStopsInput] = useState('');
   const [startDate, setStartDate] = useState(fmt(0));
   const [endDate, setEndDate] = useState(fmt(5));
   const [budget, setBudget] = useState('');
@@ -84,11 +93,27 @@ export const NewTripScreen: React.FC<Props> = ({
   const [coTraveler, setCoTraveler] = useState('');
   const [tripNote, setTripNote] = useState('');
 
-  // Expandable Flight Details (for lost/missing boarding passes or logging whatever you remember)
+  // Expandable Travel Details (Flight OR Train/Bus/Ferry/Rental/Own Car!)
   const [showFlightSection, setShowFlightSection] = useState(true);
+  const [travelTab, setTravelTab] = useState<'flight' | 'transport'>('flight');
   const [flightDraft, setFlightDraft] = useState<ManualFlightDraft>(() =>
     createEmptyFlightDraft(fmt(0), fmt(5), homeCurrency)
   );
+  const [transportDraft, setTransportDraft] = useState<TransportDraft>({
+    mode: 'train',
+    title: '',
+    operatorName: '',
+    origin: '',
+    destination: '',
+    startDate: fmt(0),
+    endDate: fmt(5),
+    referenceCode: '',
+    seatOrVehicle: '',
+    distanceInput: '',
+    costAmount: '',
+    currency: homeCurrency,
+    notes: '',
+  });
 
   // Expandable Optional Stay Details
   const [showStaySection, setShowStaySection] = useState(false);
@@ -109,6 +134,11 @@ export const NewTripScreen: React.FC<Props> = ({
       ...prev,
       flightDate: s,
       returnDate: e,
+    }));
+    setTransportDraft((prev) => ({
+      ...prev,
+      startDate: s,
+      endDate: e,
     }));
   };
 
@@ -133,6 +163,9 @@ export const NewTripScreen: React.FC<Props> = ({
     if (flightDraft.flightDate === prevStart) {
       setFlightDraft((prev) => ({ ...prev, flightDate: val }));
     }
+    if (transportDraft.startDate === prevStart) {
+      setTransportDraft((prev) => ({ ...prev, startDate: val }));
+    }
   };
 
   const handleEndDateChange = (val: string) => {
@@ -141,6 +174,9 @@ export const NewTripScreen: React.FC<Props> = ({
     if (flightDraft.returnDate === prevEnd) {
       setFlightDraft((prev) => ({ ...prev, returnDate: val }));
     }
+    if (transportDraft.endDate === prevEnd) {
+      setTransportDraft((prev) => ({ ...prev, endDate: val }));
+    }
   };
 
   const handleCreate = () => {
@@ -148,13 +184,14 @@ export const NewTripScreen: React.FC<Props> = ({
     const dest =
       destination.trim() ||
       resolvedDestFromFlight?.city ||
+      transportDraft.destination.trim() ||
       title.trim() ||
       flightDraft.flightNumber.trim();
 
     if (!dest) {
       Alert.alert(
-        'Add a destination or flight',
-        'Enter a destination city/country, trip name, or a flight route/number you remember!'
+        'Add a destination or travel leg',
+        'Enter a destination city/country, trip name, or a flight/train/road-trip route!'
       );
       return;
     }
@@ -204,8 +241,25 @@ export const NewTripScreen: React.FC<Props> = ({
       updatedAt: now,
     });
 
-    // Save optional manual flight (even with partial details if boarding pass was lost!)
-    if (hasAnyFlightDraftData(flightDraft)) {
+    // Save optional multi-hop stops if entered
+    if (stopsInput.trim()) {
+      const stopCities = stopsInput
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      stopCities.forEach((cityName, idx) => {
+        addTripStop({
+          id: generateId('stop'),
+          tripId: id,
+          cityName,
+          sortOrder: idx,
+          createdAt: now,
+        });
+      });
+    }
+
+    // Save optional travel leg (Flight OR Train/Bus/Ferry/Car)
+    if (travelTab === 'flight' && hasAnyFlightDraftData(flightDraft)) {
       const outbound = buildManualFlight({
         tripId: id,
         flightNumber: flightDraft.flightNumber,
@@ -254,6 +308,45 @@ export const NewTripScreen: React.FC<Props> = ({
           createdAt: now,
         });
       }
+    } else if (
+      travelTab === 'transport' &&
+      (transportDraft.origin.trim() ||
+        transportDraft.destination.trim() ||
+        transportDraft.title.trim())
+    ) {
+      const modeMeta = TRANSPORT_MODE_META[transportDraft.mode];
+      const costNum = parseFloat(transportDraft.costAmount) || 0;
+      const tCurr = (transportDraft.currency || homeCurrency).toUpperCase();
+      const { converted: homeCost } =
+        costNum > 0
+          ? convertCurrency(costNum, tCurr, homeCurrency, fxRates)
+          : { converted: 0 };
+      const distVal = parseFloat(transportDraft.distanceInput);
+      const distanceKm =
+        !Number.isNaN(distVal) && distVal > 0
+          ? convertToKm(distVal, distanceUnit)
+          : undefined;
+      addTransport({
+        id: generateId('trn'),
+        tripId: id,
+        mode: transportDraft.mode,
+        title:
+          transportDraft.title.trim() ||
+          `${modeMeta.label} to ${transportDraft.destination.trim() || dest}`,
+        operatorName: transportDraft.operatorName.trim() || undefined,
+        referenceCode: transportDraft.referenceCode.trim().toUpperCase() || undefined,
+        origin: transportDraft.origin.trim() || 'Start',
+        destination: transportDraft.destination.trim() || dest,
+        startDate: transportDraft.startDate.trim() || cleanStart,
+        endDate: transportDraft.endDate.trim() || undefined,
+        seatOrVehicle: transportDraft.seatOrVehicle.trim() || undefined,
+        distanceKm,
+        costAmount: costNum > 0 ? costNum : undefined,
+        currency: costNum > 0 ? tCurr : undefined,
+        homeCost: costNum > 0 ? homeCost : undefined,
+        notes: transportDraft.notes.trim() || undefined,
+        createdAt: now,
+      });
     }
 
     // Save optional hotel/stay
@@ -372,7 +465,16 @@ export const NewTripScreen: React.FC<Props> = ({
         <TextInput
           value={title}
           onChangeText={setTitle}
-          placeholder="e.g. Summer Europe Loop, Goa Weekend"
+          placeholder="e.g. Swiss Alps Loop, Goa Road Trip"
+          placeholderTextColor={COLORS.inkSoft}
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Multi-City Stops / Hops (Optional, comma-separated)</Text>
+        <TextInput
+          value={stopsInput}
+          onChangeText={setStopsInput}
+          placeholder="e.g. Zurich, Lucerne, Interlaken"
           placeholderTextColor={COLORS.inkSoft}
           style={styles.input}
         />
@@ -459,7 +561,7 @@ export const NewTripScreen: React.FC<Props> = ({
         </View>
       </View>
 
-      {/* Flight Details Section (Lost / Missing Boarding Pass Friendly!) */}
+      {/* Travel Details Section: Flight OR Train / Bus / Ferry / Car / Road Trip */}
       <View style={styles.formCard}>
         <TouchableOpacity
           onPress={() => setShowFlightSection(!showFlightSection)}
@@ -467,20 +569,71 @@ export const NewTripScreen: React.FC<Props> = ({
           activeOpacity={0.8}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.sectionHead}>✈️ Flight Details (No Boarding Pass Needed)</Text>
+            <Text style={styles.sectionHead}>🧭 How are you getting there? (Optional)</Text>
             <Text style={styles.sectionSub}>
-              Flight #, source/destination, airline, date, seat, PNR — add whatever you remember
+              Log a flight, train/bus/ferry, rental car, or own-car road trip — add whatever you know
             </Text>
           </View>
           <Text style={styles.chevron}>{showFlightSection ? '▲' : '▼'}</Text>
         </TouchableOpacity>
 
         {showFlightSection && (
-          <ManualFlightFields
-            draft={flightDraft}
-            onChange={setFlightDraft}
-            onDestinationAirportPicked={handleDestinationAirportPicked}
-          />
+          <View style={{ gap: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => setTravelTab('flight')}
+                style={[
+                  styles.presetChip,
+                  { flex: 1, alignItems: 'center' },
+                  travelTab === 'flight' && styles.presetChipActive,
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.presetText,
+                    travelTab === 'flight' && { color: '#FFFFFF' },
+                  ]}
+                >
+                  ✈️ Flight
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTravelTab('transport')}
+                style={[
+                  styles.presetChip,
+                  { flex: 1, alignItems: 'center' },
+                  travelTab === 'transport' && styles.presetChipActive,
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.presetText,
+                    travelTab === 'transport' && { color: '#FFFFFF' },
+                  ]}
+                >
+                  🚆 Train / 🚗 Car
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {travelTab === 'flight' ? (
+              <ManualFlightFields
+                draft={flightDraft}
+                onChange={setFlightDraft}
+                onDestinationAirportPicked={handleDestinationAirportPicked}
+              />
+            ) : (
+              <TransportFormFields
+                draft={transportDraft}
+                onChange={(patch) =>
+                  setTransportDraft((prev) => ({ ...prev, ...patch }))
+                }
+                distanceUnit={distanceUnit}
+              />
+            )}
+          </View>
         )}
       </View>
 

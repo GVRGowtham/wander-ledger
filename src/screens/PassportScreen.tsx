@@ -14,7 +14,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
+import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { COLORS, SHADOWS } from '../theme/tokens';
+import { DistanceUnit } from '../types/models';
 
 const STAMP_STYLES = [
   { border: '#E11D48', bg: '#FFF1F2', text: '#BE123C', tilt: '-5deg' },
@@ -34,6 +36,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     profile,
     trips,
     allFlights,
+    allTransports,
     allExpenses,
     loyaltyAccounts,
     fxSource,
@@ -59,7 +62,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     ).values()
   );
 
-  const totalMiles = allFlights.reduce((acc, f) => acc + f.distanceMiles, 0);
+  const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
+  const totalDistanceKm =
+    allFlights.reduce((acc, f) => acc + milesToKm(f.distanceMiles), 0) +
+    allTransports.reduce((acc, t) => acc + (t.distanceKm ?? 0), 0);
+  const totalDistanceDisplay = formatDistanceValue(totalDistanceKm, distanceUnit);
   const totalPoints = loyaltyAccounts.reduce((acc, l) => acc + l.balance, 0);
 
   const openRename = () => {
@@ -103,7 +110,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const handleResetLocalData = () => {
     Alert.alert(
       'Reset Local Travelogue?',
-      'This removes all locally stored trips, flights, stays, expenses, memories, and loyalty balances on this device.',
+      'This removes all locally stored trips, flights, transports, stays, expenses, memories, and loyalty balances on this device.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -157,9 +164,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statVal, { color: COLORS.sky }]} numberOfLines={1} adjustsFontSizeToFit>
-            {totalMiles.toLocaleString()}
+            {totalDistanceDisplay.toLocaleString()}
           </Text>
-          <Text style={styles.statLbl} numberOfLines={1}>Miles Flown</Text>
+          <Text style={styles.statLbl} numberOfLines={1}>
+            {distanceUnit === 'mi' ? 'Miles Traveled' : 'Km Traveled'}
+          </Text>
         </View>
         <View style={styles.statBox}>
           <Text style={[styles.statVal, { color: '#B45309' }]} numberOfLines={1} adjustsFontSizeToFit>
@@ -258,6 +267,27 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             );
           })}
         </ScrollView>
+
+        <Text style={styles.prefSub}>Distance Unit 📏 (applies to trips, map, transport & IG Studio)</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {(
+            [
+              { id: 'km', label: 'Kilometers (km)' },
+              { id: 'mi', label: 'Miles (mi)' },
+            ] as const
+          ).map((u) => {
+            const active = distanceUnit === u.id;
+            return (
+              <TouchableOpacity
+                key={u.id}
+                onPress={() => updateProfileSettings({ distanceUnit: u.id })}
+                style={[styles.currChip, active && styles.currChipActive]}
+              >
+                <Text style={[styles.currText, active && { color: '#FFFFFF' }]}>{u.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <View style={styles.switchRow}>
           <View style={{ flex: 1 }}>

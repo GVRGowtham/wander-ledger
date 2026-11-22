@@ -14,20 +14,26 @@ import {
   deleteFlight,
   deleteMemory,
   deleteStay,
+  deleteTransport,
   deleteTrip,
+  deleteTripStop,
   getDb,
   getTripSummary,
   insertExpense,
   insertFlight,
   insertMemory,
   insertStay,
+  insertTransport,
   insertTrip,
+  insertTripStop,
   listExpenses,
   listFlights,
   listLoyaltyAccounts,
   listMemories,
   listStays,
+  listTransports,
   listTrips,
+  listTripStops,
   loadCachedFxRates,
   MemoryEditablePatch,
   purgeLegacySeedDataIfNeeded,
@@ -54,12 +60,15 @@ import {
   FxRatesMap,
 } from '../services/fxService';
 import {
+  DistanceUnit,
   Expense,
   Flight,
   LoyaltyAccount,
   Memory,
   Stay,
+  TransportLeg,
   Trip,
+  TripStop,
   TripSummaryStats,
   UserProfile,
 } from '../types/models';
@@ -70,6 +79,8 @@ interface AppContextValue {
   cloudConfigured: boolean;
   trips: Trip[];
   allFlights: Flight[];
+  allTransports: TransportLeg[];
+  allStops: TripStop[];
   allExpenses: Expense[];
   allMemories: Memory[];
   loyaltyAccounts: LoyaltyAccount[];
@@ -77,8 +88,17 @@ interface AppContextValue {
   fxSource: 'live' | 'fallback';
   refreshAll: () => void;
   clearAllData: () => void;
-  startLocalTravelogue: (homeCurrency?: string, firstName?: string) => Promise<void>;
-  loginWithGoogle: (homeCurrency?: string, email?: string, name?: string) => Promise<void>;
+  startLocalTravelogue: (
+    homeCurrency?: string,
+    firstName?: string,
+    distanceUnit?: DistanceUnit
+  ) => Promise<void>;
+  loginWithGoogle: (
+    homeCurrency?: string,
+    email?: string,
+    name?: string,
+    distanceUnit?: DistanceUnit
+  ) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileSettings: (patch: Partial<UserProfile>) => Promise<void>;
   addTrip: (trip: Trip) => void;
@@ -88,6 +108,10 @@ interface AppContextValue {
   saveTripSharing: (tripId: string, isShared: boolean, coTravelers: string[], shareToken: string) => void;
   addFlight: (flight: Flight) => void;
   removeFlight: (flightId: string) => Promise<void>;
+  addTransport: (transport: TransportLeg) => void;
+  removeTransport: (transportId: string) => Promise<void>;
+  addTripStop: (stop: TripStop) => void;
+  removeTripStop: (stopId: string) => Promise<void>;
   addStay: (stay: Stay) => void;
   removeStay: (stayId: string) => Promise<void>;
   addExpense: (expense: Expense) => void;
@@ -96,6 +120,8 @@ interface AppContextValue {
   editMemory: (memoryId: string, patch: MemoryEditablePatch) => Promise<void>;
   removeMemory: (memoryId: string) => Promise<{ cloudSynced: boolean }>;
   getFlightsForTrip: (tripId: string) => Flight[];
+  getTransportsForTrip: (tripId: string) => TransportLeg[];
+  getStopsForTrip: (tripId: string) => TripStop[];
   getStaysForTrip: (tripId: string) => Stay[];
   getExpensesForTrip: (tripId: string) => Expense[];
   getMemoriesForTrip: (tripId: string) => Memory[];
@@ -109,6 +135,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [allFlights, setAllFlights] = useState<Flight[]>([]);
+  const [allTransports, setAllTransports] = useState<TransportLeg[]>([]);
+  const [allStops, setAllStops] = useState<TripStop[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [allMemories, setAllMemories] = useState<Memory[]>([]);
   const [loyaltyAccounts, setLoyaltyAccounts] = useState<LoyaltyAccount[]>([]);
@@ -118,6 +146,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshAll = useCallback(() => {
     setTrips(listTrips());
     setAllFlights(listFlights());
+    setAllTransports(listTransports());
+    setAllStops(listTripStops());
     setAllExpenses(listExpenses());
     setAllMemories(listMemories());
     setLoyaltyAccounts(listLoyaltyAccounts());
@@ -159,8 +189,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [refreshAll]);
 
   const startLocalTravelogue = useCallback(
-    async (homeCurrency = 'USD', firstName?: string) => {
-      const p = await startLocalSession(homeCurrency, firstName);
+    async (homeCurrency = 'USD', firstName?: string, distanceUnit: DistanceUnit = 'km') => {
+      const p = await startLocalSession(homeCurrency, firstName, distanceUnit);
       setProfile(p);
       refreshAll();
     },
@@ -168,8 +198,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const loginWithGoogle = useCallback(
-    async (homeCurrency = 'USD', email?: string, name?: string) => {
-      const p = await signInWithGoogle(homeCurrency, email, name);
+    async (
+      homeCurrency = 'USD',
+      email?: string,
+      name?: string,
+      distanceUnit: DistanceUnit = 'km'
+    ) => {
+      const p = await signInWithGoogle(homeCurrency, email, name, distanceUnit);
       setProfile(p);
       refreshAll();
     },
@@ -264,6 +299,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const addTransport = useCallback(
+    (transport: TransportLeg) => {
+      insertTransport(transport);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
+  const removeTransport = useCallback(
+    async (transportId: string) => {
+      deleteTransport(transportId);
+      refreshAll();
+      const res = await deleteEntityFromCloud('transports', transportId);
+      if (res.synced) clearSyncMutation('transports', transportId, 'delete');
+    },
+    [refreshAll]
+  );
+
+  const addTripStop = useCallback(
+    (stop: TripStop) => {
+      insertTripStop(stop);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
+  const removeTripStop = useCallback(
+    async (stopId: string) => {
+      deleteTripStop(stopId);
+      refreshAll();
+      const res = await deleteEntityFromCloud('trip_stops', stopId);
+      if (res.synced) clearSyncMutation('trip_stops', stopId, 'delete');
+    },
+    [refreshAll]
+  );
+
   const addStay = useCallback(
     (stay: Stay) => {
       insertStay(stay);
@@ -350,6 +421,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cloudConfigured: isCloudConfigured(),
         trips,
         allFlights,
+        allTransports,
+        allStops,
         allExpenses,
         allMemories,
         loyaltyAccounts,
@@ -368,6 +441,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveTripSharing,
         addFlight,
         removeFlight,
+        addTransport,
+        removeTransport,
+        addTripStop,
+        removeTripStop,
         addStay,
         removeStay,
         addExpense,
@@ -376,6 +453,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         editMemory,
         removeMemory,
         getFlightsForTrip: (id) => listFlights(id),
+        getTransportsForTrip: (id) => listTransports(id),
+        getStopsForTrip: (id) => listTripStops(id),
         getStaysForTrip: (id) => listStays(id),
         getExpensesForTrip: (id) => listExpenses(id),
         getMemoriesForTrip: (id) => listMemories(id),

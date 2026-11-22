@@ -77,11 +77,19 @@ function delay(ms: number): Promise<void> {
 }
 
 export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
-  const { trips, getMemoriesForTrip, getFlightsForTrip } = useApp();
+  const {
+    profile,
+    trips,
+    getMemoriesForTrip,
+    getFlightsForTrip,
+    getTransportsForTrip,
+    getStopsForTrip,
+  } = useApp();
   const keyboardHeight = useKeyboardHeight();
   const { width: screenWidth } = useWindowDimensions();
 
   const trip = trips.find((t) => t.id === tripId);
+  const distanceUnit = profile?.distanceUnit ?? 'km';
   const allMemories = useMemo(
     () => (trip ? getMemoriesForTrip(trip.id) : []),
     [trip, getMemoriesForTrip]
@@ -90,7 +98,16 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
     () => (trip ? getFlightsForTrip(trip.id) : []),
     [trip, getFlightsForTrip]
   );
+  const transports = useMemo(
+    () => (trip ? getTransportsForTrip(trip.id) : []),
+    [trip, getTransportsForTrip]
+  );
+  const stops = useMemo(
+    () => (trip ? getStopsForTrip(trip.id) : []),
+    [trip, getStopsForTrip]
+  );
 
+  const [stopFilterId, setStopFilterId] = useState<string | null>(null);
   const [format, setFormat] = useState<IgFormat>('feed');
   const [template, setTemplate] = useState<IgTemplate>('scrapbook');
   const [selectedIds, setSelectedIds] = useState<string[]>(() =>
@@ -99,7 +116,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
   const [layoutByCount, setLayoutByCount] = useState<Partial<Record<number, CollageLayoutId>>>({});
   const [paletteId, setPaletteId] = useState<IgPaletteId>('sunlit');
   const [routeOverlay, setRouteOverlay] = useState<RouteOverlayMode>(() =>
-    flights.length > 0 ? 'center' : 'minimal'
+    flights.length > 0 || transports.length > 0 ? 'center' : 'minimal'
   );
   const [heroMemoryId, setHeroMemoryId] = useState<string | undefined>(
     () => allMemories.find((m) => m.photoUri)?.id
@@ -134,6 +151,11 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
   const exportShotRef = useRef<ViewShotRef | null>(null);
   const exportReadyResolverRef = useRef<(() => void) | null>(null);
   const carouselScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
+
+  const visiblePickerMemories = useMemo(
+    () => (stopFilterId ? allMemories.filter((m) => m.stopId === stopFilterId) : allMemories),
+    [allMemories, stopFilterId]
+  );
 
   // Preload natural photo dimensions so framing & portrait-aware slides are exact immediately
   useEffect(() => {
@@ -184,6 +206,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
       trip,
       memories: selectedMemories,
       flights,
+      transports,
+      distanceUnit,
       tone,
       includeHashtags,
       includeWatermarkTag: showWatermark,
@@ -191,7 +215,17 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
     });
     setCaption(draft);
     setCaptionBadge('offline');
-  }, [trip, selectedMemories, flights, tone, includeHashtags, showWatermark, variantIdx]);
+  }, [
+    trip,
+    selectedMemories,
+    flights,
+    transports,
+    distanceUnit,
+    tone,
+    includeHashtags,
+    showWatermark,
+    variantIdx,
+  ]);
 
   const handleExportImagesReady = useCallback(() => {
     const resolve = exportReadyResolverRef.current;
@@ -335,6 +369,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
           trip,
           memories: selectedMemories,
           flights,
+          transports,
+          distanceUnit,
           tone,
           includeHashtags,
           includeWatermarkTag: showWatermark,
@@ -541,6 +577,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 <IgCarouselSlideCanvas
                   trip={trip}
                   flights={flights}
+                  transports={transports}
+                  distanceUnit={distanceUnit}
                   allSelectedMemories={selectedMemories}
                   slide={exportJob.slide}
                   showWatermark={showWatermark}
@@ -556,6 +594,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                   trip={trip}
                   memories={effectiveSingleMemories}
                   flights={flights}
+                  transports={transports}
+                  distanceUnit={distanceUnit}
                   format={format === 'story' ? 'story' : 'feed'}
                   template={template}
                   showWatermark={showWatermark}
@@ -774,6 +814,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                     <IgCarouselSlideCanvas
                       trip={trip}
                       flights={flights}
+                      transports={transports}
+                      distanceUnit={distanceUnit}
                       allSelectedMemories={selectedMemories}
                       slide={slide}
                       showWatermark={showWatermark}
@@ -807,6 +849,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                   trip={trip}
                   memories={effectiveSingleMemories}
                   flights={flights}
+                  transports={transports}
+                  distanceUnit={distanceUnit}
                   format={format === 'story' ? 'story' : 'feed'}
                   template={template}
                   showWatermark={showWatermark}
@@ -902,6 +946,57 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 <Text style={styles.cardHint}>Tap to select</Text>
               </View>
 
+              {/* Optional Stop Filter Chips on Multi-Hop Trips */}
+              {stops.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      setStopFilterId(null);
+                      setSelectedIds(allMemories.slice(0, maxSelection).map((m) => m.id));
+                    }}
+                    style={[styles.subPill, stopFilterId === null && styles.subPillActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.subPillText,
+                        stopFilterId === null && styles.subPillTextActive,
+                      ]}
+                    >
+                      All Stops
+                    </Text>
+                  </TouchableOpacity>
+                  {stops.map((st) => {
+                    const stopMems = allMemories.filter((m) => m.stopId === st.id);
+                    const active = stopFilterId === st.id;
+                    return (
+                      <TouchableOpacity
+                        key={st.id}
+                        onPress={() => {
+                          setStopFilterId(active ? null : st.id);
+                          if (!active && stopMems.length > 0) {
+                            setSelectedIds(stopMems.slice(0, maxSelection).map((m) => m.id));
+                          }
+                        }}
+                        style={[styles.subPill, active && styles.subPillActive]}
+                      >
+                        <Text
+                          style={[
+                            styles.subPillText,
+                            active && styles.subPillTextActive,
+                          ]}
+                        >
+                          📍 {st.cityName} ({stopMems.length})
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
               {selectionHint ? <Text style={styles.limitHint}>{selectionHint}</Text> : null}
 
               <ScrollView
@@ -909,7 +1004,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 10, paddingVertical: 2 }}
               >
-                {allMemories.map((m) => {
+                {visiblePickerMemories.map((m) => {
                   const orderIdx = selectedMemories.findIndex((x) => x.id === m.id);
                   const selected = orderIdx >= 0;
                   const isHero = heroMemoryId === m.id;
