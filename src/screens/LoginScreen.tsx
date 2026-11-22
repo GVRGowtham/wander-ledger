@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -41,12 +42,13 @@ export const LoginScreen: React.FC = () => {
       <View style={styles.heroCard}>
         <DestinationBanner vibe="japan" height={165} />
         <View style={styles.heroBody}>
-          <LinearGradient
-            colors={['#FBBF24', '#F97316', '#F43F5E']}
-            style={styles.logoBadge}
-          >
-            <Text style={styles.logoEmoji}>✈️</Text>
-          </LinearGradient>
+          <View style={styles.logoBadge}>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.logoImage}
+              resizeMode="cover"
+            />
+          </View>
           <Text style={styles.brandTitle}>WanderLedger</Text>
           <Text style={styles.tagline}>
             Every sunrise, boarding pass, mile earned & little memory — tucked in one happy travel journal.
@@ -166,18 +168,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -30,
+    marginTop: -36,
     borderWidth: 4,
     borderColor: '#FFFFFF',
+    backgroundColor: '#0EA5E9',
     ...SHADOWS.fab,
   },
-  logoEmoji: {
-    fontSize: 28,
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   brandTitle: {
     fontSize: 24,

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -52,8 +53,12 @@ const MainShell: React.FC = () => {
   if (!ready) {
     return (
       <View style={styles.splash}>
-        <Text style={{ fontSize: 40 }}>✈️</Text>
-        <ActivityIndicator color={COLORS.coral} style={{ marginTop: 12 }} />
+        <Image
+          source={require('./assets/splash-icon.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
+        <ActivityIndicator color={COLORS.coral} style={{ marginTop: 14 }} />
       </View>
     );
   }
@@ -219,6 +224,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.canvas,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  splashLogo: {
+    width: 120,
+    height: 120,
   },
   shell: {
     flex: 1,
