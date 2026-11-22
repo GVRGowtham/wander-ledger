@@ -1,4 +1,10 @@
 import { Flight, Memory, Trip } from '../types/models';
+import {
+  formatEditorialDateRange,
+  formatLocationLabel,
+  getTripDaysCount,
+  isGenericPlaceholderNote,
+} from './igStudioHelpers';
 
 export type CaptionTone = 'aesthetic' | 'storyteller' | 'fun' | 'stats';
 
@@ -46,13 +52,6 @@ function uniqueStrings(items: Array<string | undefined>): string[] {
   return out;
 }
 
-function getTripDaysCount(startDate: string, endDate: string): number {
-  const s = new Date(`${startDate}T00:00:00Z`).getTime();
-  const e = new Date(`${endDate}T00:00:00Z`).getTime();
-  if (Number.isNaN(s) || Number.isNaN(e) || e < s) return 1;
-  return Math.max(1, Math.round((e - s) / 86400000) + 1);
-}
-
 export function buildHashtags(
   trip: Trip,
   memories: Memory[],
@@ -72,7 +71,7 @@ export function buildHashtags(
   const rawTags = [
     cityTag,
     countryTag,
-    cityTag && countryTag ? `${cityTag}trip` : '',
+    cityTag && countryTag && cityTag !== countryTag ? `${cityTag}trip` : cityTag ? `${cityTag}trip` : '',
     ...(vibeMap[trip.vibe] ?? []),
     'travelgram',
     'postcardfromtheworld',
@@ -96,6 +95,8 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
 
   const city = trip.destinationCity;
   const country = trip.destinationCountry;
+  const locationLabel = formatLocationLabel(city, country);
+  const dateRangeLabel = formatEditorialDateRange(trip.startDate, trip.endDate);
   const flag = trip.flagEmoji || '✈️';
   const days = getTripDaysCount(trip.startDate, trip.endDate);
   const totalMiles = flights.reduce((acc, f) => acc + (f.distanceMiles || 0), 0);
@@ -103,7 +104,9 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
   const places = uniqueStrings(memories.map((m) => m.placeName)).slice(0, 3);
   const titles = uniqueStrings(memories.map((m) => m.title)).slice(0, 3);
   const moods = uniqueStrings(memories.map((m) => m.moodSticker)).slice(0, 3);
-  const firstNote = memories.find((m) => m.note && m.note.trim().length > 6)?.note.trim();
+  const firstNote = memories
+    .find((m) => m.note && m.note.trim().length > 6 && !isGenericPlaceholderNote(m.note))
+    ?.note.trim();
 
   const routeSummary =
     flights.length > 0
@@ -122,7 +125,7 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
     if (places.length > 0) {
       lines.push(`📍 ${places.join(' · ')}`);
     } else {
-      lines.push(`📍 ${city}, ${country}`);
+      lines.push(`📍 ${locationLabel}`);
     }
     if (firstNote) {
       lines.push(`\n“${firstNote}”`);
@@ -162,7 +165,7 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
     } else if (firstNote) {
       lines.push(firstNote);
     }
-    lines.push(`📍 ${city}, ${country}`);
+    lines.push(`📍 ${locationLabel}`);
     body = lines.join('\n\n');
   } else {
     // 'stats' — Flight Route & Miles Flex (ZERO private spend!)
@@ -172,9 +175,9 @@ export function generateOfflineIgCaption(input: DraftCaptionInput): string {
       `${city} by the numbers ${flag}✈️`,
     ];
     const statLines = [
-      routeSummary ? `✈️ Route: ${routeSummary}` : `🗺️ Destination: ${city}, ${country}`,
+      routeSummary ? `✈️ Route: ${routeSummary}` : `🗺️ Destination: ${locationLabel}`,
       totalMiles > 0 ? `🌍 Distance flown: ${totalMiles.toLocaleString()} miles` : null,
-      `🗓️ ${days} ${days === 1 ? 'day' : 'days'} (${trip.startDate} → ${trip.endDate})`,
+      `🗓️ ${days} ${days === 1 ? 'day' : 'days'} (${dateRangeLabel})`,
       memories.length > 0
         ? `📸 ${memories.length} core ${memories.length === 1 ? 'memory' : 'memories'} captured`
         : null,

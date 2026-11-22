@@ -393,4 +393,122 @@ describe('Photo Capture Date & GPS Metadata Extractor (Offline)', () => {
   });
 });
 
+import {
+  computeCroppedImageLayout,
+  computeNativeExportCanvasWidth,
+  formatEditorialDateRange,
+  formatLocationLabel,
+  formatStampMonthYear,
+  getAvailableLayouts,
+  getDefaultPostcardNote,
+  getRouteStatsItems,
+  isGenericPlaceholderNote,
+} from '../services/igStudioHelpers';
+
+describe('IG Studio Helpers (Layouts, Framing Math, Editorial Formatting)', () => {
+  const swissTrip: Trip = {
+    id: 'trip_ch',
+    ownerId: 'u1',
+    title: 'Swiss Trip',
+    destinationCity: 'Switzerland',
+    destinationCountry: 'Switzerland',
+    countryCode: 'CH',
+    flagEmoji: '🇨🇭',
+    startDate: '2025-11-01',
+    endDate: '2025-11-05',
+    homeCurrency: 'USD',
+    budget: 2500,
+    vibe: 'alpine',
+    isShared: false,
+    coTravelers: [],
+    lat: 46.8,
+    lng: 8.2,
+    createdAt: '2025-11-01T00:00:00Z',
+    updatedAt: '2025-11-01T00:00:00Z',
+  };
+
+  it('formats editorial dates and stamps cleanly without raw ISO arrows', () => {
+    expect(formatEditorialDateRange('2025-11-01', '2025-11-05')).toBe('Nov 1 – 5, 2025');
+    expect(formatEditorialDateRange('2025-11-01', '2025-11-01')).toBe('Nov 1, 2025');
+    expect(formatEditorialDateRange('2025-11-28', '2025-12-03')).toBe('Nov 28 – Dec 3, 2025');
+    expect(formatEditorialDateRange('2025-12-29', '2026-01-02')).toBe('Dec 29, 2025 – Jan 2, 2026');
+    expect(formatStampMonthYear('2025-11-01')).toBe('NOV 2025');
+  });
+
+  it('deduplicates identical city and country labels and filters generic placeholder notes', () => {
+    expect(formatLocationLabel('Switzerland', 'Switzerland')).toBe('Switzerland');
+    expect(formatLocationLabel('Lucerne', 'Switzerland')).toBe('Lucerne, Switzerland');
+    expect(isGenericPlaceholderNote('A favorite moment from the journey ✨')).toBe(true);
+    expect(isGenericPlaceholderNote('Sunset over Mount Titlis')).toBe(false);
+
+    const genericMem: Memory = {
+      id: 'm1',
+      tripId: 'trip_ch',
+      title: 'Alps view',
+      note: 'A favorite moment from the journey ✨',
+      capturedAt: '2025-11-01T12:00:00',
+      moodSticker: '✨',
+      isHighlight: false,
+      createdAt: '2025-11-01T12:00:00Z',
+    };
+    expect(getDefaultPostcardNote(swissTrip, [genericMem])).toBe(
+      'Wishing you were here in Switzerland ✨'
+    );
+  });
+
+  it('never duplicates DAYS in Route Stats when a trip has no logged flights', () => {
+    const mems: Memory[] = [
+      {
+        id: 'm1',
+        tripId: 'trip_ch',
+        title: 'Alps view',
+        note: '',
+        capturedAt: '2025-11-01T12:00:00',
+        moodSticker: '🏔️',
+        isHighlight: false,
+        createdAt: '2025-11-01T12:00:00Z',
+      },
+      {
+        id: 'm2',
+        tripId: 'trip_ch',
+        title: 'Titlis Chills',
+        note: '',
+        capturedAt: '2025-11-02T12:00:00',
+        moodSticker: '❄️',
+        isHighlight: false,
+        createdAt: '2025-11-02T12:00:00Z',
+      },
+    ];
+    const items = getRouteStatsItems(swissTrip, mems, []);
+    const labels = items.map((i) => i.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).toEqual(['DAYS', 'MEMORIES']);
+  });
+
+  it('computes WYSIWYG cropped image rect clamped inside slot bounds with top/bottom presets', () => {
+    // Portrait photo (1000x1500) placed in a wide slot (200x100)
+    const topCrop = computeCroppedImageLayout(200, 100, 1000, 1500, {
+      offsetX: 0,
+      offsetY: 1,
+      zoom: 1,
+    });
+    expect(topCrop.width).toBeCloseTo(200, 1);
+    expect(topCrop.height).toBeCloseTo(300, 1);
+    expect(topCrop.top).toBeCloseTo(0, 1); // Aligned to very top so faces are preserved
+
+    const bottomCrop = computeCroppedImageLayout(200, 100, 1000, 1500, {
+      offsetX: 0,
+      offsetY: -1,
+      zoom: 1,
+    });
+    expect(bottomCrop.top).toBeCloseTo(-200, 1); // Aligned to very bottom, zero gap exposed
+
+    expect(getAvailableLayouts(3).map((l) => l.id)).toContain('portrait_left');
+    expect(computeNativeExportCanvasWidth(2) * 2).toBeGreaterThanOrEqual(1080);
+    expect(computeNativeExportCanvasWidth(2.625) * 2.625).toBeGreaterThanOrEqual(1080);
+    expect(computeNativeExportCanvasWidth(3) * 3).toBeGreaterThanOrEqual(1080);
+  });
+});
+
+
 

@@ -1,14 +1,34 @@
-import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import React, { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { DestinationBanner } from '../banners/DestinationBanner';
 import { MemoryIllustration } from '../cards/MemoryIllustration';
+import {
+  CollageLayoutId,
+  computeCroppedImageLayout,
+  DEFAULT_PHOTO_CROP,
+  formatEditorialDateRange,
+  formatLocationLabel,
+  formatShortDate,
+  formatStampMonthYear,
+  getDefaultPostcardNote,
+  getPaletteSpec,
+  getRouteStatsItems,
+  getTripDaysCount,
+  IgFormat,
+  IgPaletteId,
+  IgTemplate,
+  ImageDimensions,
+  isGenericPlaceholderNote,
+  PhotoCrop,
+  resolveLayoutForCount,
+  RouteOverlayMode,
+} from '../../services/igStudioHelpers';
 import { COLORS } from '../../theme/tokens';
 import { Flight, Memory, Trip } from '../../types/models';
 
-export type IgFormat = 'story' | 'feed' | 'carousel';
-export type IgTemplate = 'scrapbook' | 'route' | 'postcard';
+export type { IgFormat, IgTemplate };
 
 export interface CarouselSlideSpec {
   id: string;
@@ -19,40 +39,270 @@ export interface CarouselSlideSpec {
   totalSlides: number;
 }
 
-interface SingleCanvasProps {
-  trip: Trip;
-  memories: Memory[];
-  flights: Flight[];
-  format: 'story' | 'feed';
-  template: IgTemplate;
-  showWatermark: boolean;
-  canvasWidth?: number;
+export interface SlotTapPayload {
+  cropKey: string;
+  memoryId?: string;
+  photoUri: string;
+  title: string;
+  slotAspectRatio: number;
+  slotIndex?: number;
 }
 
-interface CarouselSlideCanvasProps {
-  trip: Trip;
-  flights: Flight[];
-  allSelectedMemories: Memory[];
-  slide: CarouselSlideSpec;
-  showWatermark: boolean;
-  canvasWidth?: number;
+/**
+ * Tracks when every <Image> mounted inside an offscreen export canvas has
+ * finished decoding & painting (onLoadEnd / onError), eliminating blank or
+ * half-faded slides during Carousel & high-res PNG capture.
+ */
+interface ImageLoadRegistry {
+  register: (id: string) => void;
+  markDone: (id: string) => void;
+  unregister: (id: string) => void;
 }
 
-function getTripDays(startDate: string, endDate: string): number {
-  const s = new Date(`${startDate}T00:00:00Z`).getTime();
-  const e = new Date(`${endDate}T00:00:00Z`).getTime();
-  if (Number.isNaN(s) || Number.isNaN(e) || e < s) return 1;
-  return Math.max(1, Math.round((e - s) / 86400000) + 1);
+const ImageLoadContext = createContext<ImageLoadRegistry | null>(null);
+
+export const CanvasImageLoadScope: React.FC<{
+  jobKey: string;
+  onAllLoaded: () => void;
+  children: React.ReactNode;
+}> = ({ jobKey, onAllLoaded, children }) => {
+  const registeredRef = useRef<Set<string>>(new Set());
+  const doneRef = useRef<Set<string>>(new Set());
+  const firedRef = useRef(false);
+  const onAllLoadedRef = useRef(onAllLoaded);
+  onAllLoadedRef.current = onAllLoaded;
+
+  const checkReady = () => {
+    if (firedRef.current) return;
+    if (doneRef.current.size >= registeredRef.current.size) {
+      firedRef.current = true;
+      // Wait 2 animation frames after last onLoadEnd so Android commits pixels to GPU/Canvas
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          onAllLoadedRef.current();
+        });
+      });
+    }
+  };
+
+  useEffect(() => {
+    // If the slide has zero <Image> elements (e.g. Passport Finale or illustration-only),
+    // fire ready shortly after mount.
+    const zeroImgTimer = setTimeout(() => {
+      if (registeredRef.current.size === 0) {
+        checkReady();
+      }
+    }, 80);
+
+    // Absolute safety net so export can never hang on a corrupt/missing file
+    const safetyTimer = setTimeout(() => {
+      if (!firedRef.current) {
+        firedRef.current = true;
+        onAllLoadedRef.current();
+      }
+    }, 2800);
+
+    return () => {
+      clearTimeout(zeroImgTimer);
+      clearTimeout(safetyTimer);
+    };
+  }, [jobKey]);
+
+  const registry = useRef<ImageLoadRegistry>({
+    register: (id: string) => {
+      registeredRef.current.add(id);
+    },
+    markDone: (id: string) => {
+      doneRef.current.add(id);
+      checkReady();
+    },
+    unregister: (id: string) => {
+      registeredRef.current.delete(id);
+      doneRef.current.delete(id);
+    },
+  }).current;
+
+  return <ImageLoadContext.Provider value={registry}>{children}</ImageLoadContext.Provider>;
+};
+
+interface CroppedImageProps {
+  uri: string;
+  slotWidth: number;
+  slotHeight: number;
+  borderRadius?: number;
+  crop?: PhotoCrop;
+  imageDimensions?: ImageDimensions;
+  style?: object;
 }
 
-const WatermarkBar: React.FC<{ dark?: boolean }> = ({ dark = false }) => (
+const CroppedImage: React.FC<CroppedImageProps> = ({
+  uri,
+  slotWidth,
+  slotHeight,
+  borderRadius = 0,
+  crop,
+  imageDimensions,
+  style,
+}) => {
+  const tracker = useContext(ImageLoadContext);
+  const instanceId = useId();
+  const [measured, setMeasured] = useState<{ w: number; h: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!tracker) return;
+    tracker.register(instanceId);
+    return () => tracker.unregister(instanceId);
+  }, [tracker, instanceId, uri]);
+
+  const sw = measured?.w && measured.w > 1 ? measured.w : slotWidth;
+  const sh = measured?.h && measured.h > 1 ? measured.h : slotHeight;
+  const iw = imageDimensions?.width || 1200;
+  const ih = imageDimensions?.height || 900;
+
+  const rect = computeCroppedImageLayout(sw, sh, iw, ih, crop ?? DEFAULT_PHOTO_CROP);
+
+  return (
+    <View
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width > 1 && height > 1) {
+          setMeasured((prev) =>
+            prev && Math.abs(prev.w - width) < 0.5 && Math.abs(prev.h - height) < 0.5
+              ? prev
+              : { w: width, h: height }
+          );
+        }
+      }}
+      style={[
+        {
+          width: '100%',
+          height: slotHeight,
+          borderRadius,
+          overflow: 'hidden',
+          position: 'relative',
+          backgroundColor: '#1F2937',
+        },
+        style,
+      ]}
+    >
+      <Image
+        source={{ uri }}
+        fadeDuration={0}
+        resizeMethod="scale"
+        onLoadEnd={() => tracker?.markDone(instanceId)}
+        onError={() => tracker?.markDone(instanceId)}
+        style={{
+          position: 'absolute',
+          width: rect.width,
+          height: rect.height,
+          left: rect.left,
+          top: rect.top,
+        }}
+      />
+    </View>
+  );
+};
+
+interface PhotoSlotProps {
+  memory?: Memory;
+  fallbackVibe: Trip['vibe'];
+  fallbackCover?: string;
+  slotWidth: number;
+  slotHeight: number;
+  borderRadius?: number;
+  cropKey?: string;
+  slotIndex?: number;
+  photoCrops?: Record<string, PhotoCrop>;
+  imageDims?: Record<string, ImageDimensions>;
+  onPressSlot?: (payload: SlotTapPayload) => void;
+}
+
+const PhotoSlot: React.FC<PhotoSlotProps> = ({
+  memory,
+  fallbackVibe,
+  fallbackCover,
+  slotWidth,
+  slotHeight,
+  borderRadius = 8,
+  cropKey,
+  slotIndex,
+  photoCrops,
+  imageDims,
+  onPressSlot,
+}) => {
+  const effectiveKey = cropKey ?? memory?.id ?? '__fallback__';
+
+  if (memory?.photoUri) {
+    const uri = memory.photoUri;
+    const content = (
+      <CroppedImage
+        uri={uri}
+        slotWidth={slotWidth}
+        slotHeight={slotHeight}
+        borderRadius={borderRadius}
+        crop={photoCrops?.[effectiveKey]}
+        imageDimensions={imageDims?.[uri]}
+      />
+    );
+
+    if (onPressSlot) {
+      return (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() =>
+            onPressSlot({
+              cropKey: effectiveKey,
+              memoryId: memory.id,
+              photoUri: uri,
+              title: memory.title || 'Memory Photo',
+              slotAspectRatio: slotWidth / Math.max(1, slotHeight),
+              slotIndex,
+            })
+          }
+        >
+          {content}
+        </TouchableOpacity>
+      );
+    }
+    return content;
+  }
+
+  if (memory) {
+    return (
+      <View style={{ borderRadius, overflow: 'hidden', height: slotHeight }}>
+        <MemoryIllustration illustrationKey={memory.illustrationKey} height={slotHeight} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ borderRadius, overflow: 'hidden', height: slotHeight }}>
+      <DestinationBanner vibe={fallbackVibe} coverPhotoUri={fallbackCover} height={slotHeight} />
+    </View>
+  );
+};
+
+const WatermarkBar: React.FC<{ dark?: boolean; scale?: number }> = ({
+  dark = false,
+  scale = 1,
+}) => (
   <View
     style={[
       styles.watermarkPill,
       dark ? styles.watermarkDark : styles.watermarkLight,
+      {
+        paddingHorizontal: 10 * scale,
+        paddingVertical: 4 * scale,
+      },
     ]}
   >
-    <Text style={[styles.watermarkText, dark && { color: '#FDE68A' }]}>
+    <Text
+      style={[
+        styles.watermarkText,
+        { fontSize: 8.5 * scale, letterSpacing: 0.85 * scale },
+        dark && { color: '#FDE68A' },
+      ]}
+    >
       ✈️ STAMPED WITH WANDERLEDGER
     </Text>
   </View>
@@ -63,17 +313,28 @@ const FlightArcGraphic: React.FC<{
   dest: string;
   miles: number;
   lightText?: boolean;
-}> = ({ origin, dest, miles, lightText = true }) => {
+  scale?: number;
+}> = ({ origin, dest, miles, lightText = true, scale = 1 }) => {
   const strokeColor = lightText ? '#FDE047' : '#F97316';
   const textColor = lightText ? '#FFFFFF' : COLORS.ink;
-  const subColor = lightText ? 'rgba(255,255,255,0.82)' : COLORS.inkMuted;
+  const subColor = lightText ? 'rgba(255,255,255,0.85)' : COLORS.inkMuted;
 
   return (
-    <View style={styles.arcWrap}>
-      <View style={styles.arcEndpoints}>
-        <Text style={[styles.arcCode, { color: textColor }]}>{origin}</Text>
+    <View
+      style={[
+        styles.arcWrap,
+        {
+          borderRadius: 16 * scale,
+          paddingVertical: 11 * scale,
+          paddingHorizontal: 14 * scale,
+          gap: 3 * scale,
+        },
+      ]}
+    >
+      <View style={[styles.arcEndpoints, { gap: 8 * scale }]}>
+        <Text style={[styles.arcCode, { color: textColor, fontSize: 20 * scale }]}>{origin}</Text>
         <View style={styles.arcSvgBox}>
-          <Svg width="100%" height={36} viewBox="0 0 140 36">
+          <Svg width="100%" height={32 * scale} viewBox="0 0 140 36">
             <Path
               d="M 8 28 Q 70 -4 132 28"
               fill="none"
@@ -84,12 +345,12 @@ const FlightArcGraphic: React.FC<{
             <Circle cx={8} cy={28} r={4} fill={strokeColor} />
             <Circle cx={132} cy={28} r={4} fill={strokeColor} />
           </Svg>
-          <Text style={styles.arcPlane}>✈️</Text>
+          <Text style={[styles.arcPlane, { fontSize: 13 * scale, top: 1 * scale }]}>✈️</Text>
         </View>
-        <Text style={[styles.arcCode, { color: textColor }]}>{dest}</Text>
+        <Text style={[styles.arcCode, { color: textColor, fontSize: 20 * scale }]}>{dest}</Text>
       </View>
       {miles > 0 && (
-        <Text style={[styles.arcMiles, { color: subColor }]}>
+        <Text style={[styles.arcMiles, { color: subColor, fontSize: 9.5 * scale }]}>
           {miles.toLocaleString()} miles across the sky
         </Text>
       )}
@@ -97,39 +358,44 @@ const FlightArcGraphic: React.FC<{
   );
 };
 
-const PhotoSlot: React.FC<{
-  memory?: Memory;
-  fallbackVibe: Trip['vibe'];
-  fallbackCover?: string;
-  height: number;
-  borderRadius?: number;
-}> = ({ memory, fallbackVibe, fallbackCover, height, borderRadius = 8 }) => {
-  if (memory?.photoUri) {
-    return (
-      <Image
-        source={{ uri: memory.photoUri }}
-        style={{ width: '100%', height, borderRadius }}
-        resizeMode="cover"
-      />
-    );
-  }
-  if (memory) {
-    return (
-      <View style={{ borderRadius, overflow: 'hidden' }}>
-        <MemoryIllustration illustrationKey={memory.illustrationKey} height={height} />
-      </View>
-    );
-  }
-  return (
-    <View style={{ borderRadius, overflow: 'hidden' }}>
-      <DestinationBanner vibe={fallbackVibe} coverPhotoUri={fallbackCover} height={height} />
-    </View>
-  );
-};
+export interface SingleCanvasProps {
+  trip: Trip;
+  memories: Memory[];
+  flights: Flight[];
+  format: 'story' | 'feed';
+  template: IgTemplate;
+  showWatermark: boolean;
+  canvasWidth?: number;
+  layout?: CollageLayoutId;
+  paletteId?: IgPaletteId;
+  showPhotoLabels?: boolean;
+  showPostcardNote?: boolean;
+  postcardNote?: string;
+  routeOverlay?: RouteOverlayMode;
+  routeBackdropMemoryId?: string;
+  photoCrops?: Record<string, PhotoCrop>;
+  imageDims?: Record<string, ImageDimensions>;
+  onPressSlot?: (payload: SlotTapPayload) => void;
+}
+
+export interface CarouselSlideCanvasProps {
+  trip: Trip;
+  flights: Flight[];
+  allSelectedMemories: Memory[];
+  slide: CarouselSlideSpec;
+  showWatermark: boolean;
+  canvasWidth?: number;
+  paletteId?: IgPaletteId;
+  showPhotoLabels?: boolean;
+  coverMemoryId?: string;
+  photoCrops?: Record<string, PhotoCrop>;
+  imageDims?: Record<string, ImageDimensions>;
+  onPressSlot?: (payload: SlotTapPayload) => void;
+}
 
 /**
  * Renders high-craft Story (9:16) or Feed Collage (4:5) postcard canvases
- * ready for crisp on-device capture via react-native-view-shot.
+ * with proportional scaling so native 1080px exports match the preview 1:1.
  */
 export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
   trip,
@@ -139,240 +405,680 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
   template,
   showWatermark,
   canvasWidth = 312,
+  layout,
+  paletteId = 'sunlit',
+  showPhotoLabels = true,
+  showPostcardNote = true,
+  postcardNote,
+  routeOverlay = 'minimal',
+  routeBackdropMemoryId,
+  photoCrops,
+  imageDims,
+  onPressSlot,
 }) => {
+  const s = canvasWidth / 312;
   const height = Math.round(format === 'story' ? (canvasWidth * 16) / 9 : (canvasWidth * 5) / 4);
-  const days = getTripDays(trip.startDate, trip.endDate);
+  const days = getTripDaysCount(trip.startDate, trip.endDate);
   const totalMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
   const primaryFlight = flights[0];
-  const heroPhoto = memories.find((m) => m.photoUri)?.photoUri ?? trip.coverPhotoUri;
-  const picked = memories.slice(0, 4);
+  const palette = getPaletteSpec(paletteId);
+  const editorialDateRange = formatEditorialDateRange(trip.startDate, trip.endDate);
 
+  const picked = memories.slice(0, 4);
+  const activeLayout = resolveLayoutForCount(picked.length, layout);
+  const isStory = format === 'story';
+
+  // Helper to render a Polaroid card inside Scrapbook
+  const renderPolaroid = (
+    m: Memory | undefined,
+    idx: number,
+    slotW: number,
+    slotH: number,
+    tiltDeg: string,
+    compact = false
+  ) => {
+    const pad = (compact ? 5.5 : 8) * s;
+    const innerW = Math.max(20, slotW - pad * 2);
+    return (
+      <View
+        key={m?.id ?? `empty_${idx}`}
+        style={{
+          width: slotW,
+          backgroundColor: palette.polaroidBg,
+          borderRadius: (compact ? 9 : 12) * s,
+          padding: pad,
+          paddingBottom: (showPhotoLabels ? (compact ? 6.5 : 10) : pad) * s,
+          borderWidth: 1,
+          borderColor: palette.polaroidBorder,
+          transform: [{ rotate: tiltDeg }],
+          shadowColor: '#000',
+          shadowOpacity: palette.dark ? 0.28 : 0.09,
+          shadowRadius: 6 * s,
+          elevation: 3,
+        }}
+      >
+        <View
+          style={{
+            width: (compact ? 28 : 44) * s,
+            height: (compact ? 6.5 : 10) * s,
+            backgroundColor: palette.tapeColor,
+            alignSelf: 'center',
+            marginTop: -(pad + 3.5 * s),
+            marginBottom: (compact ? 3 : 5) * s,
+            borderRadius: 2 * s,
+          }}
+        />
+        <PhotoSlot
+          memory={m}
+          fallbackVibe={trip.vibe}
+          fallbackCover={trip.coverPhotoUri}
+          slotWidth={innerW}
+          slotHeight={slotH}
+          borderRadius={(compact ? 5 : 8) * s}
+          slotIndex={idx}
+          photoCrops={photoCrops}
+          imageDims={imageDims}
+          onPressSlot={onPressSlot}
+        />
+        {showPhotoLabels && m ? (
+          <Text
+            style={{
+              fontSize: (compact ? 9.5 : 12.5) * s,
+              fontWeight: '800',
+              color: palette.ink,
+              marginTop: (compact ? 4 : 6) * s,
+              textAlign: 'center',
+            }}
+            numberOfLines={1}
+          >
+            {m.title}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  // =========================================================================
   // TEMPLATE 1: POLAROID SCRAPBOOK COLLAGE
+  // =========================================================================
   if (template === 'scrapbook') {
-    const isStory = format === 'story';
+    const bodyW = canvasWidth - 28 * s;
+    const gap = 8 * s;
+    const halfW = (bodyW - gap) / 2;
+    const thirdW = (bodyW - gap * 2) / 3;
+    const labelAllowance = showPhotoLabels ? 16 * s : 0;
+
     return (
       <LinearGradient
-        colors={['#FFF9F2', '#FEF3C7', '#FFE4E6']}
+        colors={palette.scrapGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.canvasBase, { width: canvasWidth, height }]}
+        style={[styles.canvasBase, { width: canvasWidth, height, borderRadius: 20 * s }]}
       >
         {/* Top Scrapbook Header */}
-        <View style={styles.scrapHeader}>
-          <View style={styles.scrapTagPill}>
-            <Text style={styles.scrapTagText}>
+        <View
+          style={{
+            paddingTop: 14 * s,
+            paddingHorizontal: 16 * s,
+            alignItems: 'center',
+            gap: 3 * s,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: palette.accentSoft,
+              paddingHorizontal: 10 * s,
+              paddingVertical: 3 * s,
+              borderRadius: 99,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 9 * s,
+                fontWeight: '900',
+                color: palette.accent,
+                letterSpacing: 0.7 * s,
+              }}
+            >
               {trip.flagEmoji} {trip.destinationCity.toUpperCase()} • {days}D
             </Text>
           </View>
-          <Text style={styles.scrapTitle} numberOfLines={1} adjustsFontSizeToFit>
+          <Text
+            style={{ fontSize: 18 * s, fontWeight: '900', color: palette.ink }}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             {trip.title}
           </Text>
-          <Text style={styles.scrapDates}>
-            {trip.startDate} → {trip.endDate}
+          <Text style={{ fontSize: 10 * s, fontWeight: '700', color: palette.inkMuted }}>
+            {editorialDateRange}
           </Text>
         </View>
 
-        {/* Polaroid Collage Body */}
-        <View style={styles.scrapBody}>
+        {/* Polaroid Collage Body (Layout-aware!) */}
+        <View
+          style={{
+            flex: 1,
+            paddingHorizontal: 14 * s,
+            paddingVertical: 8 * s,
+            justifyContent: 'center',
+          }}
+        >
           {picked.length <= 1 ? (
-            <View style={[styles.polaroidFrame, { transform: [{ rotate: '-1.5deg' }] }]}>
-              <View style={styles.tape} />
+            <View
+              style={{
+                backgroundColor: palette.polaroidBg,
+                borderRadius: 12 * s,
+                padding: 10 * s,
+                paddingBottom: 12 * s,
+                borderWidth: 1,
+                borderColor: palette.polaroidBorder,
+                transform: [{ rotate: '-1.2deg' }],
+                elevation: 4,
+              }}
+            >
+              <View
+                style={{
+                  width: 48 * s,
+                  height: 11 * s,
+                  backgroundColor: palette.tapeColor,
+                  alignSelf: 'center',
+                  marginTop: -15 * s,
+                  marginBottom: 6 * s,
+                  borderRadius: 2 * s,
+                }}
+              />
               <PhotoSlot
                 memory={picked[0]}
                 fallbackVibe={trip.vibe}
                 fallbackCover={trip.coverPhotoUri}
-                height={isStory ? 265 : 170}
+                slotWidth={bodyW - 20 * s}
+                slotHeight={(isStory ? 285 : 184) * s}
+                borderRadius={8 * s}
+                slotIndex={0}
+                photoCrops={photoCrops}
+                imageDims={imageDims}
+                onPressSlot={onPressSlot}
               />
-              <View style={styles.polMeta}>
-                <Text style={styles.polTitle} numberOfLines={1}>
-                  {picked[0]?.title || `${trip.destinationCity} Highlights`}
-                </Text>
-                <Text style={styles.polNote} numberOfLines={isStory ? 3 : 2}>
-                  {picked[0]?.note || `Sunlit memories from ${trip.destinationCity}, ${trip.destinationCountry} ✨`}
-                </Text>
-                <View style={styles.polBottom}>
-                  <Text style={styles.polMood}>{picked[0]?.moodSticker || '🌅 Core Memory'}</Text>
-                  {picked[0]?.placeName ? (
-                    <Text style={styles.polPlace} numberOfLines={1}>
-                      📍 {picked[0].placeName}
+              {showPhotoLabels && (
+                <View style={{ paddingTop: 8 * s, gap: 3 * s }}>
+                  <Text
+                    style={{ fontSize: 13.5 * s, fontWeight: '900', color: palette.ink }}
+                    numberOfLines={1}
+                  >
+                    {picked[0]?.title || `${trip.destinationCity} Highlights`}
+                  </Text>
+                  {picked[0]?.note && !isGenericPlaceholderNote(picked[0].note) ? (
+                    <Text
+                      style={{ fontSize: 10.5 * s, color: palette.inkMuted, lineHeight: 14 * s }}
+                      numberOfLines={2}
+                    >
+                      {picked[0].note}
                     </Text>
                   ) : null}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: 2 * s,
+                    }}
+                  >
+                    <Text style={{ fontSize: 9.5 * s, fontWeight: '800', color: palette.accent }}>
+                      {picked[0]?.moodSticker || '🌅 Core Memory'}
+                    </Text>
+                    {picked[0]?.placeName ? (
+                      <Text
+                        style={{ fontSize: 9.5 * s, fontWeight: '700', color: palette.inkMuted }}
+                        numberOfLines={1}
+                      >
+                        📍 {picked[0].placeName}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           ) : picked.length === 2 ? (
-            <View style={{ gap: isStory ? 14 : 8, flex: 1, justifyContent: 'center' }}>
-              {picked.map((m, idx) => (
-                <View
-                  key={m.id}
-                  style={[
-                    styles.polaroidFrameCompact,
-                    { transform: [{ rotate: idx === 0 ? '-1.8deg' : '1.6deg' }] },
-                  ]}
-                >
-                  <View style={styles.tapeSmall} />
-                  <PhotoSlot
-                    memory={m}
-                    fallbackVibe={trip.vibe}
-                    height={isStory ? 132 : 84}
-                    borderRadius={6}
-                  />
-                  <View style={styles.polRowCompact}>
-                    <Text style={styles.polTitleSm} numberOfLines={1}>
-                      {m.title}
-                    </Text>
-                    <Text style={styles.polMoodSm}>{m.moodSticker}</Text>
-                  </View>
+            activeLayout === 'side_by_side' ? (
+              <View style={{ flexDirection: 'row', gap, alignItems: 'center' }}>
+                {renderPolaroid(
+                  picked[0],
+                  0,
+                  halfW,
+                  (isStory ? 285 : 188) * s,
+                  '-1.3deg',
+                  true
+                )}
+                {renderPolaroid(
+                  picked[1],
+                  1,
+                  halfW,
+                  (isStory ? 285 : 188) * s,
+                  '1.3deg',
+                  true
+                )}
+              </View>
+            ) : activeLayout === 'hero_inset' ? (
+              <View style={{ gap: gap * 1.1, alignItems: 'center' }}>
+                {renderPolaroid(
+                  picked[0],
+                  0,
+                  bodyW,
+                  (isStory ? 210 : 126) * s,
+                  '-1deg',
+                  true
+                )}
+                {renderPolaroid(
+                  picked[1],
+                  1,
+                  bodyW * 0.78,
+                  (isStory ? 120 : 76) * s,
+                  '1.5deg',
+                  true
+                )}
+              </View>
+            ) : (
+              // 'stacked'
+              <View style={{ gap: gap * 1.2 }}>
+                {renderPolaroid(
+                  picked[0],
+                  0,
+                  bodyW,
+                  (isStory ? 156 : 98) * s,
+                  '-1.3deg',
+                  true
+                )}
+                {renderPolaroid(
+                  picked[1],
+                  1,
+                  bodyW,
+                  (isStory ? 156 : 98) * s,
+                  '1.2deg',
+                  true
+                )}
+              </View>
+            )
+          ) : picked.length === 3 ? (
+            activeLayout === 'portrait_left' ? (
+              <View style={{ flexDirection: 'row', gap, alignItems: 'center' }}>
+                {renderPolaroid(
+                  picked[0],
+                  0,
+                  bodyW * 0.52,
+                  (isStory ? 316 : 206) * s + labelAllowance,
+                  '-1deg',
+                  true
+                )}
+                <View style={{ gap, flex: 1 }}>
+                  {renderPolaroid(
+                    picked[1],
+                    1,
+                    bodyW * 0.48 - gap,
+                    (isStory ? 148 : 94) * s,
+                    '1.2deg',
+                    true
+                  )}
+                  {renderPolaroid(
+                    picked[2],
+                    2,
+                    bodyW * 0.48 - gap,
+                    (isStory ? 148 : 94) * s,
+                    '-1.1deg',
+                    true
+                  )}
                 </View>
-              ))}
+              </View>
+            ) : activeLayout === 'hero_bottom' ? (
+              <View style={{ gap }}>
+                <View style={{ flexDirection: 'row', gap }}>
+                  {renderPolaroid(picked[0], 0, halfW, (isStory ? 142 : 88) * s, '-1.3deg', true)}
+                  {renderPolaroid(picked[1], 1, halfW, (isStory ? 142 : 88) * s, '1.2deg', true)}
+                </View>
+                {renderPolaroid(picked[2], 2, bodyW, (isStory ? 168 : 108) * s, '-0.8deg', true)}
+              </View>
+            ) : activeLayout === 'triptych' ? (
+              <View style={{ flexDirection: 'row', gap: gap * 0.75, alignItems: 'center' }}>
+                {picked.map((m, i) =>
+                  renderPolaroid(
+                    m,
+                    i,
+                    (bodyW - gap * 1.5) / 3,
+                    (isStory ? 280 : 185) * s,
+                    i === 0 ? '-1.2deg' : i === 2 ? '1.2deg' : '0deg',
+                    true
+                  )
+                )}
+              </View>
+            ) : (
+              // 'hero_top'
+              <View style={{ gap }}>
+                {renderPolaroid(picked[0], 0, bodyW, (isStory ? 168 : 108) * s, '-1deg', true)}
+                <View style={{ flexDirection: 'row', gap }}>
+                  {renderPolaroid(picked[1], 1, halfW, (isStory ? 142 : 88) * s, '1.3deg', true)}
+                  {renderPolaroid(picked[2], 2, halfW, (isStory ? 142 : 88) * s, '-1.2deg', true)}
+                </View>
+              </View>
+            )
+          ) : // 4 photos
+          activeLayout === 'hero_top_3' ? (
+            <View style={{ gap }}>
+              {renderPolaroid(picked[0], 0, bodyW, (isStory ? 190 : 118) * s, '-0.8deg', true)}
+              <View style={{ flexDirection: 'row', gap: gap * 0.75 }}>
+                {picked.slice(1, 4).map((m, i) =>
+                  renderPolaroid(
+                    m,
+                    i + 1,
+                    (bodyW - gap * 1.5) / 3,
+                    (isStory ? 122 : 76) * s,
+                    i === 1 ? '1deg' : '-1deg',
+                    true
+                  )
+                )}
+              </View>
+            </View>
+          ) : activeLayout === 'tall_left_3' ? (
+            <View style={{ flexDirection: 'row', gap, alignItems: 'center' }}>
+              {renderPolaroid(
+                picked[0],
+                0,
+                bodyW * 0.54,
+                (isStory ? 324 : 212) * s + labelAllowance * 1.6,
+                '-0.9deg',
+                true
+              )}
+              <View style={{ gap: gap * 0.8, flex: 1 }}>
+                {picked.slice(1, 4).map((m, i) =>
+                  renderPolaroid(
+                    m,
+                    i + 1,
+                    bodyW * 0.46 - gap,
+                    (isStory ? 96 : 60) * s,
+                    i % 2 === 0 ? '1deg' : '-1deg',
+                    true
+                  )
+                )}
+              </View>
             </View>
           ) : (
-            <View style={styles.gridCollage}>
-              {picked.map((m, idx) => {
-                const tilts = ['-1.6deg', '1.4deg', '1.3deg', '-1.5deg'];
-                const isHeroTop = picked.length === 3 && idx === 0;
-                return (
-                  <View
-                    key={m.id}
-                    style={[
-                      styles.polaroidGridCard,
-                      isHeroTop ? { width: '100%' } : { width: '47.5%' },
-                      { transform: [{ rotate: tilts[idx % 4] }] },
-                    ]}
-                  >
-                    <View style={styles.tapeTiny} />
-                    <PhotoSlot
-                      memory={m}
-                      fallbackVibe={trip.vibe}
-                      height={
-                        isHeroTop
-                          ? isStory
-                            ? 145
-                            : 96
-                          : isStory
-                          ? 122
-                          : 78
-                      }
-                      borderRadius={5}
-                    />
-                    <Text style={styles.polGridCaption} numberOfLines={1}>
-                      {m.title}
-                    </Text>
-                  </View>
-                );
-              })}
+            // 'grid_2x2'
+            <View style={{ gap }}>
+              <View style={{ flexDirection: 'row', gap }}>
+                {renderPolaroid(picked[0], 0, halfW, (isStory ? 150 : 92) * s, '-1.3deg', true)}
+                {renderPolaroid(picked[1], 1, halfW, (isStory ? 150 : 92) * s, '1.2deg', true)}
+              </View>
+              <View style={{ flexDirection: 'row', gap }}>
+                {renderPolaroid(picked[2], 2, halfW, (isStory ? 150 : 92) * s, '1.1deg', true)}
+                {renderPolaroid(picked[3], 3, halfW, (isStory ? 150 : 92) * s, '-1.3deg', true)}
+              </View>
             </View>
           )}
         </View>
 
         {/* Bottom Footer */}
-        <View style={styles.scrapFooter}>
+        <View
+          style={{
+            paddingBottom: 12 * s,
+            paddingHorizontal: 14 * s,
+            alignItems: 'center',
+            gap: 5 * s,
+          }}
+        >
           {totalMiles > 0 && (
-            <Text style={styles.scrapMiles}>
+            <Text style={{ fontSize: 9.5 * s, fontWeight: '800', color: palette.inkMuted }}>
               ✈️ {totalMiles.toLocaleString()} mi • 📸 {memories.length} memories
             </Text>
           )}
-          {showWatermark && <WatermarkBar />}
+          {showWatermark && <WatermarkBar dark={palette.dark} scale={s} />}
         </View>
       </LinearGradient>
     );
   }
 
+  // =========================================================================
   // TEMPLATE 2: FLIGHT ROUTE & STATS RECAP
+  // =========================================================================
   if (template === 'route') {
-    const isStory = format === 'story';
+    const backdropMem =
+      (routeBackdropMemoryId
+        ? memories.find((m) => m.id === routeBackdropMemoryId && m.photoUri)
+        : undefined) ?? memories.find((m) => m.photoUri);
+    const heroPhoto = backdropMem?.photoUri ?? trip.coverPhotoUri;
+    const backdropCropKey = backdropMem ? `route_${backdropMem.id}` : '__route_backdrop__';
+    const statItems = getRouteStatsItems(trip, memories, flights);
+
+    const renderCenterpiece = () => {
+      if (primaryFlight) {
+        return (
+          <FlightArcGraphic
+            origin={primaryFlight.originIata}
+            dest={primaryFlight.destIata}
+            miles={totalMiles}
+            lightText
+            scale={s}
+          />
+        );
+      }
+      if (routeOverlay === 'minimal') {
+        return null;
+      }
+      return (
+        <View
+          style={[
+            styles.destSeal,
+            {
+              borderRadius: 18 * s,
+              paddingHorizontal: 20 * s,
+              paddingVertical: 11 * s,
+              gap: 2 * s,
+            },
+          ]}
+        >
+          <Text style={{ fontSize: 24 * s }}>{trip.flagEmoji}</Text>
+          <Text style={[styles.destSealCity, { fontSize: 16 * s }]}>
+            {trip.destinationCity.toUpperCase()}
+          </Text>
+          <Text style={[styles.destSealSub, { fontSize: 8.5 * s }]}>PASSPORT STAMPED ✨</Text>
+        </View>
+      );
+    };
+
+    const backdropNode = heroPhoto ? (
+      <CroppedImage
+        uri={heroPhoto}
+        slotWidth={canvasWidth}
+        slotHeight={height}
+        crop={photoCrops?.[backdropCropKey] ?? photoCrops?.[backdropMem?.id ?? '']}
+        imageDimensions={imageDims?.[heroPhoto]}
+        style={StyleSheet.absoluteFill}
+      />
+    ) : (
+      <DestinationBanner vibe={trip.vibe} height={height} />
+    );
+
     return (
-      <View style={[styles.canvasBase, { width: canvasWidth, height, backgroundColor: '#1E1B4B' }]}>
-        {/* Full-bleed scenic photo or illustrated banner backdrop */}
+      <View
+        style={[
+          styles.canvasBase,
+          { width: canvasWidth, height, backgroundColor: '#1E1B4B', borderRadius: 20 * s },
+        ]}
+      >
+        {/* Full-bleed scenic photo backdrop (tappable to reframe!) */}
         <View style={StyleSheet.absoluteFill}>
-          {heroPhoto ? (
-            <Image source={{ uri: heroPhoto }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          ) : (
-            <DestinationBanner vibe={trip.vibe} height={height} />
-          )}
+          {backdropNode}
           <LinearGradient
-            colors={['rgba(15,23,42,0.72)', 'rgba(30,27,75,0.48)', 'rgba(15,23,42,0.92)']}
+            colors={
+              routeOverlay === 'minimal'
+                ? ['rgba(15,23,42,0.72)', 'rgba(15,23,42,0.06)', 'rgba(15,23,42,0.88)']
+                : ['rgba(15,23,42,0.72)', 'rgba(30,27,75,0.42)', 'rgba(15,23,42,0.90)']
+            }
+            locations={[0, 0.48, 1]}
             style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
         </View>
 
-        {/* Top Badge */}
-        <View style={styles.routeTop}>
-          <View style={styles.routePill}>
-            <Text style={styles.routePillText}>
+        {/* Tappable transparent hit layer for reframing the Route backdrop */}
+        {heroPhoto && onPressSlot ? (
+          <TouchableOpacity
+            activeOpacity={0.95}
+            style={StyleSheet.absoluteFill}
+            onPress={() =>
+              onPressSlot({
+                cropKey: backdropCropKey,
+                memoryId: backdropMem?.id,
+                photoUri: heroPhoto,
+                title: backdropMem?.title || `${trip.title} Backdrop`,
+                slotAspectRatio: canvasWidth / height,
+              })
+            }
+          />
+        ) : null}
+
+        {/* Top Header */}
+        <View
+          pointerEvents="none"
+          style={{
+            paddingTop: 18 * s,
+            paddingHorizontal: 18 * s,
+            alignItems: 'center',
+            gap: 4 * s,
+          }}
+        >
+          <View
+            style={[
+              styles.routePill,
+              { paddingHorizontal: 11 * s, paddingVertical: 4 * s },
+            ]}
+          >
+            <Text style={[styles.routePillText, { fontSize: 8.5 * s }]}>
               {trip.flagEmoji} TRIP RECAP • {trip.destinationCountry.toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.routeTitle} numberOfLines={2} adjustsFontSizeToFit>
+          <Text
+            style={[styles.routeTitle, { fontSize: 22 * s, marginTop: 2 * s }]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+          >
             {trip.title}
           </Text>
-          <Text style={styles.routeDate}>
-            {trip.startDate} → {trip.endDate}
-          </Text>
+          <Text style={[styles.routeDate, { fontSize: 10.5 * s }]}>{editorialDateRange}</Text>
         </View>
 
-        {/* Centerpiece Flight Arc + Mini Photo Strip */}
-        <View style={styles.routeMiddle}>
-          {primaryFlight ? (
-            <FlightArcGraphic
-              origin={primaryFlight.originIata}
-              dest={primaryFlight.destIata}
-              miles={totalMiles}
-              lightText
-            />
-          ) : (
-            <View style={styles.destSeal}>
-              <Text style={{ fontSize: 32 }}>{trip.flagEmoji}</Text>
-              <Text style={styles.destSealCity}>{trip.destinationCity.toUpperCase()}</Text>
-              <Text style={styles.destSealSub}>PASSPORT STAMPED ✨</Text>
-            </View>
-          )}
+        {/* Flexible Middle Region (respects Top / Center / Bottom / Clean placement) */}
+        <View
+          pointerEvents="none"
+          style={{
+            flex: 1,
+            justifyContent:
+              routeOverlay === 'top'
+                ? 'flex-start'
+                : routeOverlay === 'bottom'
+                ? 'flex-end'
+                : 'center',
+            paddingHorizontal: 18 * s,
+            paddingVertical: 12 * s,
+            gap: 12 * s,
+          }}
+        >
+          {renderCenterpiece()}
 
-          {isStory && picked.length >= 2 && (
-            <View style={styles.routeMiniStrip}>
-              {picked.slice(0, 3).map((m) => (
-                <View key={m.id} style={styles.routeMiniThumb}>
-                  <PhotoSlot memory={m} fallbackVibe={trip.vibe} height={74} borderRadius={8} />
+          {isStory && picked.length >= 2 && routeOverlay !== 'minimal' && (
+            <View style={{ flexDirection: 'row', gap: 8 * s }}>
+              {picked.slice(0, 3).map((m, idx) => (
+                <View
+                  key={m.id}
+                  style={{
+                    flex: 1,
+                    borderRadius: 10 * s,
+                    borderWidth: 2 * s,
+                    borderColor: 'rgba(255,255,255,0.85)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <PhotoSlot
+                    memory={m}
+                    fallbackVibe={trip.vibe}
+                    slotWidth={(canvasWidth - 52 * s) / 3}
+                    slotHeight={74 * s}
+                    borderRadius={8 * s}
+                    slotIndex={idx}
+                    photoCrops={photoCrops}
+                    imageDims={imageDims}
+                  />
                 </View>
               ))}
             </View>
           )}
         </View>
 
-        {/* Bottom Glass Stats Strip (Zero Spend!) */}
-        <View style={styles.routeBottom}>
-          <View style={styles.glassStatsRow}>
-            <View style={styles.glassStat}>
-              <Text style={styles.glassStatVal}>
-                {totalMiles > 0 ? totalMiles.toLocaleString() : days}
-              </Text>
-              <Text style={styles.glassStatLbl}>
-                {totalMiles > 0 ? 'MILES FLOWN' : 'DAYS'}
-              </Text>
-            </View>
-            <View style={styles.glassDivider} />
-            <View style={styles.glassStat}>
-              <Text style={styles.glassStatVal}>{days}</Text>
-              <Text style={styles.glassStatLbl}>{days === 1 ? 'DAY' : 'DAYS'}</Text>
-            </View>
-            <View style={styles.glassDivider} />
-            <View style={styles.glassStat}>
-              <Text style={styles.glassStatVal}>{memories.length || 1}</Text>
-              <Text style={styles.glassStatLbl}>MEMORIES</Text>
-            </View>
+        {/* Bottom Glass Stats Strip (Zero Spend, Zero Duplicate Labels!) */}
+        <View
+          pointerEvents="none"
+          style={{ paddingHorizontal: 16 * s, paddingBottom: 15 * s, gap: 10 * s }}
+        >
+          <View
+            style={[
+              styles.glassStatsRow,
+              { borderRadius: 16 * s, paddingVertical: 10 * s },
+            ]}
+          >
+            {statItems.map((item, idx) => (
+              <React.Fragment key={`${item.label}_${idx}`}>
+                {idx > 0 && <View style={[styles.glassDivider, { height: 24 * s }]} />}
+                <View style={styles.glassStat}>
+                  <Text style={[styles.glassStatVal, { fontSize: 16 * s }]}>{item.value}</Text>
+                  <Text style={[styles.glassStatLbl, { fontSize: 8 * s, marginTop: 2 * s }]}>
+                    {item.label}
+                  </Text>
+                </View>
+              </React.Fragment>
+            ))}
           </View>
-          {showWatermark && <WatermarkBar dark />}
+          {showWatermark && <WatermarkBar dark scale={s} />}
         </View>
       </View>
     );
   }
 
+  // =========================================================================
   // TEMPLATE 3: VINTAGE AIRMAIL POSTCARD
-  const isStory = format === 'story';
+  // =========================================================================
+  const innerW = canvasWidth - 30 * s;
+  const gap = 8 * s;
+  const halfW = (innerW - gap) / 2;
+  const thirdW = (innerW - gap * 2) / 3;
+
+  const cityEqualsCountry =
+    trip.destinationCity.trim().toLowerCase() === trip.destinationCountry.trim().toLowerCase();
+  const postcardSubLine = cityEqualsCountry
+    ? `${days} ${days === 1 ? 'Day' : 'Days'} • ${memories.length || 1} ${
+        memories.length === 1 ? 'Memory' : 'Memories'
+      }`
+    : `${trip.destinationCountry} • ${days} ${days === 1 ? 'Day' : 'Days'}`;
+
+  const resolvedNote =
+    postcardNote !== undefined ? postcardNote.trim() : getDefaultPostcardNote(trip, picked);
+  const noteVisible = showPostcardNote && resolvedNote.length > 0;
+  const noteBonusH = noteVisible ? 0 : 28 * s;
+
   return (
-    <View style={[styles.canvasBase, styles.airmailOuter, { width: canvasWidth, height }]}>
-      {/* Colorful Airmail Stripe Top & Bottom */}
-      <View style={styles.airmailStripeRow}>
+    <View
+      style={[
+        styles.canvasBase,
+        {
+          width: canvasWidth,
+          height,
+          borderRadius: 20 * s,
+          backgroundColor: palette.postcardBg,
+          borderWidth: 1,
+          borderColor: palette.postcardBorder,
+          justifyContent: 'space-between',
+        },
+      ]}
+    >
+      {/* Colorful Airmail Stripe Top */}
+      <View style={[styles.airmailStripeRow, { height: 8 * s, gap: 4 * s, paddingHorizontal: 4 * s }]}>
         {Array.from({ length: 12 }).map((_, i) => (
           <View
             key={`t_${i}`}
@@ -384,63 +1090,364 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
         ))}
       </View>
 
-      <View style={styles.postcardInner}>
-        {/* Header with Rubber Country Stamp */}
-        <View style={styles.pcHeader}>
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 15 * s,
+          paddingVertical: 10 * s,
+          justifyContent: 'space-between',
+          gap: 8 * s,
+        }}
+      >
+        {/* Header with Single Clean Date in Rubber Stamp (no duplicate date or country!) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 * s }}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.pcGreetings}>GREETINGS FROM</Text>
-            <Text style={styles.pcCity} numberOfLines={1} adjustsFontSizeToFit>
+            <Text
+              style={{
+                fontSize: 8.5 * s,
+                fontWeight: '900',
+                color: palette.accent,
+                letterSpacing: 1.2 * s,
+              }}
+            >
+              GREETINGS FROM
+            </Text>
+            <Text
+              style={{ fontSize: 20 * s, fontWeight: '900', color: palette.ink }}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {trip.destinationCity} {trip.flagEmoji}
             </Text>
-            <Text style={styles.pcSub}>
-              {trip.destinationCountry} • {trip.startDate}
+            <Text style={{ fontSize: 10 * s, fontWeight: '700', color: palette.inkMuted }}>
+              {postcardSubLine}
             </Text>
           </View>
-          <View style={styles.inkStampBox}>
-            <Text style={styles.inkStampTop}>{trip.countryCode}</Text>
-            <Text style={styles.inkStampDate}>{trip.startDate.slice(0, 7)}</Text>
+          <View
+            style={{
+              borderWidth: 2 * s,
+              borderColor: palette.stampColor,
+              backgroundColor: palette.stampBg,
+              borderRadius: 10 * s,
+              paddingHorizontal: 9 * s,
+              paddingVertical: 5 * s,
+              alignItems: 'center',
+              transform: [{ rotate: '6deg' }],
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11.5 * s,
+                fontWeight: '900',
+                color: palette.stampColor,
+                letterSpacing: 1 * s,
+              }}
+            >
+              {trip.countryCode}
+            </Text>
+            <Text
+              style={{
+                fontSize: 8 * s,
+                fontWeight: '800',
+                color: palette.stampColor,
+                fontFamily: 'monospace',
+              }}
+            >
+              {formatStampMonthYear(trip.startDate)}
+            </Text>
           </View>
         </View>
 
-        {/* Clean Editorial Photo Frame / Grid */}
-        <View style={styles.pcPhotosWrap}>
+        {/* Clean Editorial Photo Frame / Layout-Aware Grid */}
+        <View style={{ flex: 1, justifyContent: 'center' }}>
           {picked.length <= 1 ? (
             <PhotoSlot
               memory={picked[0]}
               fallbackVibe={trip.vibe}
               fallbackCover={trip.coverPhotoUri}
-              height={isStory ? 285 : 185}
-              borderRadius={14}
+              slotWidth={innerW}
+              slotHeight={(isStory ? 310 : 196) * s + noteBonusH}
+              borderRadius={14 * s}
+              slotIndex={0}
+              photoCrops={photoCrops}
+              imageDims={imageDims}
+              onPressSlot={onPressSlot}
             />
           ) : picked.length === 2 ? (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {picked.map((m) => (
-                <View key={m.id} style={{ flex: 1 }}>
+            activeLayout === 'stacked' ? (
+              <View style={{ gap }}>
+                {picked.map((m, idx) => (
                   <PhotoSlot
+                    key={m.id}
                     memory={m}
                     fallbackVibe={trip.vibe}
-                    height={isStory ? 255 : 175}
-                    borderRadius={12}
+                    slotWidth={innerW}
+                    slotHeight={(isStory ? 155 : 96) * s + noteBonusH / 2}
+                    borderRadius={12 * s}
+                    slotIndex={idx}
+                    photoCrops={photoCrops}
+                    imageDims={imageDims}
+                    onPressSlot={onPressSlot}
                   />
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={{ gap: 8 }}>
-              <PhotoSlot
-                memory={picked[0]}
-                fallbackVibe={trip.vibe}
-                height={isStory ? 165 : 108}
-                borderRadius={12}
-              />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {picked.slice(1, 4).map((m) => (
+                ))}
+              </View>
+            ) : activeLayout === 'hero_inset' ? (
+              <View style={{ gap }}>
+                <PhotoSlot
+                  memory={picked[0]}
+                  fallbackVibe={trip.vibe}
+                  slotWidth={innerW}
+                  slotHeight={(isStory ? 204 : 128) * s + noteBonusH * 0.6}
+                  borderRadius={12 * s}
+                  slotIndex={0}
+                  photoCrops={photoCrops}
+                  imageDims={imageDims}
+                  onPressSlot={onPressSlot}
+                />
+                <PhotoSlot
+                  memory={picked[1]}
+                  fallbackVibe={trip.vibe}
+                  slotWidth={innerW}
+                  slotHeight={(isStory ? 104 : 66) * s + noteBonusH * 0.4}
+                  borderRadius={12 * s}
+                  slotIndex={1}
+                  photoCrops={photoCrops}
+                  imageDims={imageDims}
+                  onPressSlot={onPressSlot}
+                />
+              </View>
+            ) : (
+              // 'side_by_side'
+              <View style={{ flexDirection: 'row', gap }}>
+                {picked.map((m, idx) => (
                   <View key={m.id} style={{ flex: 1 }}>
                     <PhotoSlot
                       memory={m}
                       fallbackVibe={trip.vibe}
-                      height={isStory ? 105 : 74}
-                      borderRadius={10}
+                      slotWidth={halfW}
+                      slotHeight={(isStory ? 295 : 194) * s + noteBonusH}
+                      borderRadius={12 * s}
+                      slotIndex={idx}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
+                    />
+                  </View>
+                ))}
+              </View>
+            )
+          ) : picked.length === 3 ? (
+            activeLayout === 'portrait_left' ? (
+              <View style={{ flexDirection: 'row', gap }}>
+                <View style={{ width: innerW * 0.54 }}>
+                  <PhotoSlot
+                    memory={picked[0]}
+                    fallbackVibe={trip.vibe}
+                    slotWidth={innerW * 0.54}
+                    slotHeight={(isStory ? 308 : 198) * s + noteBonusH}
+                    borderRadius={12 * s}
+                    slotIndex={0}
+                    photoCrops={photoCrops}
+                    imageDims={imageDims}
+                    onPressSlot={onPressSlot}
+                  />
+                </View>
+                <View style={{ flex: 1, gap }}>
+                  {[picked[1], picked[2]].map((m, i) => (
+                    <PhotoSlot
+                      key={m.id}
+                      memory={m}
+                      fallbackVibe={trip.vibe}
+                      slotWidth={innerW * 0.46 - gap}
+                      slotHeight={((isStory ? 308 : 198) * s + noteBonusH - gap) / 2}
+                      borderRadius={10 * s}
+                      slotIndex={i + 1}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : activeLayout === 'hero_bottom' ? (
+              <View style={{ gap }}>
+                <View style={{ flexDirection: 'row', gap }}>
+                  {[picked[0], picked[1]].map((m, i) => (
+                    <View key={m.id} style={{ flex: 1 }}>
+                      <PhotoSlot
+                        memory={m}
+                        fallbackVibe={trip.vibe}
+                        slotWidth={halfW}
+                        slotHeight={(isStory ? 132 : 84) * s + noteBonusH * 0.45}
+                        borderRadius={10 * s}
+                        slotIndex={i}
+                        photoCrops={photoCrops}
+                        imageDims={imageDims}
+                        onPressSlot={onPressSlot}
+                      />
+                    </View>
+                  ))}
+                </View>
+                <PhotoSlot
+                  memory={picked[2]}
+                  fallbackVibe={trip.vibe}
+                  slotWidth={innerW}
+                  slotHeight={(isStory ? 174 : 110) * s + noteBonusH * 0.55}
+                  borderRadius={12 * s}
+                  slotIndex={2}
+                  photoCrops={photoCrops}
+                  imageDims={imageDims}
+                  onPressSlot={onPressSlot}
+                />
+              </View>
+            ) : activeLayout === 'triptych' ? (
+              <View style={{ flexDirection: 'row', gap: gap * 0.8 }}>
+                {picked.map((m, i) => (
+                  <View key={m.id} style={{ flex: 1 }}>
+                    <PhotoSlot
+                      memory={m}
+                      fallbackVibe={trip.vibe}
+                      slotWidth={thirdW}
+                      slotHeight={(isStory ? 295 : 194) * s + noteBonusH}
+                      borderRadius={10 * s}
+                      slotIndex={i}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              // 'hero_top'
+              <View style={{ gap }}>
+                <PhotoSlot
+                  memory={picked[0]}
+                  fallbackVibe={trip.vibe}
+                  slotWidth={innerW}
+                  slotHeight={(isStory ? 174 : 110) * s + noteBonusH * 0.55}
+                  borderRadius={12 * s}
+                  slotIndex={0}
+                  photoCrops={photoCrops}
+                  imageDims={imageDims}
+                  onPressSlot={onPressSlot}
+                />
+                <View style={{ flexDirection: 'row', gap }}>
+                  {[picked[1], picked[2]].map((m, i) => (
+                    <View key={m.id} style={{ flex: 1 }}>
+                      <PhotoSlot
+                        memory={m}
+                        fallbackVibe={trip.vibe}
+                        slotWidth={halfW}
+                        slotHeight={(isStory ? 132 : 84) * s + noteBonusH * 0.45}
+                        borderRadius={10 * s}
+                        slotIndex={i + 1}
+                        photoCrops={photoCrops}
+                        imageDims={imageDims}
+                        onPressSlot={onPressSlot}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )
+          ) : // 4 photos
+          activeLayout === 'hero_top_3' ? (
+            <View style={{ gap }}>
+              <PhotoSlot
+                memory={picked[0]}
+                fallbackVibe={trip.vibe}
+                slotWidth={innerW}
+                slotHeight={(isStory ? 190 : 118) * s + noteBonusH * 0.6}
+                borderRadius={12 * s}
+                slotIndex={0}
+                photoCrops={photoCrops}
+                imageDims={imageDims}
+                onPressSlot={onPressSlot}
+              />
+              <View style={{ flexDirection: 'row', gap: gap * 0.8 }}>
+                {picked.slice(1, 4).map((m, i) => (
+                  <View key={m.id} style={{ flex: 1 }}>
+                    <PhotoSlot
+                      memory={m}
+                      fallbackVibe={trip.vibe}
+                      slotWidth={thirdW}
+                      slotHeight={(isStory ? 114 : 74) * s + noteBonusH * 0.4}
+                      borderRadius={10 * s}
+                      slotIndex={i + 1}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
+                    />
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : activeLayout === 'tall_left_3' ? (
+            <View style={{ flexDirection: 'row', gap }}>
+              <View style={{ width: innerW * 0.56 }}>
+                <PhotoSlot
+                  memory={picked[0]}
+                  fallbackVibe={trip.vibe}
+                  slotWidth={innerW * 0.56}
+                  slotHeight={(isStory ? 310 : 198) * s + noteBonusH}
+                  borderRadius={12 * s}
+                  slotIndex={0}
+                  photoCrops={photoCrops}
+                  imageDims={imageDims}
+                  onPressSlot={onPressSlot}
+                />
+              </View>
+              <View style={{ flex: 1, gap: gap * 0.75 }}>
+                {picked.slice(1, 4).map((m, i) => (
+                  <PhotoSlot
+                    key={m.id}
+                    memory={m}
+                    fallbackVibe={trip.vibe}
+                    slotWidth={innerW * 0.44 - gap}
+                    slotHeight={((isStory ? 310 : 198) * s + noteBonusH - gap * 1.5) / 3}
+                    borderRadius={9 * s}
+                    slotIndex={i + 1}
+                    photoCrops={photoCrops}
+                    imageDims={imageDims}
+                    onPressSlot={onPressSlot}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : (
+            // 'grid_2x2'
+            <View style={{ gap }}>
+              <View style={{ flexDirection: 'row', gap }}>
+                {[picked[0], picked[1]].map((m, i) => (
+                  <View key={m.id} style={{ flex: 1 }}>
+                    <PhotoSlot
+                      memory={m}
+                      fallbackVibe={trip.vibe}
+                      slotWidth={halfW}
+                      slotHeight={(isStory ? 150 : 95) * s + noteBonusH * 0.5}
+                      borderRadius={10 * s}
+                      slotIndex={i}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
+                    />
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap }}>
+                {[picked[2], picked[3]].map((m, i) => (
+                  <View key={m.id} style={{ flex: 1 }}>
+                    <PhotoSlot
+                      memory={m}
+                      fallbackVibe={trip.vibe}
+                      slotWidth={halfW}
+                      slotHeight={(isStory ? 150 : 95) * s + noteBonusH * 0.5}
+                      borderRadius={10 * s}
+                      slotIndex={i + 2}
+                      photoCrops={photoCrops}
+                      imageDims={imageDims}
+                      onPressSlot={onPressSlot}
                     />
                   </View>
                 ))}
@@ -449,17 +1456,37 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
           )}
         </View>
 
-        {/* Postcard Note Line */}
-        <View style={styles.pcNoteBox}>
-          <Text style={styles.pcNoteText} numberOfLines={2}>
-            “{picked[0]?.note || `Wishing you were here in ${trip.destinationCity}!`}”
-          </Text>
-        </View>
+        {/* Editable / Hideable Postcard Note Line */}
+        {noteVisible && (
+          <View
+            style={{
+              backgroundColor: palette.noteBg,
+              borderRadius: 10 * s,
+              paddingHorizontal: 11 * s,
+              paddingVertical: 7 * s,
+              borderLeftWidth: 3 * s,
+              borderLeftColor: palette.accent,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10.5 * s,
+                fontStyle: 'italic',
+                color: palette.inkMuted,
+                lineHeight: 14.5 * s,
+              }}
+              numberOfLines={2}
+            >
+              “{resolvedNote}”
+            </Text>
+          </View>
+        )}
 
-        {showWatermark && <WatermarkBar />}
+        {showWatermark && <WatermarkBar dark={palette.dark} scale={s} />}
       </View>
 
-      <View style={styles.airmailStripeRow}>
+      {/* Colorful Airmail Stripe Bottom */}
+      <View style={[styles.airmailStripeRow, { height: 8 * s, gap: 4 * s, paddingHorizontal: 4 * s }]}>
         {Array.from({ length: 12 }).map((_, i) => (
           <View
             key={`b_${i}`}
@@ -476,8 +1503,8 @@ export const IgSingleCanvas: React.FC<SingleCanvasProps> = ({
 
 /**
  * Renders an individual 4:5 slide in a cohesive Multi-Slide Instagram Carousel Pack:
- * - Cover Postcard slide
- * - Polaroid Memory story slide
+ * - Cover Postcard slide (tappable to reframe!)
+ * - Adaptive Polaroid Memory story slide (portrait-aware + tappable to reframe!)
  * - Passport Stamp & Flight Route finale slide
  */
 export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
@@ -487,54 +1514,106 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
   slide,
   showWatermark,
   canvasWidth = 312,
+  paletteId = 'sunlit',
+  showPhotoLabels = true,
+  coverMemoryId,
+  photoCrops,
+  imageDims,
+  onPressSlot,
 }) => {
+  const s = canvasWidth / 312;
   const height = Math.round((canvasWidth * 5) / 4);
-  const days = getTripDays(trip.startDate, trip.endDate);
+  const days = getTripDaysCount(trip.startDate, trip.endDate);
   const totalMiles = flights.reduce((sum, f) => sum + (f.distanceMiles || 0), 0);
   const primaryFlight = flights[0];
+  const palette = getPaletteSpec(paletteId);
+  const editorialDateRange = formatEditorialDateRange(trip.startDate, trip.endDate);
 
   if (slide.kind === 'cover') {
-    const heroPhoto =
-      allSelectedMemories.find((m) => m.photoUri)?.photoUri ?? trip.coverPhotoUri;
+    const coverMem =
+      (coverMemoryId
+        ? allSelectedMemories.find((m) => m.id === coverMemoryId && m.photoUri)
+        : undefined) ?? allSelectedMemories.find((m) => m.photoUri);
+    const heroPhoto = coverMem?.photoUri ?? trip.coverPhotoUri;
+    const coverCropKey = coverMem ? `cover_${coverMem.id}` : '__carousel_cover__';
+
     return (
-      <View style={[styles.canvasBase, { width: canvasWidth, height, backgroundColor: '#1C1917' }]}>
+      <View
+        style={[
+          styles.canvasBase,
+          { width: canvasWidth, height, backgroundColor: '#1C1917', borderRadius: 20 * s },
+        ]}
+      >
         <View style={StyleSheet.absoluteFill}>
           {heroPhoto ? (
-            <Image source={{ uri: heroPhoto }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <CroppedImage
+              uri={heroPhoto}
+              slotWidth={canvasWidth}
+              slotHeight={height}
+              crop={photoCrops?.[coverCropKey] ?? photoCrops?.[coverMem?.id ?? '']}
+              imageDimensions={imageDims?.[heroPhoto]}
+              style={StyleSheet.absoluteFill}
+            />
           ) : (
             <DestinationBanner vibe={trip.vibe} height={height} />
           )}
           <LinearGradient
-            colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.82)']}
+            colors={['rgba(0,0,0,0.34)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.84)']}
+            locations={[0, 0.45, 1]}
             style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
         </View>
 
-        <View style={styles.coverTopRow}>
-          <View style={styles.routePill}>
-            <Text style={styles.routePillText}>
+        {heroPhoto && onPressSlot ? (
+          <TouchableOpacity
+            activeOpacity={0.95}
+            style={StyleSheet.absoluteFill}
+            onPress={() =>
+              onPressSlot({
+                cropKey: coverCropKey,
+                memoryId: coverMem?.id,
+                photoUri: heroPhoto,
+                title: coverMem?.title || `${trip.title} Cover`,
+                slotAspectRatio: canvasWidth / height,
+              })
+            }
+          />
+        ) : null}
+
+        <View
+          pointerEvents="none"
+          style={[styles.coverTopRow, { padding: 14 * s }]}
+        >
+          <View style={[styles.routePill, { paddingHorizontal: 10 * s, paddingVertical: 4 * s }]}>
+            <Text style={[styles.routePillText, { fontSize: 8.5 * s }]}>
               {trip.flagEmoji} {trip.destinationCity.toUpperCase()}
             </Text>
           </View>
-          <View style={styles.slideCounter}>
-            <Text style={styles.slideCounterText}>
+          <View style={[styles.slideCounter, { paddingHorizontal: 9 * s, paddingVertical: 3 * s }]}>
+            <Text style={[styles.slideCounterText, { fontSize: 9.5 * s }]}>
               1 / {slide.totalSlides}
             </Text>
           </View>
         </View>
 
-        <View style={styles.coverBottom}>
-          <Text style={styles.coverOverline}>POSTCARDS FROM {trip.destinationCountry.toUpperCase()}</Text>
-          <Text style={styles.coverTitle} numberOfLines={2} adjustsFontSizeToFit>
+        <View
+          pointerEvents="none"
+          style={[styles.coverBottom, { padding: 18 * s, gap: 4 * s }]}
+        >
+          <Text style={[styles.coverOverline, { fontSize: 8.5 * s }]}>
+            POSTCARDS FROM {trip.destinationCountry.toUpperCase()}
+          </Text>
+          <Text style={[styles.coverTitle, { fontSize: 23 * s }]} numberOfLines={2} adjustsFontSizeToFit>
             {trip.title}
           </Text>
-          <Text style={styles.coverSub}>
-            {trip.startDate} → {trip.endDate} • {days} {days === 1 ? 'day' : 'days'}
+          <Text style={[styles.coverSub, { fontSize: 10.5 * s }]}>
+            {editorialDateRange} • {days} {days === 1 ? 'day' : 'days'}
           </Text>
-          <View style={styles.coverSwipeRow}>
-            {showWatermark ? <WatermarkBar dark /> : <View />}
-            <View style={styles.swipeBadge}>
-              <Text style={styles.swipeBadgeText}>SWIPE →</Text>
+          <View style={[styles.coverSwipeRow, { marginTop: 9 * s }]}>
+            {showWatermark ? <WatermarkBar dark scale={s} /> : <View />}
+            <View style={[styles.swipeBadge, { paddingHorizontal: 11 * s, paddingVertical: 4 * s }]}>
+              <Text style={[styles.swipeBadgeText, { fontSize: 8.5 * s }]}>SWIPE →</Text>
             </View>
           </View>
         </View>
@@ -544,52 +1623,142 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
 
   if (slide.kind === 'memory' && slide.memory) {
     const m = slide.memory;
+    const dims = m.photoUri ? imageDims?.[m.photoUri] : undefined;
+    const isPortraitPhoto = dims ? dims.height > dims.width * 1.05 : false;
+    const hasCustomNote = !isGenericPlaceholderNote(m.note);
+    // Give portrait photos a taller Polaroid window so faces aren't squished!
+    const photoHeight = (
+      showPhotoLabels
+        ? isPortraitPhoto
+          ? hasCustomNote
+            ? 208
+            : 226
+          : hasCustomNote
+          ? 188
+          : 206
+        : 266
+    ) * s;
+    const polaroidInnerW = canvasWidth - 52 * s;
+
     return (
       <LinearGradient
-        colors={['#FFF9F2', '#FFEDD5']}
+        colors={palette.carouselMemGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.canvasBase, { width: canvasWidth, height, padding: 16, justifyContent: 'space-between' }]}
+        style={[
+          styles.canvasBase,
+          {
+            width: canvasWidth,
+            height,
+            borderRadius: 20 * s,
+            padding: 16 * s,
+            justifyContent: 'space-between',
+          },
+        ]}
       >
-        <View style={styles.coverTopRow}>
-          <Text style={styles.memSlideTrip} numberOfLines={1}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text
+            style={{ fontSize: 11.5 * s, fontWeight: '900', color: palette.ink, flex: 1 }}
+            numberOfLines={1}
+          >
             {trip.flagEmoji} {trip.title}
           </Text>
-          <Text style={styles.memSlideNum}>
+          <Text style={{ fontSize: 10.5 * s, fontWeight: '800', color: palette.accent }}>
             {slide.slideIndex + 1} / {slide.totalSlides}
           </Text>
         </View>
 
-        <View style={[styles.polaroidFrame, { transform: [{ rotate: slide.slideIndex % 2 === 0 ? '1deg' : '-1deg' }] }]}>
-          <View style={styles.tape} />
-          <PhotoSlot memory={m} fallbackVibe={trip.vibe} height={192} borderRadius={8} />
-          <View style={styles.polMeta}>
-            <Text style={styles.polTitle} numberOfLines={1}>
-              {m.title}
-            </Text>
-            {m.placeName ? (
-              <Text style={styles.polPlace} numberOfLines={1}>
-                📍 {m.placeName}
+        <View
+          style={{
+            backgroundColor: palette.polaroidBg,
+            borderRadius: 12 * s,
+            padding: 10 * s,
+            paddingBottom: (showPhotoLabels ? 11 : 10) * s,
+            borderWidth: 1,
+            borderColor: palette.polaroidBorder,
+            transform: [{ rotate: slide.slideIndex % 2 === 0 ? '0.8deg' : '-0.8deg' }],
+            elevation: 4,
+          }}
+        >
+          <View
+            style={{
+              width: 48 * s,
+              height: 10 * s,
+              backgroundColor: palette.tapeColor,
+              alignSelf: 'center',
+              marginTop: -15 * s,
+              marginBottom: 6 * s,
+              borderRadius: 2 * s,
+            }}
+          />
+          <PhotoSlot
+            memory={m}
+            fallbackVibe={trip.vibe}
+            slotWidth={polaroidInnerW}
+            slotHeight={photoHeight}
+            borderRadius={8 * s}
+            cropKey={`carousel_${m.id}`}
+            slotIndex={slide.slideIndex - 1}
+            photoCrops={{
+              ...photoCrops,
+              [`carousel_${m.id}`]:
+                photoCrops?.[`carousel_${m.id}`] ?? photoCrops?.[m.id] ?? DEFAULT_PHOTO_CROP,
+            }}
+            imageDims={imageDims}
+            onPressSlot={onPressSlot}
+          />
+          {showPhotoLabels && (
+            <View style={{ paddingTop: 8 * s, gap: 3 * s }}>
+              <Text
+                style={{ fontSize: 13.5 * s, fontWeight: '900', color: palette.ink }}
+                numberOfLines={1}
+              >
+                {m.title}
               </Text>
-            ) : null}
-            <Text style={styles.polNote} numberOfLines={2}>
-              {m.note}
-            </Text>
-            <View style={styles.polBottom}>
-              <Text style={styles.polMood}>{m.moodSticker}</Text>
-              <Text style={styles.polDate}>{m.capturedAt.slice(0, 10)}</Text>
+              {m.placeName ? (
+                <Text
+                  style={{ fontSize: 9.5 * s, fontWeight: '700', color: palette.accent }}
+                  numberOfLines={1}
+                >
+                  📍 {m.placeName}
+                </Text>
+              ) : null}
+              {hasCustomNote ? (
+                <Text
+                  style={{ fontSize: 10.5 * s, color: palette.inkMuted, lineHeight: 14 * s }}
+                  numberOfLines={2}
+                >
+                  {m.note}
+                </Text>
+              ) : null}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: 3 * s,
+                }}
+              >
+                <Text style={{ fontSize: 9.5 * s, fontWeight: '800', color: palette.accent }}>
+                  {m.moodSticker}
+                </Text>
+                <Text style={{ fontSize: 9.5 * s, fontWeight: '700', color: palette.inkMuted }}>
+                  {formatShortDate(m.capturedAt)}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         <View style={{ alignItems: 'center' }}>
-          {showWatermark && <WatermarkBar />}
+          {showWatermark && <WatermarkBar dark={palette.dark} scale={s} />}
         </View>
       </LinearGradient>
     );
   }
 
   // Final Carousel Slide: Navy & Gold Passport Stamp + Flight Route Finale
+  const locationLabel = formatLocationLabel(trip.destinationCity, trip.destinationCountry);
   return (
     <LinearGradient
       colors={['#1E1B4B', '#312E81', '#0F172A']}
@@ -600,28 +1769,43 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
         {
           width: canvasWidth,
           height,
-          padding: 20,
+          borderRadius: 20 * s,
+          padding: 20 * s,
           justifyContent: 'space-between',
-          borderWidth: 2,
+          borderWidth: 2 * s,
           borderColor: 'rgba(251, 191, 36, 0.5)',
         },
       ]}
     >
-      <View style={styles.coverTopRow}>
-        <Text style={styles.passportHeaderLbl}>PASSPORT STAMP • FINALE</Text>
-        <View style={styles.slideCounter}>
-          <Text style={styles.slideCounterText}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[styles.passportHeaderLbl, { fontSize: 8.5 * s }]}>
+          PASSPORT STAMP • FINALE
+        </Text>
+        <View style={[styles.slideCounter, { paddingHorizontal: 9 * s, paddingVertical: 3 * s }]}>
+          <Text style={[styles.slideCounterText, { fontSize: 9.5 * s }]}>
             {slide.slideIndex + 1} / {slide.totalSlides}
           </Text>
         </View>
       </View>
 
-      <View style={{ alignItems: 'center', gap: 14 }}>
-        <View style={styles.finaleStamp}>
-          <Text style={styles.finaleFlag}>{trip.flagEmoji}</Text>
-          <Text style={styles.finaleCountry}>{trip.destinationCountry.toUpperCase()}</Text>
-          <Text style={styles.finaleDates}>
-            {trip.startDate} → {trip.endDate}
+      <View style={{ alignItems: 'center', gap: 14 * s }}>
+        <View
+          style={[
+            styles.finaleStamp,
+            {
+              borderRadius: 18 * s,
+              paddingHorizontal: 22 * s,
+              paddingVertical: 14 * s,
+              borderWidth: 2 * s,
+            },
+          ]}
+        >
+          <Text style={{ fontSize: 30 * s }}>{trip.flagEmoji}</Text>
+          <Text style={[styles.finaleCountry, { fontSize: 15.5 * s, marginTop: 4 * s }]}>
+            {trip.destinationCountry.toUpperCase()}
+          </Text>
+          <Text style={[styles.finaleDates, { fontSize: 10 * s, marginTop: 3 * s }]}>
+            {editorialDateRange}
           </Text>
         </View>
 
@@ -631,38 +1815,45 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
             dest={primaryFlight.destIata}
             miles={totalMiles}
             lightText
+            scale={s}
           />
         ) : (
-          <Text style={styles.finaleSub}>
-            {trip.destinationCity} • {days} unforgettable {days === 1 ? 'day' : 'days'} ✨
+          <Text style={[styles.finaleSub, { fontSize: 11.5 * s }]}>
+            {locationLabel} • {days} unforgettable {days === 1 ? 'day' : 'days'} ✨
           </Text>
         )}
       </View>
 
-      <View style={{ gap: 10 }}>
-        <View style={styles.glassStatsRow}>
+      <View style={{ gap: 10 * s }}>
+        <View style={[styles.glassStatsRow, { borderRadius: 16 * s, paddingVertical: 10 * s }]}>
           <View style={styles.glassStat}>
-            <Text style={styles.glassStatVal}>{days}</Text>
-            <Text style={styles.glassStatLbl}>DAYS</Text>
+            <Text style={[styles.glassStatVal, { fontSize: 15.5 * s }]}>{days}</Text>
+            <Text style={[styles.glassStatLbl, { fontSize: 8 * s, marginTop: 2 * s }]}>
+              {days === 1 ? 'DAY' : 'DAYS'}
+            </Text>
           </View>
-          <View style={styles.glassDivider} />
+          <View style={[styles.glassDivider, { height: 24 * s }]} />
           <View style={styles.glassStat}>
-            <Text style={styles.glassStatVal}>{allSelectedMemories.length || 1}</Text>
-            <Text style={styles.glassStatLbl}>MEMORIES</Text>
+            <Text style={[styles.glassStatVal, { fontSize: 15.5 * s }]}>
+              {allSelectedMemories.length || 1}
+            </Text>
+            <Text style={[styles.glassStatLbl, { fontSize: 8 * s, marginTop: 2 * s }]}>
+              {allSelectedMemories.length === 1 ? 'MEMORY' : 'MEMORIES'}
+            </Text>
           </View>
-          <View style={styles.glassDivider} />
+          <View style={[styles.glassDivider, { height: 24 * s }]} />
           <View style={styles.glassStat}>
-            <Text style={styles.glassStatVal}>
+            <Text style={[styles.glassStatVal, { fontSize: 15.5 * s }]}>
               {totalMiles > 0 ? totalMiles.toLocaleString() : '1'}
             </Text>
-            <Text style={styles.glassStatLbl}>
+            <Text style={[styles.glassStatLbl, { fontSize: 8 * s, marginTop: 2 * s }]}>
               {totalMiles > 0 ? 'MILES' : 'STAMP'}
             </Text>
           </View>
         </View>
         {showWatermark && (
           <View style={{ alignItems: 'center' }}>
-            <WatermarkBar dark />
+            <WatermarkBar dark scale={s} />
           </View>
         )}
       </View>
@@ -673,7 +1864,7 @@ export const IgCarouselSlideCanvas: React.FC<CarouselSlideCanvasProps> = ({
 export function buildCarouselSlides(memories: Memory[]): CarouselSlideSpec[] {
   const picked = memories.slice(0, 5);
   const total = 2 + picked.length; // Cover + Memory slides + Passport Finale
-  const slides: CarouselSlideSpec[] = [
+  return [
     {
       id: 'slide_cover',
       label: 'Cover',
@@ -683,7 +1874,7 @@ export function buildCarouselSlides(memories: Memory[]): CarouselSlideSpec[] {
     },
     ...picked.map((m, idx) => ({
       id: `slide_mem_${m.id}`,
-      label: `Memory ${idx + 1}`,
+      label: m.title.length > 12 ? `${m.title.slice(0, 11)}…` : m.title,
       kind: 'memory' as const,
       memory: m,
       slideIndex: idx + 1,
@@ -691,27 +1882,22 @@ export function buildCarouselSlides(memories: Memory[]): CarouselSlideSpec[] {
     })),
     {
       id: 'slide_recap',
-      label: 'Passport Stamp',
+      label: 'Stamp',
       kind: 'recap',
       slideIndex: total - 1,
       totalSlides: total,
     },
   ];
-  return slides;
 }
 
 const styles = StyleSheet.create({
   canvasBase: {
-    borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
   },
 
-  // Watermark
   watermarkPill: {
     alignSelf: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
     borderRadius: 99,
   },
   watermarkLight: {
@@ -721,326 +1907,105 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.14)',
   },
   watermarkText: {
-    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.9,
     color: COLORS.navy,
   },
 
-  // Scrapbook Template
-  scrapHeader: {
-    paddingTop: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    gap: 3,
-  },
-  scrapTagPill: {
-    backgroundColor: 'rgba(249, 115, 22, 0.14)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 99,
-  },
-  scrapTagText: { fontSize: 9, fontWeight: '900', color: COLORS.coralDark, letterSpacing: 0.7 },
-  scrapTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
-  scrapDates: { fontSize: 10, fontWeight: '700', color: COLORS.inkMuted },
-  scrapBody: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    justifyContent: 'center',
-  },
-  polaroidFrame: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 10,
-    paddingBottom: 12,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  polaroidFrameCompact: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 7,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    elevation: 3,
-  },
-  tape: {
-    width: 52,
-    height: 12,
-    backgroundColor: 'rgba(253, 224, 71, 0.65)',
-    alignSelf: 'center',
-    marginTop: -16,
-    marginBottom: 6,
-    borderRadius: 2,
-  },
-  tapeSmall: {
-    width: 40,
-    height: 9,
-    backgroundColor: 'rgba(253, 224, 71, 0.65)',
-    alignSelf: 'center',
-    marginTop: -11,
-    marginBottom: 4,
-    borderRadius: 2,
-  },
-  tapeTiny: {
-    width: 30,
-    height: 7,
-    backgroundColor: 'rgba(253, 224, 71, 0.65)',
-    alignSelf: 'center',
-    marginTop: -9,
-    marginBottom: 3,
-    borderRadius: 2,
-  },
-  polMeta: { paddingTop: 8, gap: 3 },
-  polTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  polPlace: { fontSize: 10, fontWeight: '700', color: COLORS.coralDark },
-  polNote: { fontSize: 11, color: COLORS.inkMuted, lineHeight: 15 },
-  polBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  polMood: { fontSize: 10, fontWeight: '800', color: COLORS.coralDark },
-  polDate: { fontSize: 10, fontWeight: '700', color: COLORS.inkSoft },
-  polRowCompact: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 5,
-    gap: 6,
-  },
-  polTitleSm: { fontSize: 11, fontWeight: '900', color: COLORS.ink, flex: 1 },
-  polMoodSm: { fontSize: 9, fontWeight: '800', color: COLORS.coralDark },
-  gridCollage: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-  },
-  polaroidGridCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 9,
-    padding: 6,
-    paddingBottom: 7,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    elevation: 3,
-  },
-  polGridCaption: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.ink,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  scrapFooter: {
-    paddingBottom: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    gap: 5,
-  },
-  scrapMiles: { fontSize: 10, fontWeight: '800', color: COLORS.inkMuted },
-
-  // Route & Stats Template
-  routeTop: {
-    paddingTop: 18,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    gap: 5,
-  },
+  // Route & Stats
   routePill: {
     backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 11,
-    paddingVertical: 4,
     borderRadius: 99,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
   },
-  routePillText: { fontSize: 9, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.8 },
+  routePillText: { fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.8 },
   routeTitle: {
-    fontSize: 22,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginTop: 2,
   },
-  routeDate: { fontSize: 11, color: '#FDE68A', fontWeight: '700' },
-  routeMiddle: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    gap: 16,
-  },
+  routeDate: { color: '#FDE68A', fontWeight: '700' },
+
   arcWrap: {
-    backgroundColor: 'rgba(15,23,42,0.45)',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    backgroundColor: 'rgba(15,23,42,0.52)',
     borderWidth: 1,
-    borderColor: 'rgba(253,224,71,0.35)',
+    borderColor: 'rgba(253,224,71,0.38)',
     alignItems: 'center',
-    gap: 4,
   },
   arcEndpoints: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 8,
   },
-  arcCode: { fontSize: 22, fontWeight: '900', letterSpacing: 1 },
+  arcCode: { fontWeight: '900', letterSpacing: 1 },
   arcSvgBox: { flex: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  arcPlane: { position: 'absolute', top: 2, fontSize: 14 },
-  arcMiles: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  arcPlane: { position: 'absolute' },
+  arcMiles: { fontWeight: '700', letterSpacing: 0.4 },
+
   destSeal: {
     alignSelf: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(15,23,42,0.44)',
     borderWidth: 1.5,
-    borderColor: 'rgba(253,224,71,0.55)',
-    borderRadius: 20,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    gap: 3,
+    borderColor: 'rgba(253,224,71,0.58)',
   },
-  destSealCity: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
-  destSealSub: { fontSize: 9, fontWeight: '800', color: '#FDE047', letterSpacing: 1 },
-  routeMiniStrip: { flexDirection: 'row', gap: 8 },
-  routeMiniThumb: {
-    flex: 1,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-    overflow: 'hidden',
-  },
-  routeBottom: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 10,
-  },
+  destSealCity: { fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
+  destSealSub: { fontWeight: '800', color: '#FDE047', letterSpacing: 1 },
+
   glassStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
-    paddingVertical: 10,
   },
   glassStat: { flex: 1, alignItems: 'center' },
-  glassStatVal: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
-  glassStatLbl: { fontSize: 8, fontWeight: '800', color: '#E2E8F0', letterSpacing: 0.6, marginTop: 2 },
-  glassDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.22)' },
+  glassStatVal: { fontWeight: '900', color: '#FFFFFF' },
+  glassStatLbl: { fontWeight: '800', color: '#E2E8F0', letterSpacing: 0.6 },
+  glassDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.22)' },
 
-  // Airmail Postcard Template
-  airmailOuter: {
-    backgroundColor: '#FFFDF9',
-    borderWidth: 1,
-    borderColor: '#E7E5E4',
-    justifyContent: 'space-between',
-  },
+  // Airmail
   airmailStripeRow: {
     flexDirection: 'row',
-    height: 8,
-    gap: 4,
-    paddingHorizontal: 4,
   },
   airmailDash: { flex: 1, height: '100%' },
-  postcardInner: {
-    flex: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  pcHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  pcGreetings: { fontSize: 9, fontWeight: '900', color: COLORS.coral, letterSpacing: 1.2 },
-  pcCity: { fontSize: 20, fontWeight: '900', color: COLORS.ink },
-  pcSub: { fontSize: 10, fontWeight: '700', color: COLORS.inkMuted },
-  inkStampBox: {
-    borderWidth: 2,
-    borderColor: '#E11D48',
-    backgroundColor: '#FFF1F2',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    alignItems: 'center',
-    transform: [{ rotate: '6deg' }],
-  },
-  inkStampTop: { fontSize: 12, fontWeight: '900', color: '#BE123C', letterSpacing: 1 },
-  inkStampDate: { fontSize: 8, fontWeight: '800', color: '#BE123C', fontFamily: 'monospace' },
-  pcPhotosWrap: { flex: 1, justifyContent: 'center' },
-  pcNoteBox: {
-    backgroundColor: '#FFF7ED',
-    borderRadius: 10,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.coral,
-  },
-  pcNoteText: { fontSize: 11, fontStyle: 'italic', color: COLORS.inkMuted, lineHeight: 15 },
 
   // Carousel Cover & Finale
   coverTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 14,
   },
   slideCounter: {
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    backgroundColor: 'rgba(0,0,0,0.48)',
     borderRadius: 99,
   },
-  slideCounterText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  slideCounterText: { fontWeight: '800', color: '#FFFFFF' },
   coverBottom: {
     marginTop: 'auto',
-    padding: 18,
-    gap: 4,
   },
-  coverOverline: { fontSize: 9, fontWeight: '900', color: '#FDE047', letterSpacing: 1.2 },
-  coverTitle: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
-  coverSub: { fontSize: 11, color: '#E2E8F0', fontWeight: '700' },
+  coverOverline: { fontWeight: '900', color: '#FDE047', letterSpacing: 1.2 },
+  coverTitle: { fontWeight: '900', color: '#FFFFFF' },
+  coverSub: { color: '#E2E8F0', fontWeight: '700' },
   coverSwipeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
   },
   swipeBadge: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 11,
-    paddingVertical: 4,
     borderRadius: 99,
   },
-  swipeBadgeText: { fontSize: 9, fontWeight: '900', color: COLORS.ink, letterSpacing: 0.7 },
-  memSlideTrip: { fontSize: 12, fontWeight: '900', color: COLORS.ink, flex: 1 },
-  memSlideNum: { fontSize: 11, fontWeight: '800', color: COLORS.coralDark },
-  passportHeaderLbl: { fontSize: 9, fontWeight: '900', color: '#FDE047', letterSpacing: 1.1 },
+  swipeBadgeText: { fontWeight: '900', color: COLORS.ink, letterSpacing: 0.7 },
+  passportHeaderLbl: { fontWeight: '900', color: '#FDE047', letterSpacing: 1.1 },
   finaleStamp: {
-    borderWidth: 2,
     borderColor: '#FDE047',
     backgroundColor: 'rgba(253, 224, 71, 0.1)',
-    borderRadius: 18,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
     alignItems: 'center',
     transform: [{ rotate: '-3deg' }],
   },
-  finaleFlag: { fontSize: 32 },
-  finaleCountry: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1.2, marginTop: 4 },
-  finaleDates: { fontSize: 10, fontFamily: 'monospace', color: '#FDE68A', marginTop: 3 },
-  finaleSub: { fontSize: 12, fontWeight: '700', color: '#C7D2FE', textAlign: 'center' },
+  finaleCountry: { fontWeight: '900', color: '#FFFFFF', letterSpacing: 1.2 },
+  finaleDates: { fontFamily: 'monospace', color: '#FDE68A' },
+  finaleSub: { fontWeight: '700', color: '#C7D2FE', textAlign: 'center' },
 });
