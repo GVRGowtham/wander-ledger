@@ -5,6 +5,7 @@ import {
   loadSavedProfile,
   saveProfile,
   signInWithGoogle,
+  startLocalSession,
 } from '../services/authService';
 import {
   clearAllLocalData,
@@ -76,6 +77,7 @@ interface AppContextValue {
   fxSource: 'live' | 'fallback';
   refreshAll: () => void;
   clearAllData: () => void;
+  startLocalTravelogue: (homeCurrency?: string, firstName?: string) => Promise<void>;
   loginWithGoogle: (homeCurrency?: string, email?: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileSettings: (patch: Partial<UserProfile>) => Promise<void>;
@@ -155,6 +157,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       mounted = false;
     };
   }, [refreshAll]);
+
+  const startLocalTravelogue = useCallback(
+    async (homeCurrency = 'USD', firstName?: string) => {
+      const p = await startLocalSession(homeCurrency, firstName);
+      setProfile(p);
+      refreshAll();
+    },
+    [refreshAll]
+  );
 
   const loginWithGoogle = useCallback(
     async (homeCurrency = 'USD', email?: string, name?: string) => {
@@ -346,6 +357,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fxSource,
         refreshAll,
         clearAllData,
+        startLocalTravelogue,
         loginWithGoogle,
         logout,
         updateProfileSettings,

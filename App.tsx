@@ -13,13 +13,13 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { InstagramStudioScreen } from './src/screens/InstagramStudioScreen';
-import { LoginScreen } from './src/screens/LoginScreen';
 import { NewTripScreen } from './src/screens/NewTripScreen';
 import { PassportScreen } from './src/screens/PassportScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SharedTripsScreen } from './src/screens/SharedTripsScreen';
 import { TripDetailScreen } from './src/screens/TripDetailScreen';
 import { TripsHubScreen } from './src/screens/TripsHubScreen';
+import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { WorldMapScreen } from './src/screens/WorldMapScreen';
 import { COLORS, SHADOWS } from './src/theme/tokens';
 
@@ -29,7 +29,8 @@ type OverlayRoute =
   | { name: 'trip'; tripId: string }
   | { name: 'ig_studio'; tripId: string }
   | { name: 'new_trip' }
-  | { name: 'scanner' };
+  | { name: 'scanner' }
+  | { name: 'welcome' };
 
 const MainShell: React.FC = () => {
   const { ready, profile } = useApp();
@@ -70,15 +71,19 @@ const MainShell: React.FC = () => {
   }
 
   if (!profile) {
-    return <LoginScreen />;
+    return <WelcomeScreen />;
   }
 
   const openTrip = (tripId: string) => setOverlay({ name: 'trip', tripId });
   const openIgStudio = (tripId: string) => setOverlay({ name: 'ig_studio', tripId });
   const openScanner = () => setOverlay({ name: 'scanner' });
   const openNewTrip = () => setOverlay({ name: 'new_trip' });
+  const openWelcome = () => setOverlay({ name: 'welcome' });
 
   const renderContent = () => {
+    if (overlay.name === 'welcome') {
+      return <WelcomeScreen isRevisit onDone={() => setOverlay({ name: 'none' })} />;
+    }
     if (overlay.name === 'scanner') {
       return (
         <ScannerScreen
@@ -121,7 +126,7 @@ const MainShell: React.FC = () => {
       case 'shared':
         return <SharedTripsScreen onOpenTrip={openTrip} />;
       case 'passport':
-        return <PassportScreen />;
+        return <PassportScreen onOpenWelcome={openWelcome} />;
       case 'trips':
       default:
         return (
@@ -135,7 +140,10 @@ const MainShell: React.FC = () => {
     }
   };
 
-  const showBottomBar = overlay.name !== 'scanner' && overlay.name !== 'ig_studio';
+  const showBottomBar =
+    overlay.name !== 'scanner' &&
+    overlay.name !== 'ig_studio' &&
+    overlay.name !== 'welcome';
 
   return (
     <View style={styles.shell}>

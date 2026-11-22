@@ -122,11 +122,35 @@ export async function signInWithGoogle(
     }
   }
 
-  const displayName = customName?.trim() || 'Traveler';
-  const email = customEmail?.trim() || 'traveler@wanderledger.local';
+  const displayName = customName?.trim() || 'Wanderer';
+  const email = customEmail?.trim() || '';
   const profile: UserProfile = {
-    id: `google_local_${email.replace(/[^a-z0-9]/gi, '_')}`,
+    id: email ? `google_local_${email.replace(/[^a-z0-9]/gi, '_')}` : 'local_wanderer',
     email,
+    displayName,
+    avatarInitials: getInitials(displayName),
+    homeCurrency,
+    distanceUnit: 'mi',
+    wifiOnlyPhotoSync: true,
+    authMode: 'local_test',
+    lastSyncedAt: new Date().toISOString(),
+  };
+  await saveProfile(profile);
+  return profile;
+}
+
+/**
+ * Starts a frictionless, offline-first local WanderLedger session with no login wall.
+ * If the user leaves firstName blank, addresses them warmly as "Wanderer".
+ */
+export async function startLocalSession(
+  homeCurrency = 'USD',
+  firstName?: string
+): Promise<UserProfile> {
+  const displayName = firstName?.trim() || 'Wanderer';
+  const profile: UserProfile = {
+    id: 'local_wanderer',
+    email: '',
     displayName,
     avatarInitials: getInitials(displayName),
     homeCurrency,

@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { COLORS, SHADOWS } from '../theme/tokens';
 
@@ -23,7 +25,11 @@ const STAMP_STYLES = [
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
 
-export const PassportScreen: React.FC = () => {
+interface Props {
+  onOpenWelcome: () => void;
+}
+
+export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const {
     profile,
     trips,
@@ -33,8 +39,10 @@ export const PassportScreen: React.FC = () => {
     fxSource,
     updateProfileSettings,
     clearAllData,
-    logout,
   } = useApp();
+
+  const [renameModal, setRenameModal] = useState(false);
+  const [draftName, setDraftName] = useState('');
 
   // Deduplicate countries for passport ink stamps
   const countryStamps = Array.from(
@@ -53,6 +61,22 @@ export const PassportScreen: React.FC = () => {
 
   const totalMiles = allFlights.reduce((acc, f) => acc + f.distanceMiles, 0);
   const totalPoints = loyaltyAccounts.reduce((acc, l) => acc + l.balance, 0);
+
+  const openRename = () => {
+    setDraftName(profile?.displayName === 'Wanderer' ? '' : profile?.displayName || '');
+    setRenameModal(true);
+  };
+
+  const handleSaveName = async () => {
+    const clean = draftName.trim() || 'Wanderer';
+    const parts = clean.split(/\s+/);
+    const initials =
+      parts.length >= 2
+        ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+        : clean.slice(0, 2).toUpperCase() || 'WL';
+    await updateProfileSettings({ displayName: clean, avatarInitials: initials });
+    setRenameModal(false);
+  };
 
   const handleExportCsv = async () => {
     try {
@@ -101,23 +125,27 @@ export const PassportScreen: React.FC = () => {
       showsVerticalScrollIndicator={false}
     >
       {/* Navy & Gold Tactile Passport Cover */}
-      <LinearGradient
-        colors={['#1E1B4B', '#312E81', '#1E293B']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.passportCover}
-      >
-        <LinearGradient colors={['#FDE047', '#F97316']} style={styles.avatar}>
-          <Text style={styles.avatarText}>{profile?.avatarInitials || 'WL'}</Text>
+      <TouchableOpacity onPress={openRename} activeOpacity={0.9}>
+        <LinearGradient
+          colors={['#1E1B4B', '#312E81', '#1E293B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.passportCover}
+        >
+          <LinearGradient colors={['#FDE047', '#F97316']} style={styles.avatar}>
+            <Text style={styles.avatarText}>{profile?.avatarInitials || 'WL'}</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.passportLabel}>PASSPORT • WANDERLEDGER</Text>
+            <Text style={styles.userName}>{profile?.displayName || 'Wanderer'}</Text>
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {profile?.authMode === 'google' && profile?.email
+                ? `${profile.email} • Google Synced ✓`
+                : 'Saved privately on this device ✓ • Tap to rename'}
+            </Text>
+          </View>
         </LinearGradient>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.passportLabel}>PASSPORT • WANDERLEDGER</Text>
-          <Text style={styles.userName}>{profile?.displayName || 'Traveler'}</Text>
-          <Text style={styles.userEmail} numberOfLines={1}>
-            {profile?.email} • {profile?.authMode === 'google' ? 'Google Synced ✓' : 'Local SQLite ✓'}
-          </Text>
-        </View>
-      </LinearGradient>
+      </TouchableOpacity>
 
       {/* Cumulative Lifetime Strip */}
       <View style={styles.statsRow}>
@@ -211,7 +239,7 @@ export const PassportScreen: React.FC = () => {
         )}
       </View>
 
-      {/* Preferences & Sync Controls */}
+      {/* Preferences & Controls */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>⚙️ Travel Preferences</Text>
 
@@ -249,15 +277,43 @@ export const PassportScreen: React.FC = () => {
             <Text style={styles.exportBtnText}>📊 Export Spend CSV</Text>
           </TouchableOpacity>
           <View style={styles.footerSubRow}>
-            <TouchableOpacity onPress={handleResetLocalData} style={styles.resetBtn} activeOpacity={0.85}>
-              <Text style={styles.resetBtnText} numberOfLines={1}>🧹 Reset Data</Text>
+            <TouchableOpacity onPress={onOpenWelcome} style={styles.guideBtn} activeOpacity={0.85}>
+              <Text style={styles.guideBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                👋 Welcome Guide
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.85}>
-              <Text style={styles.logoutBtnText} numberOfLines={1}>Sign Out</Text>
+            <TouchableOpacity onPress={handleResetLocalData} style={styles.resetBtn} activeOpacity={0.85}>
+              <Text style={styles.resetBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                🧹 Reset Data
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      {/* Personalize Passport Name Modal */}
+      <BottomSheetModal
+        visible={renameModal}
+        title="✏️ Personalize Your Passport"
+        onClose={() => setRenameModal(false)}
+        footer={
+          <TouchableOpacity onPress={handleSaveName} style={styles.saveNameBtn} activeOpacity={0.9}>
+            <Text style={styles.saveNameBtnText}>Save Name ✨</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.prefSub}>
+          Leave blank to go by Wanderer ✨
+        </Text>
+        <TextInput
+          value={draftName}
+          onChangeText={setDraftName}
+          placeholder="Your first name (optional)"
+          placeholderTextColor={COLORS.inkSoft}
+          autoCapitalize="words"
+          style={styles.nameInput}
+        />
+      </BottomSheetModal>
     </ScrollView>
   );
 };
@@ -370,22 +426,22 @@ const styles = StyleSheet.create({
     borderColor: '#BAE6FD',
   },
   exportBtnText: { color: '#0369A1', fontWeight: '800', fontSize: 13 },
-  resetBtn: {
+  guideBtn: {
     flex: 1,
-    backgroundColor: COLORS.amberSoft,
-    paddingHorizontal: 14,
+    backgroundColor: COLORS.indigoSoft,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#C7D2FE',
   },
-  resetBtnText: { color: '#92400E', fontWeight: '800', fontSize: 13 },
-  logoutBtn: {
+  guideBtnText: { color: COLORS.indigo, fontWeight: '800', fontSize: 13 },
+  resetBtn: {
     flex: 1,
     backgroundColor: COLORS.roseSoft,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: 'center',
@@ -393,5 +449,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FECDD3',
   },
-  logoutBtnText: { color: COLORS.rose, fontWeight: '800', fontSize: 13 },
+  resetBtnText: { color: COLORS.rose, fontWeight: '800', fontSize: 13 },
+  nameInput: {
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: COLORS.ink,
+    fontWeight: '600',
+  },
+  saveNameBtn: {
+    backgroundColor: COLORS.coral,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  saveNameBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
 });

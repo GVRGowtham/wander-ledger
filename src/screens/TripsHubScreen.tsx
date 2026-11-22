@@ -37,7 +37,7 @@ export const TripsHubScreen: React.FC<Props> = ({
   const uniqueCountries = new Set(trips.map((t) => t.countryCode)).size;
   const totalMiles = allFlights.reduce((s, f) => s + f.distanceMiles, 0);
 
-  const firstName = profile?.displayName.split(' ')[0] || 'Traveler';
+  const firstName = profile?.displayName.split(' ')[0] || 'Wanderer';
   const heroTrip = activeTrips[0];
   const nextUpcoming = upcomingTrips[0];
 
