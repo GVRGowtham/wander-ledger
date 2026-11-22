@@ -246,3 +246,101 @@ Total Paid: $2,480.00`;
     expect(asReceipt.kind).toBe('receipt');
   });
 });
+
+import { buildHashtags, generateOfflineIgCaption } from '../services/igCaptionService';
+import { Flight, Memory, Trip } from '../types/models';
+
+describe('Instagram Draft Caption Studio (100% Offline, Privacy-Safe)', () => {
+  const sampleTrip: Trip = {
+    id: 'trip_kyoto',
+    ownerId: 'u1',
+    title: 'Kyoto Autumn Escape',
+    destinationCity: 'Kyoto',
+    destinationCountry: 'Japan',
+    countryCode: 'JP',
+    flagEmoji: '🇯🇵',
+    startDate: '2026-10-14',
+    endDate: '2026-10-19',
+    homeCurrency: 'USD',
+    budget: 3200,
+    vibe: 'japan',
+    isShared: false,
+    coTravelers: [],
+    lat: 35.01,
+    lng: 135.76,
+    createdAt: '2026-10-01T00:00:00Z',
+    updatedAt: '2026-10-01T00:00:00Z',
+  };
+
+  const sampleMemories: Memory[] = [
+    {
+      id: 'm1',
+      tripId: 'trip_kyoto',
+      title: 'Golden Torii Sunrise',
+      note: 'Beat the crowds at 6 AM and the lanterns were still glowing.',
+      capturedAt: '2026-10-15T06:15:00',
+      placeName: 'Fushimi Inari',
+      moodSticker: '🌅 Core Memory',
+      isHighlight: true,
+      createdAt: '2026-10-15T06:20:00Z',
+    },
+  ];
+
+  const sampleFlights: Flight[] = [
+    {
+      id: 'f1',
+      tripId: 'trip_kyoto',
+      airlineCode: 'NH',
+      airlineName: 'ANA',
+      flightNumber: 'NH 105',
+      originIata: 'LAX',
+      originCity: 'Los Angeles',
+      destIata: 'HND',
+      destCity: 'Tokyo',
+      departureTime: '2026-10-14T10:30:00Z',
+      arrivalTime: '2026-10-15T14:30:00Z',
+      durationMinutes: 710,
+      status: 'scheduled',
+      distanceMiles: 5478,
+      milesEarned: 5478,
+      enrichedOnline: false,
+      createdAt: '2026-10-01T00:00:00Z',
+    },
+  ];
+
+  it('generates offline captions across all 4 tones without ever leaking budget or spend', () => {
+    const aesthetic = generateOfflineIgCaption({
+      trip: sampleTrip,
+      memories: sampleMemories,
+      flights: sampleFlights,
+      tone: 'aesthetic',
+      includeHashtags: true,
+      includeWatermarkTag: true,
+    });
+    expect(aesthetic.toLowerCase()).toContain('kyoto');
+    expect(aesthetic).toContain('Fushimi Inari');
+    expect(aesthetic).toContain('#wanderledger');
+    expect(aesthetic).not.toContain('3200');
+
+    const stats = generateOfflineIgCaption({
+      trip: sampleTrip,
+      memories: sampleMemories,
+      flights: sampleFlights,
+      tone: 'stats',
+      includeHashtags: false,
+      includeWatermarkTag: false,
+    });
+    expect(stats).toContain('LAX → HND');
+    expect(stats).toContain('5,478');
+    expect(stats).not.toContain('#');
+    expect(stats).not.toContain('3200');
+  });
+
+  it('respects watermark toggle in generated hashtags', () => {
+    const withTag = buildHashtags(sampleTrip, sampleMemories, true);
+    const withoutTag = buildHashtags(sampleTrip, sampleMemories, false);
+    expect(withTag).toContain('#wanderledger');
+    expect(withoutTag).not.toContain('#wanderledger');
+  });
+});
+

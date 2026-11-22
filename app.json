@@ -3,7 +3,7 @@
     "name": "WanderLedger",
     "slug": "wander-ledger",
     "scheme": "wanderledger",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.wanderledger.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#FFF9F2",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -46,6 +46,15 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow WanderLedger to import travel memories and receipts from your photo library."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow WanderLedger to save your Instagram postcards and collages to your photo gallery.",
+          "savePhotosPermission": "Allow WanderLedger to save your Instagram postcards and collages to your photo gallery.",
+          "isAccessMediaLocationEnabled": false,
+          "granularPermissions": ["photo"]
         }
       ]
     ],

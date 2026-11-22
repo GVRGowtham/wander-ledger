@@ -22,6 +22,7 @@ import {
   ManualFlightDraft,
   ManualFlightFields,
 } from '../components/forms/ManualFlightFields';
+import { InstagramIcon } from '../components/icons/InstagramIcon';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { inferDestinationVibe } from '../db/airportsData';
@@ -45,6 +46,7 @@ interface Props {
   tripId: string;
   onBack: () => void;
   onOpenScanner: () => void;
+  onOpenIgStudio: (tripId: string) => void;
 }
 
 type InnerTab = 'memories' | 'bookings' | 'spend';
@@ -70,6 +72,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   tripId,
   onBack,
   onOpenScanner,
+  onOpenIgStudio,
 }) => {
   const {
     trips,
@@ -639,6 +642,30 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={styles.actionPillText}>+ Memory</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Intuitive Create Instagram Post CTA right inside Memories */}
+            <TouchableOpacity
+              onPress={() => onOpenIgStudio(trip.id)}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={['#F58529', '#DD2A7B', '#8134AF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.igBannerBtn}
+              >
+                <View style={styles.igLogoCircle}>
+                  <InstagramIcon size={20} variant="white" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.igBannerTitle}>Create Instagram Post</Text>
+                  <Text style={styles.igBannerSub} numberOfLines={1}>
+                    Collages, Story cards, Carousels & draft captions ✨
+                  </Text>
+                </View>
+                <Text style={styles.igBannerArrow}>→</Text>
+              </LinearGradient>
+            </TouchableOpacity>
 
             {memories.length === 0 ? (
               <View style={styles.emptyBox}>
@@ -1314,6 +1341,32 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.postcardShareText}>Share Postcard Now ✈️</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          onPress={() => {
+            setShareModal(false);
+            onOpenIgStudio(trip.id);
+          }}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={['#F58529', '#DD2A7B', '#8134AF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.igBannerBtn}
+          >
+            <View style={styles.igLogoCircle}>
+              <InstagramIcon size={18} variant="white" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.igBannerTitle}>Open Instagram Post Studio</Text>
+              <Text style={styles.igBannerSub} numberOfLines={1}>
+                Export Collages, Stories, Carousels & Captions
+              </Text>
+            </View>
+            <Text style={styles.igBannerArrow}>→</Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </BottomSheetModal>
 
       {/* MANUAL FLIGHT MODAL (LOST / MISSING BOARDING PASS) */}
@@ -1875,4 +1928,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   postcardShareText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
+  igBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+    ...SHADOWS.card,
+  },
+  igLogoCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  igBannerTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+  igBannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600', marginTop: 1 },
+  igBannerArrow: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
 });

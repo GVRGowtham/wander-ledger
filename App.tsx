@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from './src/context/AppContext';
+import { InstagramStudioScreen } from './src/screens/InstagramStudioScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { NewTripScreen } from './src/screens/NewTripScreen';
 import { PassportScreen } from './src/screens/PassportScreen';
@@ -26,6 +27,7 @@ type MainTab = 'trips' | 'map' | 'shared' | 'passport';
 type OverlayRoute =
   | { name: 'none' }
   | { name: 'trip'; tripId: string }
+  | { name: 'ig_studio'; tripId: string }
   | { name: 'new_trip' }
   | { name: 'scanner' };
 
@@ -37,6 +39,10 @@ const MainShell: React.FC = () => {
   // Handle Android hardware Back button gracefully
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (overlay.name === 'ig_studio') {
+        setOverlay({ name: 'trip', tripId: overlay.tripId });
+        return true;
+      }
       if (overlay.name !== 'none') {
         setOverlay({ name: 'none' });
         return true;
@@ -68,6 +74,7 @@ const MainShell: React.FC = () => {
   }
 
   const openTrip = (tripId: string) => setOverlay({ name: 'trip', tripId });
+  const openIgStudio = (tripId: string) => setOverlay({ name: 'ig_studio', tripId });
   const openScanner = () => setOverlay({ name: 'scanner' });
   const openNewTrip = () => setOverlay({ name: 'new_trip' });
 
@@ -89,12 +96,21 @@ const MainShell: React.FC = () => {
         />
       );
     }
+    if (overlay.name === 'ig_studio') {
+      return (
+        <InstagramStudioScreen
+          tripId={overlay.tripId}
+          onBack={() => setOverlay({ name: 'trip', tripId: overlay.tripId })}
+        />
+      );
+    }
     if (overlay.name === 'trip') {
       return (
         <TripDetailScreen
           tripId={overlay.tripId}
           onBack={() => setOverlay({ name: 'none' })}
           onOpenScanner={openScanner}
+          onOpenIgStudio={openIgStudio}
         />
       );
     }
@@ -119,7 +135,7 @@ const MainShell: React.FC = () => {
     }
   };
 
-  const showBottomBar = overlay.name !== 'scanner';
+  const showBottomBar = overlay.name !== 'scanner' && overlay.name !== 'ig_studio';
 
   return (
     <View style={styles.shell}>
