@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,7 +37,12 @@ import {
 import { enrichFlightDetails, FlightEnrichmentResult } from '../services/flightEnricher';
 import { formatFlightDistance } from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
-import { mergeOcrTexts, parseDocumentOcrText } from '../services/ocrParser';
+import {
+  DetectedMoneyCandidate,
+  extractMoneyCandidates,
+  mergeOcrTexts,
+  parseDocumentOcrText,
+} from '../services/ocrParser';
 import { CATEGORY_META, COLORS, formatMoney, SHADOWS, TRANSPORT_MODE_META } from '../theme/tokens';
 import {
   DistanceUnit,
@@ -214,7 +219,7 @@ export const ScannerScreen: React.FC<Props> = ({
       try {
         if (incomingShare.pdfUri) {
           setStatusMessage('Rendering shared PDF pages…');
-          const pageUris = await renderPdfPagesToJpegs(incomingShare.pdfUri, 3);
+          const pageUris = await renderPdfPagesToJpegs(incomingShare.pdfUri, 5);
           if (pageUris.length === 0) {
             Alert.alert('Empty PDF', 'Could not render any readable pages from this PDF.');
             return;
@@ -741,6 +746,10 @@ export const ScannerScreen: React.FC<Props> = ({
   };
 
   const autoSuggestion = getAutoTripSuggestion();
+  const moneyCandidates = useMemo(
+    () => (lastRawOcrText ? extractMoneyCandidates(lastRawOcrText, homeCurrency, 4) : []),
+    [lastRawOcrText, homeCurrency]
+  );
   const showCameraStage = !scanResult || appendingPage;
 
   return (
@@ -1163,6 +1172,16 @@ export const ScannerScreen: React.FC<Props> = ({
                     />
                   </View>
 
+                  <DetectedAmountsBar
+                    candidates={moneyCandidates}
+                    activeAmount={scanResult.ticketAmount}
+                    activeCurrency={scanResult.ticketCurrency ?? homeCurrency}
+                    onSelect={(c) => {
+                      updateFlightField({ ticketAmount: c.amount, ticketCurrency: c.currency });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                  />
+
                   <View style={styles.gridTwo}>
                     <InfoPair
                       label="Distance & Time"
@@ -1307,6 +1326,16 @@ export const ScannerScreen: React.FC<Props> = ({
                     />
                   </View>
 
+                  <DetectedAmountsBar
+                    candidates={moneyCandidates}
+                    activeAmount={scanResult.totalAmount}
+                    activeCurrency={scanResult.currency}
+                    onSelect={(c) => {
+                      updateTransportField({ totalAmount: c.amount, currency: c.currency });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                  />
+
                   <EditableField
                     label={scanResult.mode === 'rental_car' ? 'Vehicle (Opt.)' : 'Coach / Seat (Opt.)'}
                     value={scanResult.seatOrVehicle || ''}
@@ -1346,6 +1375,15 @@ export const ScannerScreen: React.FC<Props> = ({
                       }
                     />
                   </View>
+                  <DetectedAmountsBar
+                    candidates={moneyCandidates}
+                    activeAmount={scanResult.amount}
+                    activeCurrency={scanResult.currency}
+                    onSelect={(c) => {
+                      updateReceiptField({ amount: c.amount, currency: c.currency });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                  />
                   <DatePickerField
                     label="Receipt Date"
                     value={scanResult.date}
@@ -1452,6 +1490,15 @@ export const ScannerScreen: React.FC<Props> = ({
                       onChangeText={(v) => updateHotelField({ confirmationCode: v })}
                     />
                   </View>
+                  <DetectedAmountsBar
+                    candidates={moneyCandidates}
+                    activeAmount={scanResult.totalAmount}
+                    activeCurrency={scanResult.currency}
+                    onSelect={(c) => {
+                      updateHotelField({ totalAmount: c.amount, currency: c.currency });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                  />
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
                       ✓ Adds to Bookings tab ({scanResult.nights} {scanResult.nights === 1 ? 'night' : 'nights'}) & Spend breakdown
@@ -1684,6 +1731,50 @@ const DecimalAmountField = ({
         onChangeValue(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
       }}
     />
+  );
+};
+
+const DetectedAmountsBar = ({
+  candidates,
+  activeAmount,
+  activeCurrency,
+  onSelect,
+}: {
+  candidates: DetectedMoneyCandidate[];
+  activeAmount: number | undefined;
+  activeCurrency: string;
+  onSelect: (candidate: DetectedMoneyCandidate) => void;
+}) => {
+  if (candidates.length <= 1) return null;
+  const currNorm = (activeCurrency || '').trim().toUpperCase();
+  return (
+    <View style={styles.candWrap}>
+      <Text style={styles.candLabel}>Tap detected amount:</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 6 }}
+      >
+        {candidates.map((c, idx) => {
+          const isActive =
+            Boolean(activeAmount) &&
+            Math.abs((activeAmount ?? 0) - c.amount) < 0.01 &&
+            currNorm === c.currency;
+          return (
+            <TouchableOpacity
+              key={`${c.currency}-${c.amount}-${idx}`}
+              onPress={() => onSelect(c)}
+              style={[styles.candChip, isActive && styles.candChipActive]}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.candChipText, isActive && { color: '#FFFFFF' }]}>
+                {formatMoney(c.amount, c.currency)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -2108,4 +2199,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pastePrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+  candWrap: {
+    gap: 5,
+    paddingTop: 2,
+  },
+  candLabel: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: COLORS.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  candChip: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  candChipActive: {
+    backgroundColor: COLORS.navy,
+    borderColor: COLORS.navy,
+  },
+  candChipText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
 });

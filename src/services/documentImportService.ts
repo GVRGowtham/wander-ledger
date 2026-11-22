@@ -46,14 +46,14 @@ export async function pickMultipleDocumentImages(maxCount = 3): Promise<string[]
 
 /**
  * Renders up to `maxPages` pages of a local PDF (file:// or content://) into crisp
- * 1600px white-backed JPEGs using Android's built-in PdfRenderer so offline ML Kit OCR
- * reads BOTH digital confirmation PDFs and scanned paper folios.
+ * 2000px white-backed JPEGs using Android's built-in PdfRenderer so offline ML Kit OCR
+ * reads BOTH digital confirmation PDFs (including crisp decimal points) and scanned paper folios.
  */
 export async function renderPdfPagesToJpegs(
   pdfUri: string,
-  maxPages = 3
+  maxPages = 5
 ): Promise<string[]> {
-  return renderPdfPagesNative(pdfUri, maxPages, 1600);
+  return renderPdfPagesNative(pdfUri, maxPages, 2000);
 }
 
 /**
@@ -72,7 +72,7 @@ export async function pickPdfOrImageFile(): Promise<PickedDocumentResult | null>
     asset.uri.toLowerCase().endsWith('.pdf');
 
   if (isPdf) {
-    const pageUris = await renderPdfPagesToJpegs(asset.uri, 3);
+    const pageUris = await renderPdfPagesToJpegs(asset.uri, 5);
     return {
       imageUris: pageUris,
       isPdf: true,

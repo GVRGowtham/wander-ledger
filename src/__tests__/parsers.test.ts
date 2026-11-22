@@ -906,3 +906,73 @@ Grand Total: AED 1,890.50`;
     }
   });
 });
+
+import { reconstructSpatialTextFromBlocks } from '../services/nativeOcr';
+import { extractMoneyCandidates } from '../services/ocrParser';
+
+describe('v0.4.3 Spatial Table Row Reconstruction & Tax-vs-Total Fare Accuracy', () => {
+  it('reconstructs 2-column ML Kit PDF tables into visual rows and picks Total Calculated Fare (69,422) over Taxes (408,804)', () => {
+    const mlKitBlocks = [
+      {
+        text: 'ETIHAD AIRWAYS\nBooking reference: 7CHIQH\nEY 217  31OCT25  BLR -> AUH',
+        lines: [
+          { text: 'ETIHAD AIRWAYS', frame: { top: 40, left: 60, width: 320, height: 32 } },
+          { text: 'Booking reference: 7CHIQH', frame: { top: 90, left: 60, width: 340, height: 26 } },
+          { text: 'EY 217  31OCT25  BLR -> AUH', frame: { top: 140, left: 60, width: 420, height: 26 } },
+        ],
+      },
+      // Left column block (all labels)
+      {
+        text: 'Base Fare\nTotal Taxes & Carrier Charges\nTotal Calculated Fare',
+        lines: [
+          { text: 'Base Fare', frame: { top: 300, left: 60, width: 180, height: 26 } },
+          { text: 'Total Taxes & Carrier Charges', frame: { top: 344, left: 60, width: 360, height: 26 } },
+          { text: 'Total Calculated Fare', frame: { top: 392, left: 60, width: 290, height: 28 } },
+        ],
+      },
+      // Right column block (all numbers — including a misread tax decimal 408,804 > 69,422!)
+      {
+        text: 'INR 52,000\nINR 408,804\nINR 69,422',
+        lines: [
+          { text: 'INR 52,000', frame: { top: 302, left: 1200, width: 180, height: 26 } },
+          { text: 'INR 408,804', frame: { top: 345, left: 1200, width: 190, height: 26 } },
+          { text: 'INR 69,422', frame: { top: 393, left: 1200, width: 185, height: 28 } },
+        ],
+      },
+    ];
+
+    const spatialText = reconstructSpatialTextFromBlocks(mlKitBlocks);
+    expect(spatialText).toContain('Total Calculated Fare  INR 69,422');
+    expect(spatialText).toContain('Total Taxes & Carrier Charges  INR 408,804');
+
+    const parsed = parseDocumentOcrText(spatialText, 'INR');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.flightNumber).toBe('EY 217');
+      expect(parsed.pnr).toBe('7CHIQH');
+      expect(parsed.flightDate).toBe('2025-10-31');
+      expect(parsed.ticketAmount).toBe(69422);
+      expect(parsed.ticketCurrency).toBe('INR');
+    }
+
+    const candidates = extractMoneyCandidates(spatialText, 'INR', 4);
+    expect(candidates[0]).toEqual({ amount: 69422, currency: 'INR' });
+    expect(candidates.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('skips standalone tax lines even when total label is generic and has no currency prefix on that line', () => {
+    const raw = `ETIHAD AIRWAYS E-TICKET
+Booking Ref: 7CHIQH
+EY 217 31 Oct 2025 BLR -> AUH
+Taxes: INR 408,804
+Total calculated fare: 69422`;
+
+    const parsed = parseDocumentOcrText(raw, 'USD');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.ticketAmount).toBe(69422);
+      expect(parsed.ticketCurrency).toBe('INR');
+    }
+  });
+});
+
