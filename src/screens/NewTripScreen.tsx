@@ -191,7 +191,7 @@ export const NewTripScreen: React.FC<Props> = ({
     if (!dest) {
       Alert.alert(
         'Add a destination or travel leg',
-        'Enter a destination city/country, trip name, or a flight/train/road-trip route!'
+        'Enter a destination, trip name, or a flight/train/road-trip route!'
       );
       return;
     }
@@ -452,11 +452,11 @@ export const NewTripScreen: React.FC<Props> = ({
       <View style={styles.formCard}>
         <Text style={styles.sectionHead}>🗺️ Trip Basics</Text>
 
-        <Text style={styles.label}>Destination City or Country</Text>
+        <Text style={styles.label}>Destination</Text>
         <TextInput
           value={destination}
           onChangeText={handleDestinationChange}
-          placeholder="e.g. Tokyo, Goa, Zurich, New York (or pick airport below)"
+          placeholder="e.g. Europe, Swiss Alps, Japan, Goa"
           placeholderTextColor={COLORS.inkSoft}
           style={styles.input}
         />

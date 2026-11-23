@@ -231,24 +231,9 @@ export function deriveTripGeography(
     }
   };
 
-  // 1. Always include the trip's primary destination (unless generic placeholder)
-  const isGeneric =
-    !trip.countryCode ||
-    trip.destinationCountry.toLowerCase() === 'world adventure' ||
-    trip.destinationCity.toLowerCase() === 'explore';
-  if (!isGeneric) {
-    addVisited({
-      city: trip.destinationCity,
-      country: trip.destinationCountry,
-      countryCode: trip.countryCode,
-      flag: trip.flagEmoji,
-      lat: trip.lat,
-      lng: trip.lng,
-      date: trip.startDate,
-    });
-  }
-
-  // 2. Explicit Trip Stops (always count as Visited — even if they overlap a transit hub!)
+  // 1. Explicit Trip Stops (always count as Visited — even if they overlap a transit hub!)
+  // Note: Free-text trip.destinationCity / trip.destinationCountry is intentionally NOT stamped
+  // so multi-country or regional labels like "Europe" never generate phantom country stamps.
   const explicitStopCountries = new Set<string>();
   const explicitStopCities = new Set<string>();
   for (const stop of stops) {
@@ -385,11 +370,11 @@ export function deriveTripGeography(
   const flagsLabel =
     visitedCountries.length > 0
       ? visitedCountries.map((c) => c.flag).join(' ')
-      : trip.flagEmoji;
+      : trip.flagEmoji || '🌍';
   const countriesLabel =
     visitedCountries.length > 0
       ? visitedCountries.map((c) => c.country).join(' • ')
-      : trip.destinationCountry;
+      : '';
 
   return {
     tripId: trip.id,

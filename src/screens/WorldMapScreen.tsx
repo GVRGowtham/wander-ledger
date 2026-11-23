@@ -128,7 +128,7 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cityTitle}>{selectedTrip.title}</Text>
                 <Text style={styles.dateSub}>
-                  {selectedGeo && selectedGeo.visitedCountries.length > 1
+                  {selectedGeo && selectedGeo.visitedCountries.length > 0
                     ? `${selectedGeo.countriesLabel} • `
                     : ''}
                   {selectedTrip.startDate} → {selectedTrip.endDate} •{' '}

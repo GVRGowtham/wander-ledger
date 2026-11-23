@@ -59,7 +59,7 @@ export const WorldMapSvg: React.FC<Props> = ({
   });
 
   const effectivePins: MapVisitedPin[] =
-    visitedPins && visitedPins.length > 0
+    visitedPins !== undefined
       ? visitedPins
       : trips.map((t) => ({
           tripId: t.id,

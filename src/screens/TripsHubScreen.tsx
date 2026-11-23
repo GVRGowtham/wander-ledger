@@ -79,6 +79,8 @@ export const TripsHubScreen: React.FC<Props> = ({
       {heroTrip ? (
         <ActiveHeroCard
           trip={heroTrip}
+          flagsLabel={geography.byTripId[heroTrip.id]?.flagsLabel || heroTrip.flagEmoji}
+          countriesLabel={geography.byTripId[heroTrip.id]?.countriesLabel || ''}
           summary={getSummaryForTrip(heroTrip.id)}
           distanceUnit={distanceUnit}
           onOpen={() => onOpenTrip(heroTrip.id)}
@@ -87,6 +89,8 @@ export const TripsHubScreen: React.FC<Props> = ({
       ) : nextUpcoming ? (
         <CountdownHeroCard
           trip={nextUpcoming}
+          flagsLabel={geography.byTripId[nextUpcoming.id]?.flagsLabel || nextUpcoming.flagEmoji}
+          countriesLabel={geography.byTripId[nextUpcoming.id]?.countriesLabel || ''}
           onOpen={() => onOpenTrip(nextUpcoming.id)}
           onScan={onOpenScanner}
           onNewTrip={onNewTrip}
@@ -128,6 +132,7 @@ export const TripsHubScreen: React.FC<Props> = ({
               const { daysUntil } = getTripDayProgress(trip);
               const stats = getSummaryForTrip(trip.id);
               const legsCount = stats.flightsCount + stats.transportsCount;
+              const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
               return (
                 <TouchableOpacity
                   key={trip.id}
@@ -139,7 +144,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                     <View style={styles.countdownBadge}>
                       <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
                     </View>
-                    <Text style={styles.flagLg}>{trip.flagEmoji}</Text>
+                    <Text style={styles.flagLg}>{flags}</Text>
                   </View>
                   <Text style={styles.upcomingTitle} numberOfLines={1}>
                     {trip.title}
@@ -174,6 +179,7 @@ export const TripsHubScreen: React.FC<Props> = ({
           <View style={styles.pastGrid}>
             {pastTrips.map((trip, idx) => {
               const stats = getSummaryForTrip(trip.id);
+              const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
               const bgTint = idx % 2 === 0 ? '#F0F9FF' : '#ECFDF5';
               const borderTint = idx % 2 === 0 ? '#BAE6FD' : '#A7F3D0';
               return (
@@ -187,7 +193,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                   activeOpacity={0.85}
                 >
                   <View style={styles.pastTopRow}>
-                    <Text style={styles.flagLg}>{trip.flagEmoji}</Text>
+                    <Text style={styles.flagLg}>{flags}</Text>
                     <View style={styles.photoCountBadge}>
                       <Text style={styles.photoCountText}>{stats.memoriesCount} 📸</Text>
                     </View>
@@ -213,11 +219,13 @@ export const TripsHubScreen: React.FC<Props> = ({
 
 const ActiveHeroCard: React.FC<{
   trip: Trip;
+  flagsLabel: string;
+  countriesLabel: string;
   summary: ReturnType<ReturnType<typeof useApp>['getSummaryForTrip']>;
   distanceUnit: DistanceUnit;
   onOpen: () => void;
   onScan: () => void;
-}> = ({ trip, summary, distanceUnit, onOpen, onScan }) => {
+}> = ({ trip, flagsLabel, countriesLabel, summary, distanceUnit, onOpen, onScan }) => {
   const { currentDay, totalDays } = getTripDayProgress(trip);
   const pct = trip.budget > 0 ? Math.min(100, Math.round((summary.totalSpentHome / trip.budget) * 100)) : 0;
 
@@ -245,10 +253,10 @@ const ActiveHeroCard: React.FC<{
         <View style={styles.heroTitleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>
-              {trip.title} {trip.flagEmoji}
+              {trip.title} {flagsLabel}
             </Text>
             <Text style={styles.heroSubtitle}>
-              {trip.destinationCity} is treating you well! • {trip.startDate} → {trip.endDate}
+              {countriesLabel || trip.destinationCity} is treating you well! • {trip.startDate} → {trip.endDate}
             </Text>
           </View>
           <Text style={styles.openArrow}>Open →</Text>
@@ -318,10 +326,12 @@ const ActiveHeroCard: React.FC<{
 
 const CountdownHeroCard: React.FC<{
   trip: Trip;
+  flagsLabel: string;
+  countriesLabel: string;
   onOpen: () => void;
   onScan: () => void;
   onNewTrip: () => void;
-}> = ({ trip, onOpen, onScan, onNewTrip }) => {
+}> = ({ trip, flagsLabel, countriesLabel, onOpen, onScan, onNewTrip }) => {
   const { daysUntil } = getTripDayProgress(trip);
   return (
     <TouchableOpacity onPress={onOpen} activeOpacity={0.92}>
@@ -335,11 +345,11 @@ const CountdownHeroCard: React.FC<{
           <View style={styles.cdBadge}>
             <Text style={styles.cdBadgeText}>🎒 PACKING SOON • {daysUntil} DAYS</Text>
           </View>
-          <Text style={{ fontSize: 22 }}>{trip.flagEmoji}</Text>
+          <Text style={{ fontSize: 22 }}>{flagsLabel}</Text>
         </View>
         <Text style={styles.cdTitle}>{trip.title}</Text>
         <Text style={styles.cdSub}>
-          {trip.destinationCity}, {trip.destinationCountry} • {trip.startDate}
+          {countriesLabel || trip.destinationCity} • {trip.startDate}
         </Text>
         <View style={styles.heroActions}>
           <TouchableOpacity onPress={onScan} style={styles.cdBtnWhite} activeOpacity={0.88}>

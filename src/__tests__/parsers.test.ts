@@ -1184,7 +1184,34 @@ describe('v0.4.6 Multi-Country Trip Geography (Visited Countries vs. Airport Tra
       { id: 's2', tripId: 'trip_euro', cityName: 'Abu Dhabi', startDate: '2025-11-08', sortOrder: 1, createdAt: '' },
     ];
     const global = deriveGlobalTravelGeography([euroTrip], openJawFlights, [], stops);
-    expect(global.countryStamps.map((c) => c.code)).toEqual(['CH', 'FR', 'AE', 'DE']);
+    expect(new Set(global.countryStamps.map((c) => c.code))).toEqual(new Set(['CH', 'FR', 'AE', 'DE']));
+    expect(global.countryStamps).toHaveLength(4);
     expect(global.transitHubs).toHaveLength(0);
+  });
+
+  it('v0.4.7: never generates country stamps or map pins from the free-text trip Destination field alone', () => {
+    const europeRegionTrip: Trip = {
+      ...euroTrip,
+      id: 'trip_region_only',
+      title: 'Europe Autumn',
+      destinationCity: 'Europe',
+      destinationCountry: 'Europe',
+      countryCode: 'US', // legacy fallback from inferDestinationVibe('Europe')
+      flagEmoji: '🌍',
+    };
+
+    // With no flights, transports, or stops: 0 country stamps, 0 visited pins!
+    const emptyGeo = deriveGlobalTravelGeography([europeRegionTrip], [], [], []);
+    expect(emptyGeo.countryStamps).toHaveLength(0);
+    expect(emptyGeo.visitedCities).toHaveLength(0);
+    expect(emptyGeo.byTripId[europeRegionTrip.id].countriesLabel).toBe('');
+
+    // Once open-jaw flights are logged: ONLY Switzerland & Germany — NO phantom US/Europe stamp!
+    const flightsForRegion = openJawFlights.map((f) => ({ ...f, tripId: europeRegionTrip.id }));
+    const withFlights = deriveGlobalTravelGeography([europeRegionTrip], flightsForRegion, [], []);
+    expect(withFlights.countryStamps.map((c) => c.code)).toEqual(['CH', 'DE']);
+    expect(withFlights.transitHubs.map((h) => h.iata)).toEqual(['AUH']);
+    expect(withFlights.byTripId[europeRegionTrip.id].flagsLabel).toBe('🇨🇭 🇩🇪');
+    expect(withFlights.byTripId[europeRegionTrip.id].countriesLabel).toBe('Switzerland • Germany');
   });
 });

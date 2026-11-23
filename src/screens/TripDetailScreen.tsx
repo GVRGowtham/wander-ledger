@@ -1129,10 +1129,10 @@ export const TripDetailScreen: React.FC<Props> = ({
         <View style={styles.headerBottomText}>
           <Text style={styles.tripTitle} numberOfLines={1}>
             {trip.title}{' '}
-            {tripGeo.visitedCountries.length > 1 ? tripGeo.flagsLabel : trip.flagEmoji}
+            {tripGeo.visitedCountries.length > 0 ? tripGeo.flagsLabel : trip.flagEmoji}
           </Text>
           <Text style={styles.tripDates} numberOfLines={1}>
-            {tripGeo.visitedCountries.length > 1 ? `${tripGeo.countriesLabel} • ` : ''}
+            {tripGeo.visitedCountries.length > 0 ? `${tripGeo.countriesLabel} • ` : ''}
             {trip.startDate} → {trip.endDate} • {formatMoney(summary.totalSpentHome, trip.homeCurrency)} •{' '}
             {formatDistance(summary.totalDistanceKm, distanceUnit)}
           </Text>
@@ -1767,11 +1767,11 @@ export const TripDetailScreen: React.FC<Props> = ({
           style={styles.input}
         />
 
-        <Text style={styles.fieldLabel}>Destination City or Country</Text>
+        <Text style={styles.fieldLabel}>Destination</Text>
         <TextInput
           value={editDestination}
           onChangeText={setEditDestination}
-          placeholder="e.g. Tokyo, Goa, Zurich"
+          placeholder="e.g. Europe, Swiss Alps, Japan, Goa"
           placeholderTextColor={COLORS.inkSoft}
           style={styles.input}
         />

@@ -180,7 +180,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
 
         {countryStamps.length === 0 ? (
           <Text style={styles.prefSub}>
-            No ink stamps yet — log your first trip to stamp your first country!
+            No ink stamps yet — log a flight, train/road leg, or Trip Stop to stamp your visited countries!
           </Text>
         ) : (
           <View style={styles.stampsGrid}>
