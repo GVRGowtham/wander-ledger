@@ -36,7 +36,13 @@ import {
 } from '../services/tripSearchHelpers';
 import { buildTravelReminders } from '../services/reminderPlanner';
 import { formatTimeHmInput } from '../services/timeInputUtils';
-import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
+import {
+  buildTripSpendLedger,
+  collectRequiredFxDates,
+  formatShortRateDate,
+  resolveDefaultFxDate,
+  resolveItemFxRateDate,
+} from '../services/spendCurrencyUtils';
 import { Expense } from '../types/models';
 
 describe('IATA BCBP Boarding Pass Parser (100% Offline)', () => {
@@ -1846,5 +1852,123 @@ describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
     expect(ledgerUsd.categoryTotals.flights).toBeGreaterThan(900);
     expect(ledgerUsd.categoryTotals.flights).toBeLessThan(1200);
     expect(ledgerUsd.totalSpentPreferred).toBeLessThan(3000);
+  });
+
+  it('locks future bookings paid today to TODAY, past trips to travel date, and pay-later stays to live rate until check-in', () => {
+    const today = '2026-11-24';
+
+    // Future flight booked today -> locks to today (NOT future flight date!)
+    expect(resolveDefaultFxDate('2027-03-15', today)).toBe('2026-11-24');
+
+    // Future flight PDF with an explicit past issue/booking date -> locks to issue date
+    expect(resolveDefaultFxDate('2027-03-15', today, '2026-10-08')).toBe('2026-10-08');
+
+    // Backfilling a past receipt from 6 months ago -> locks to receipt date
+    expect(resolveDefaultFxDate('2026-05-12', today)).toBe('2026-05-12');
+
+    // Pay-later future hotel -> live pending until check-in date arrives
+    expect(
+      resolveItemFxRateDate({ date: '2027-03-15', payLater: true }, today)
+    ).toEqual({ fxDate: null, isLivePending: true });
+
+    // Once check-in date arrives -> automatically locks to check-in date
+    expect(
+      resolveItemFxRateDate({ date: '2027-03-15', payLater: true }, '2027-03-15')
+    ).toEqual({ fxDate: '2027-03-15', isLivePending: false });
+
+    // Formatting helper
+    expect(formatShortRateDate('2026-11-24', 2026)).toBe('24 Nov');
+    expect(formatShortRateDate('2025-05-12', 2026)).toBe("12 May '25");
+  });
+
+  it('freezes historical trip totals at each payment date rate even when live FX swings drastically later', () => {
+    const today = '2026-11-24';
+    const futureFlightPaidToday: Expense = {
+      id: 'exp_future_flt',
+      tripId: 'trip_fx_lock',
+      merchant: 'SWISS (LX 147)',
+      category: 'flights',
+      localAmount: 1000,
+      localCurrency: 'USD',
+      homeAmount: 84000,
+      homeCurrency: 'INR',
+      fxRateUsed: 84,
+      expenseDate: '2027-04-10', // Future flight!
+      fxDate: '2026-11-24', // Paid today!
+      createdAt: '2026-11-24T10:00:00Z',
+    };
+    const pastTrain: TransportLeg = {
+      id: 'trn_past_chf',
+      tripId: 'trip_fx_lock',
+      mode: 'train',
+      title: 'SBB Zurich -> Bern',
+      origin: 'Zurich',
+      destination: 'Bern',
+      startDate: '2026-05-12',
+      costAmount: 100,
+      currency: 'USD',
+      homeCost: 8000,
+      fxDate: '2026-05-12',
+      createdAt: '2026-11-24T10:00:00Z',
+    };
+    const payLaterHotel: Stay = {
+      id: 'stay_pay_later',
+      tripId: 'trip_fx_lock',
+      name: 'Hotel Schweizerhof',
+      stayType: 'hotel',
+      checkIn: '2027-04-10',
+      checkOut: '2027-04-13',
+      nights: 3,
+      costCash: 500,
+      currency: 'USD',
+      homeCost: 42000,
+      payLater: true,
+      pointsRedeemed: 0,
+      createdAt: '2026-11-24T10:00:00Z',
+    };
+
+    const fxSnapshots = {
+      '2026-05-12': { USD: 1, INR: 80, EUR: 0.9 },
+      '2026-11-24': { USD: 1, INR: 84, EUR: 0.92 },
+    };
+    // Simulate a huge future FX swing where USD jumps to 100 INR!
+    const swungLiveRates = { USD: 1, INR: 100, EUR: 0.95 };
+
+    expect(
+      collectRequiredFxDates({
+        expenses: [futureFlightPaidToday],
+        transports: [pastTrain],
+        stays: [payLaterHotel],
+        todayYmd: today,
+      })
+    ).toEqual(['2026-05-12', '2026-11-24']);
+
+    const ledger = buildTripSpendLedger({
+      expenses: [futureFlightPaidToday],
+      transports: [pastTrain],
+      stays: [payLaterHotel],
+      preferredCurrency: 'INR',
+      fxRates: swungLiveRates,
+      fxSnapshots,
+      todayYmd: today,
+    });
+
+    const fltRow = ledger.items.find((i) => i.id === 'exp_future_flt')!;
+    const trnRow = ledger.items.find((i) => i.id === 'trn_past_chf')!;
+    const stayRow = ledger.items.find((i) => i.id === 'stay_pay_later')!;
+
+    // Future flight paid today stays FROZEN at Nov 24 rate (84) -> 84,000 INR (NOT 100,000!)
+    expect(fltRow.convertedAmount).toBe(84000);
+    expect(fltRow.rateSource).toBe('date_locked');
+    expect(fltRow.fxDate).toBe('2026-11-24');
+
+    // Past train stays FROZEN at May 12 rate (80) -> 8,000 INR
+    expect(trnRow.convertedAmount).toBe(8000);
+    expect(trnRow.rateSource).toBe('date_locked');
+
+    // Pay-later upcoming hotel tracks the live rate (100) -> 50,000 INR until check-in
+    expect(stayRow.convertedAmount).toBe(50000);
+    expect(stayRow.rateSource).toBe('live_pending');
+    expect(stayRow.fxDate).toBeUndefined();
   });
 });

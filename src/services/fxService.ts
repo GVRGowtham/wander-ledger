@@ -1,4 +1,5 @@
 export type FxRatesMap = Record<string, number>; // Base USD = 1.0
+export type FxRateSnapshotsMap = Record<string, FxRatesMap>; // Keyed by YYYY-MM-DD
 
 /**
  * Bundled offline fallback exchange rates (relative to 1 USD).
@@ -82,4 +83,46 @@ export async function fetchLatestUsdRates(): Promise<{
     source: 'fallback',
     updatedAt: new Date().toISOString().slice(0, 10),
   };
+}
+
+/**
+ * Fetches historical European Central Bank rates for a specific past date (YYYY-MM-DD)
+ * via the free Frankfurter API (weekends/holidays automatically snap to the prior business day).
+ * Returns null if offline, timed out, or if dateYmd is invalid/in the future.
+ */
+export async function fetchHistoricalUsdRates(dateYmd: string): Promise<{
+  rates: FxRatesMap;
+  effectiveDate: string;
+  source: 'live';
+} | null> {
+  const clean = (dateYmd || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return null;
+  if (clean < '1999-01-04') return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (clean > today) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5500);
+    const url =
+      clean === today
+        ? 'https://api.frankfurter.app/latest?from=USD'
+        : `https://api.frankfurter.app/${clean}?from=USD`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = (await res.json()) as { rates?: Record<string, number>; date?: string };
+    if (data?.rates) {
+      return {
+        rates: { ...DEFAULT_USD_RATES, USD: 1.0, ...data.rates },
+        effectiveDate: data.date ?? clean,
+        source: 'live',
+      };
+    }
+  } catch {
+    // Offline or timeout — caller keeps fallback/cached rates
+  }
+  return null;
 }

@@ -57,6 +57,7 @@ import {
 } from '../types/models';
 import { isCollaborativeTrip } from '../services/sharingHelpers';
 import { formatTimeHmInput } from '../services/timeInputUtils';
+import { resolveDefaultFxDate } from '../services/spendCurrencyUtils';
 
 interface Props {
   onClose: () => void;
@@ -806,6 +807,7 @@ export const ScannerScreen: React.FC<Props> = ({
             ? `${scanResult.airlineName.split(' ')[0]} (${legs.length} flights • ${routeSummary})`
             : `${scanResult.airlineName} (${legs[0].flightNumber})`;
 
+        const flightExpenseDate = legs[0]?.flightDate ?? scanResult.flightDate;
         addExpense({
           id: generateId('exp'),
           tripId: finalTripId,
@@ -816,7 +818,8 @@ export const ScannerScreen: React.FC<Props> = ({
           homeAmount: converted,
           homeCurrency,
           fxRateUsed: rate,
-          expenseDate: legs[0]?.flightDate ?? scanResult.flightDate,
+          expenseDate: flightExpenseDate,
+          fxDate: resolveDefaultFxDate(flightExpenseDate, undefined, scanResult.bookingDate),
           receiptUri: scanResult.imageUri,
           receiptRawText: scanResult.rawText,
           createdAt: now,
@@ -849,6 +852,10 @@ export const ScannerScreen: React.FC<Props> = ({
         costAmount: scanResult.totalAmount > 0 ? scanResult.totalAmount : undefined,
         currency: scanResult.totalAmount > 0 ? curr : undefined,
         homeCost: scanResult.totalAmount > 0 ? homeCost : undefined,
+        fxDate:
+          scanResult.totalAmount > 0
+            ? resolveDefaultFxDate(scanResult.startDate)
+            : undefined,
         createdAt: now,
       });
     } else if (scanResult.kind === 'hotel') {
@@ -873,6 +880,7 @@ export const ScannerScreen: React.FC<Props> = ({
         costCash: scanResult.totalAmount,
         currency: curr,
         homeCost: converted,
+        fxDate: resolveDefaultFxDate(scanResult.checkIn),
         pointsRedeemed: 0,
         receiptUri: scanResult.imageUri,
         createdAt: now,
@@ -897,6 +905,7 @@ export const ScannerScreen: React.FC<Props> = ({
         homeCurrency,
         fxRateUsed: rate,
         expenseDate: scanResult.date,
+        fxDate: resolveDefaultFxDate(scanResult.date),
         receiptUri: scanResult.imageUri,
         receiptRawText: scanResult.rawText,
         isShared: targetTripIsCollab ? receiptIsShared : false,

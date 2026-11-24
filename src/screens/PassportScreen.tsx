@@ -58,6 +58,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     allMemories,
     loyaltyAccounts,
     fxRates,
+    fxSnapshots,
     fxSource,
     remindersEnabled,
     scheduledRemindersCount,
@@ -257,12 +258,13 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         stays: allStays,
         preferredCurrency,
         fxRates,
+        fxSnapshots,
       });
-      const header = 'Date,Merchant,Category,Source,LocalAmount,LocalCurrency,ConvertedAmount,PreferredCurrency\n';
+      const header = 'Date,Merchant,Category,Source,LocalAmount,LocalCurrency,ConvertedAmount,PreferredCurrency,FxDate\n';
       const rows = ledger.items
         .map(
           (i) =>
-            `${i.date},"${i.title.replace(/"/g, '""')}",${i.category},${i.source},${i.originalAmount},${i.originalCurrency},${i.convertedAmount},${i.preferredCurrency}`
+            `${i.date},"${i.title.replace(/"/g, '""')}",${i.category},${i.source},${i.originalAmount},${i.originalCurrency},${i.convertedAmount},${i.preferredCurrency},${i.fxDate ?? 'live'}`
         )
         .join('\n');
       const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';

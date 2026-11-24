@@ -12,7 +12,7 @@ import {
   TripStop,
   TripSummaryStats,
 } from '../types/models';
-import { DEFAULT_USD_RATES, FxRatesMap } from '../services/fxService';
+import { DEFAULT_USD_RATES, FxRatesMap, FxRateSnapshotsMap } from '../services/fxService';
 import { milesToKm } from '../services/distanceUtils';
 import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
 
@@ -99,6 +99,8 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       cost_amount REAL,
       currency TEXT,
       home_cost REAL,
+      fx_date TEXT,
+      pay_later INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
       created_at TEXT NOT NULL
     );
@@ -126,6 +128,8 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       cost_cash REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'USD',
       home_cost REAL NOT NULL DEFAULT 0,
+      fx_date TEXT,
+      pay_later INTEGER NOT NULL DEFAULT 0,
       points_redeemed INTEGER NOT NULL DEFAULT 0,
       points_program TEXT,
       cash_value_estimate REAL,
@@ -145,6 +149,8 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       home_currency TEXT NOT NULL DEFAULT 'USD',
       fx_rate_used REAL NOT NULL DEFAULT 1,
       expense_date TEXT NOT NULL,
+      fx_date TEXT,
+      pay_later INTEGER NOT NULL DEFAULT 0,
       payment_method TEXT,
       points_earned INTEGER DEFAULT 0,
       receipt_uri TEXT,
@@ -191,6 +197,13 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS fx_rate_snapshots (
+      rate_date TEXT PRIMARY KEY NOT NULL,
+      rates_json TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'live',
+      fetched_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS sync_queue (
       id TEXT PRIMARY KEY NOT NULL,
       entity TEXT NOT NULL,
@@ -233,6 +246,34 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
     }
     if (!expCols.some((c) => c.name === 'author_name')) {
       db.execSync('ALTER TABLE expenses ADD COLUMN author_name TEXT');
+    }
+    if (!expCols.some((c) => c.name === 'fx_date')) {
+      db.execSync('ALTER TABLE expenses ADD COLUMN fx_date TEXT');
+    }
+    if (!expCols.some((c) => c.name === 'pay_later')) {
+      db.execSync('ALTER TABLE expenses ADD COLUMN pay_later INTEGER NOT NULL DEFAULT 0');
+    }
+  } catch {
+    // Ignore if already migrated
+  }
+  try {
+    const trnCols = db.getAllSync<{ name: string }>('PRAGMA table_info(transports)');
+    if (!trnCols.some((c) => c.name === 'fx_date')) {
+      db.execSync('ALTER TABLE transports ADD COLUMN fx_date TEXT');
+    }
+    if (!trnCols.some((c) => c.name === 'pay_later')) {
+      db.execSync('ALTER TABLE transports ADD COLUMN pay_later INTEGER NOT NULL DEFAULT 0');
+    }
+  } catch {
+    // Ignore if already migrated
+  }
+  try {
+    const stayCols = db.getAllSync<{ name: string }>('PRAGMA table_info(stays)');
+    if (!stayCols.some((c) => c.name === 'fx_date')) {
+      db.execSync('ALTER TABLE stays ADD COLUMN fx_date TEXT');
+    }
+    if (!stayCols.some((c) => c.name === 'pay_later')) {
+      db.execSync('ALTER TABLE stays ADD COLUMN pay_later INTEGER NOT NULL DEFAULT 0');
     }
   } catch {
     // Ignore if already migrated
@@ -740,6 +781,8 @@ export function listTransports(tripId?: string): TransportLeg[] {
     currency: (r.currency as string) || undefined,
     homeCost:
       r.home_cost !== null && r.home_cost !== undefined ? Number(r.home_cost) : undefined,
+    fxDate: (r.fx_date as string) || undefined,
+    payLater: Number(r.pay_later ?? 0) === 1,
     notes: (r.notes as string) || undefined,
     createdAt: String(r.created_at),
   }));
@@ -751,8 +794,8 @@ export function insertTransport(t: TransportLeg, options?: DbWriteOptions): void
     `INSERT OR REPLACE INTO transports (
       id, trip_id, mode, title, operator_name, reference_code,
       origin, destination, start_date, end_date, seat_or_vehicle,
-      distance_km, cost_amount, currency, home_cost, notes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      distance_km, cost_amount, currency, home_cost, fx_date, pay_later, notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       t.id,
       t.tripId,
@@ -769,6 +812,8 @@ export function insertTransport(t: TransportLeg, options?: DbWriteOptions): void
       t.costAmount ?? null,
       t.currency ?? null,
       t.homeCost ?? null,
+      t.fxDate ?? null,
+      t.payLater ? 1 : 0,
       t.notes ?? null,
       t.createdAt,
     ]
@@ -861,6 +906,8 @@ export function listStays(tripId?: string): Stay[] {
     costCash: Number(r.cost_cash ?? 0),
     currency: String(r.currency),
     homeCost: Number(r.home_cost ?? 0),
+    fxDate: (r.fx_date as string) || undefined,
+    payLater: Number(r.pay_later ?? 0) === 1,
     pointsRedeemed: Number(r.points_redeemed ?? 0),
     pointsProgram: (r.points_program as string) || undefined,
     cashValueEstimate: r.cash_value_estimate ? Number(r.cash_value_estimate) : undefined,
@@ -875,9 +922,9 @@ export function insertStay(s: Stay, options?: DbWriteOptions): void {
   db.runSync(
     `INSERT OR REPLACE INTO stays (
       id, trip_id, name, stay_type, address, confirmation_code,
-      check_in, check_out, nights, cost_cash, currency, home_cost,
+      check_in, check_out, nights, cost_cash, currency, home_cost, fx_date, pay_later,
       points_redeemed, points_program, cash_value_estimate, receipt_uri, notes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id,
       s.tripId,
@@ -891,6 +938,8 @@ export function insertStay(s: Stay, options?: DbWriteOptions): void {
       s.costCash,
       s.currency,
       s.homeCost,
+      s.fxDate ?? null,
+      s.payLater ? 1 : 0,
       s.pointsRedeemed,
       s.pointsProgram ?? null,
       s.cashValueEstimate ?? null,
@@ -928,6 +977,8 @@ export function listExpenses(tripId?: string): Expense[] {
     homeCurrency: String(r.home_currency),
     fxRateUsed: Number(r.fx_rate_used ?? 1),
     expenseDate: String(r.expense_date),
+    fxDate: (r.fx_date as string) || undefined,
+    payLater: Number(r.pay_later ?? 0) === 1,
     paymentMethod: (r.payment_method as string) || undefined,
     pointsEarned: Number(r.points_earned ?? 0),
     receiptUri: (r.receipt_uri as string) || undefined,
@@ -945,10 +996,10 @@ export function insertExpense(e: Expense, options?: DbWriteOptions): void {
   db.runSync(
     `INSERT OR REPLACE INTO expenses (
       id, trip_id, merchant, category, local_amount, local_currency,
-      home_amount, home_currency, fx_rate_used, expense_date,
+      home_amount, home_currency, fx_rate_used, expense_date, fx_date, pay_later,
       payment_method, points_earned, receipt_uri, receipt_raw_text, notes,
       is_shared, author_id, author_name, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.id,
       e.tripId,
@@ -960,6 +1011,8 @@ export function insertExpense(e: Expense, options?: DbWriteOptions): void {
       e.homeCurrency,
       e.fxRateUsed,
       e.expenseDate,
+      e.fxDate ?? null,
+      e.payLater ? 1 : 0,
       e.paymentMethod ?? null,
       e.pointsEarned ?? 0,
       e.receiptUri ?? null,
@@ -974,6 +1027,22 @@ export function insertExpense(e: Expense, options?: DbWriteOptions): void {
   if (!options?.skipSyncQueue) {
     enqueueSyncMutation('expenses', e.id, 'upsert', { tripId: e.tripId });
   }
+}
+
+export function updateSpendItemFxSettings(
+  source: 'expense' | 'transport' | 'stay',
+  id: string,
+  fxDate: string | null,
+  payLater: boolean
+): void {
+  const db = getDb();
+  const table = source === 'expense' ? 'expenses' : source === 'transport' ? 'transports' : 'stays';
+  db.runSync(`UPDATE ${table} SET fx_date = ?, pay_later = ? WHERE id = ?`, [
+    fxDate,
+    payLater ? 1 : 0,
+    id,
+  ]);
+  enqueueSyncMutation(table, id, 'upsert', { id });
 }
 
 // --- MEMORIES (Clean Polaroid Timeline — zero receipts!) ---
@@ -1295,12 +1364,46 @@ export function loadCachedFxRates(): FxRatesMap {
   return map;
 }
 
+export function saveFxRateSnapshot(
+  rateDate: string,
+  rates: FxRatesMap,
+  source: 'live' | 'fallback' = 'live'
+): void {
+  const cleanDate = (rateDate || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return;
+  const db = getDb();
+  db.runSync(
+    'INSERT OR REPLACE INTO fx_rate_snapshots (rate_date, rates_json, source, fetched_at) VALUES (?, ?, ?, ?)',
+    [cleanDate, JSON.stringify(rates), source, new Date().toISOString()]
+  );
+}
+
+export function loadAllFxRateSnapshots(): FxRateSnapshotsMap {
+  const db = getDb();
+  const rows = db.getAllSync<{ rate_date: string; rates_json: string }>(
+    'SELECT rate_date, rates_json FROM fx_rate_snapshots'
+  );
+  const out: FxRateSnapshotsMap = {};
+  for (const r of rows) {
+    try {
+      const parsed = JSON.parse(r.rates_json) as FxRatesMap;
+      if (parsed && typeof parsed === 'object') {
+        out[r.rate_date] = { ...DEFAULT_USD_RATES, ...parsed };
+      }
+    } catch {
+      // Ignore malformed rows
+    }
+  }
+  return out;
+}
+
 // --- AGGREGATES ---
 
 export function getTripSummary(
   tripId: string,
   preferredCurrency?: string,
-  fxRates: FxRatesMap = DEFAULT_USD_RATES
+  fxRates: FxRatesMap = DEFAULT_USD_RATES,
+  fxSnapshots?: FxRateSnapshotsMap
 ): TripSummaryStats {
   const trip = getTripById(tripId);
   const expenses = listExpenses(tripId);
@@ -1317,6 +1420,7 @@ export function getTripSummary(
     preferredCurrency: targetCurrency,
     fallbackCurrency: trip?.homeCurrency || targetCurrency,
     fxRates,
+    fxSnapshots,
   });
 
   const totalSpentHome = ledger.totalSpentPreferred;

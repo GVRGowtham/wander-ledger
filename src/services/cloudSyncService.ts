@@ -18,6 +18,8 @@ import {
   listTransports,
   listTrips,
   listTripStops,
+  loadAllFxRateSnapshots,
+  saveFxRateSnapshot,
   setAppMeta,
   upsertLoyaltyAccount,
 } from '../db/database';
@@ -831,6 +833,7 @@ export function buildLocalBackupSnapshot(): LocalBackupSnapshot {
     expenses: listExpenses(),
     memories: listMemories(),
     loyaltyAccounts: listLoyaltyAccounts(),
+    fxSnapshots: loadAllFxRateSnapshots(),
   };
 }
 
@@ -880,6 +883,13 @@ export function restoreFromBackupSnapshot(snapshot: LocalBackupSnapshot): {
     if (!l?.id) continue;
     upsertLoyaltyAccount(l, { skipSyncQueue: true });
     itemsRestored += 1;
+  }
+  if (snapshot.fxSnapshots && typeof snapshot.fxSnapshots === 'object') {
+    for (const [dateKey, ratesMap] of Object.entries(snapshot.fxSnapshots)) {
+      if (ratesMap && typeof ratesMap === 'object') {
+        saveFxRateSnapshot(dateKey, ratesMap, 'live');
+      }
+    }
   }
 
   return { tripsRestored, itemsRestored };

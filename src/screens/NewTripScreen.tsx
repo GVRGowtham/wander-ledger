@@ -28,6 +28,7 @@ import { AirportInfo, inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
 import { convertToKm } from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
+import { resolveDefaultFxDate } from '../services/spendCurrencyUtils';
 import {
   buildManualFlight,
   buildReturnFlight,
@@ -299,6 +300,7 @@ export const NewTripScreen: React.FC<Props> = ({
       if (!Number.isNaN(priceNum) && priceNum > 0) {
         const curr = (flightDraft.ticketCurrency || homeCurrency).toUpperCase();
         const { converted, rate } = convertCurrency(priceNum, curr, homeCurrency, fxRates);
+        const flightExpDate = outbound.departureTime.slice(0, 10);
         addExpense({
           id: generateId('exp'),
           tripId: id,
@@ -309,7 +311,8 @@ export const NewTripScreen: React.FC<Props> = ({
           homeAmount: converted,
           homeCurrency,
           fxRateUsed: rate,
-          expenseDate: outbound.departureTime.slice(0, 10),
+          expenseDate: flightExpDate,
+          fxDate: resolveDefaultFxDate(flightExpDate),
           createdAt: now,
         });
       }
@@ -331,6 +334,7 @@ export const NewTripScreen: React.FC<Props> = ({
         !Number.isNaN(distVal) && distVal > 0
           ? convertToKm(distVal, distanceUnit)
           : undefined;
+      const trnStartDate = transportDraft.startDate.trim() || cleanStart;
       addTransport({
         id: generateId('trn'),
         tripId: id,
@@ -342,13 +346,18 @@ export const NewTripScreen: React.FC<Props> = ({
         referenceCode: transportDraft.referenceCode.trim().toUpperCase() || undefined,
         origin: transportDraft.origin.trim() || 'Start',
         destination: transportDraft.destination.trim() || dest,
-        startDate: transportDraft.startDate.trim() || cleanStart,
+        startDate: trnStartDate,
         endDate: transportDraft.endDate.trim() || undefined,
         seatOrVehicle: transportDraft.seatOrVehicle.trim() || undefined,
         distanceKm,
         costAmount: costNum > 0 ? costNum : undefined,
         currency: costNum > 0 ? tCurr : undefined,
         homeCost: costNum > 0 ? homeCost : undefined,
+        fxDate:
+          costNum > 0 && !transportDraft.payLater
+            ? resolveDefaultFxDate(trnStartDate)
+            : undefined,
+        payLater: costNum > 0 ? Boolean(transportDraft.payLater) : false,
         notes: transportDraft.notes.trim() || undefined,
         createdAt: now,
       });
@@ -380,6 +389,7 @@ export const NewTripScreen: React.FC<Props> = ({
         costCash: sCost,
         currency: sCurr,
         homeCost: converted,
+        fxDate: sCost > 0 ? resolveDefaultFxDate(cleanStart) : undefined,
         pointsRedeemed: sPts,
         createdAt: now,
       });

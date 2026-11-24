@@ -1434,6 +1434,20 @@ function parseFlightConfirmationOcr(
   );
   const passengerName = paxMatch ? paxMatch[1].trim() : 'Traveler';
 
+  // Extract document issue / booking date (if printed on e-ticket PDF) for accurate historical FX locking
+  let bookingDate: string | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    if (ISSUE_METADATA_DATE_RX.test(lines[i])) {
+      const parsed =
+        parseDateFromString(lines[i]) ??
+        (i + 1 < lines.length ? parseDateFromString(lines[i + 1]) : null);
+      if (parsed && parsed <= today) {
+        bookingDate = parsed;
+        break;
+      }
+    }
+  }
+
   // Try multi-leg extraction first (round-trips, 1-stop connections, open-jaw itineraries)
   const multiLegs = extractMultiLegFlights(rawText, lines, cabinClass, today);
   if (multiLegs.length >= 2) {
@@ -1458,6 +1472,7 @@ function parseFlightConfirmationOcr(
       rawBarcode: '',
       ticketAmount: totalAmount > 0 ? totalAmount : undefined,
       ticketCurrency: totalAmount > 0 ? currency : undefined,
+      bookingDate,
       legs: multiLegs,
       rawText,
       imageUri,
@@ -1522,6 +1537,7 @@ function parseFlightConfirmationOcr(
     rawBarcode: '',
     ticketAmount: totalAmount > 0 ? totalAmount : undefined,
     ticketCurrency: totalAmount > 0 ? currency : undefined,
+    bookingDate,
     legs: [singleLeg],
     rawText,
     imageUri,

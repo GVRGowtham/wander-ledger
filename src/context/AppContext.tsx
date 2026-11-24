@@ -37,13 +37,16 @@ import {
   listTransports,
   listTrips,
   listTripStops,
+  loadAllFxRateSnapshots,
   loadCachedFxRates,
   MemoryEditablePatch,
   purgeLegacySeedDataIfNeeded,
   saveFxRates,
+  saveFxRateSnapshot,
   TripEditablePatch,
   updateFlight,
   updateMemory,
+  updateSpendItemFxSettings,
   updateTrip,
   updateTripCover,
   updateTripSharing,
@@ -66,9 +69,12 @@ import {
 } from '../services/mediaService';
 import {
   DEFAULT_USD_RATES,
+  fetchHistoricalUsdRates,
   fetchLatestUsdRates,
   FxRatesMap,
+  FxRateSnapshotsMap,
 } from '../services/fxService';
+import { collectRequiredFxDates, getTodayYmd } from '../services/spendCurrencyUtils';
 import {
   cancelAllTravelReminders,
   getTravelRemindersEnabled,
@@ -109,6 +115,7 @@ interface AppContextValue {
   allMemories: Memory[];
   loyaltyAccounts: LoyaltyAccount[];
   fxRates: FxRatesMap;
+  fxSnapshots: FxRateSnapshotsMap;
   fxSource: 'live' | 'fallback';
   remindersEnabled: boolean;
   scheduledRemindersCount: number;
@@ -153,6 +160,12 @@ interface AppContextValue {
   removeStay: (stayId: string) => Promise<void>;
   addExpense: (expense: Expense) => void;
   removeExpense: (expenseId: string) => Promise<void>;
+  updateSpendItemFxDate: (
+    source: 'expense' | 'transport' | 'stay',
+    id: string,
+    fxDate: string | null,
+    payLater: boolean
+  ) => void;
   addMemory: (memory: Memory) => void;
   editMemory: (memoryId: string, patch: MemoryEditablePatch) => Promise<void>;
   removeMemory: (memoryId: string) => Promise<{ cloudSynced: boolean }>;
@@ -180,6 +193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [allMemories, setAllMemories] = useState<Memory[]>([]);
   const [loyaltyAccounts, setLoyaltyAccounts] = useState<LoyaltyAccount[]>([]);
   const [fxRates, setFxRates] = useState<FxRatesMap>(DEFAULT_USD_RATES);
+  const [fxSnapshots, setFxSnapshots] = useState<FxRateSnapshotsMap>({});
   const [fxSource, setFxSource] = useState<'live' | 'fallback'>('fallback');
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [scheduledRemindersCount, setScheduledRemindersCount] = useState(0);
@@ -194,22 +208,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncInFlightRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
+  const fxSnapshotsRef = useRef<FxRateSnapshotsMap>({});
+  const fxFetchingDatesRef = useRef<Set<string>>(new Set());
   profileRef.current = profile;
+  fxSnapshotsRef.current = fxSnapshots;
+
+  const ensureFxSnapshotsForDates = useCallback((dates: string[]) => {
+    const missing = dates.filter(
+      (d) => !fxSnapshotsRef.current[d] && !fxFetchingDatesRef.current.has(d)
+    );
+    if (missing.length === 0) return;
+
+    missing.forEach((d) => fxFetchingDatesRef.current.add(d));
+    (async () => {
+      const fetched: FxRateSnapshotsMap = {};
+      // Fetch sequentially in small gentle batches so we never hammer Frankfurter API
+      for (const dateKey of missing.slice(0, 20)) {
+        try {
+          const res = await fetchHistoricalUsdRates(dateKey);
+          if (res?.rates) {
+            saveFxRateSnapshot(dateKey, res.rates, 'live');
+            fetched[dateKey] = res.rates;
+          }
+        } catch {
+          // Offline or timeout — skip cleanly and try again next launch
+        } finally {
+          fxFetchingDatesRef.current.delete(dateKey);
+        }
+      }
+      if (Object.keys(fetched).length > 0) {
+        setFxSnapshots((prev) => {
+          const next = { ...prev, ...fetched };
+          fxSnapshotsRef.current = next;
+          return next;
+        });
+      }
+    })();
+  }, []);
 
   const loadLocalSnapshotIntoState = useCallback(() => {
     const nextTrips = listTrips();
     const nextFlights = listFlights();
     const nextTransports = listTransports();
     const nextStays = listStays();
+    const nextExpenses = listExpenses();
+    const storedFxSnapshots = loadAllFxRateSnapshots();
     setTrips(nextTrips);
     setAllFlights(nextFlights);
     setAllTransports(nextTransports);
     setAllStops(listTripStops());
     setAllStays(nextStays);
-    setAllExpenses(listExpenses());
+    setAllExpenses(nextExpenses);
     setAllMemories(listMemories());
     setLoyaltyAccounts(listLoyaltyAccounts());
     setPendingSyncCount(getPendingSyncCount());
+    setFxSnapshots(storedFxSnapshots);
+    fxSnapshotsRef.current = storedFxSnapshots;
+
+    const requiredDates = collectRequiredFxDates({
+      expenses: nextExpenses,
+      transports: nextTransports,
+      stays: nextStays,
+    });
+    if (requiredDates.length > 0) {
+      ensureFxSnapshotsForDates(requiredDates);
+    }
+
     const remEnabled = getTravelRemindersEnabled();
     setRemindersEnabled(remEnabled);
     if (remEnabled) {
@@ -222,7 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then((r) => setScheduledRemindersCount(r.scheduledCount))
         .catch(() => {});
     }
-  }, []);
+  }, [ensureFxSnapshotsForDates]);
 
   const toggleTravelReminders = useCallback(async (enable: boolean): Promise<boolean> => {
     if (!enable) {
@@ -405,9 +469,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         purgeLegacySeedDataIfNeeded();
         const saved = await loadSavedProfile();
         const cachedFx = loadCachedFxRates();
+        const storedSnapshots = loadAllFxRateSnapshots();
         const savedSyncTime = getLastSyncedAt();
         if (mounted) {
           setFxRates(cachedFx);
+          setFxSnapshots(storedSnapshots);
+          fxSnapshotsRef.current = storedSnapshots;
           setLastSyncedAt(savedSyncTime || saved?.lastSyncedAt || null);
           if (saved) {
             setProfile(saved);
@@ -436,6 +503,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setFxSource(latest.source);
           if (latest.source === 'live') {
             saveFxRates(latest.rates, latest.updatedAt);
+            const todayKey = getTodayYmd();
+            saveFxRateSnapshot(todayKey, latest.rates, 'live');
+            setFxSnapshots((prev) => {
+              const next = { ...prev, [todayKey]: latest.rates };
+              fxSnapshotsRef.current = next;
+              return next;
+            });
           }
         }
       } catch {
@@ -655,6 +729,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const updateSpendItemFxDate = useCallback(
+    (
+      source: 'expense' | 'transport' | 'stay',
+      id: string,
+      fxDate: string | null,
+      payLater: boolean
+    ) => {
+      updateSpendItemFxSettings(source, id, payLater ? null : fxDate, payLater);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
   const addMemory = useCallback(
     (memory: Memory) => {
       insertMemory(memory);
@@ -716,6 +803,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         allMemories,
         loyaltyAccounts,
         fxRates,
+        fxSnapshots,
         fxSource,
         remindersEnabled,
         scheduledRemindersCount,
@@ -745,6 +833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeStay,
         addExpense,
         removeExpense,
+        updateSpendItemFxDate,
         addMemory,
         editMemory,
         removeMemory,
@@ -754,7 +843,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getStaysForTrip: (id) => listStays(id),
         getExpensesForTrip: (id) => listExpenses(id),
         getMemoriesForTrip: (id) => listMemories(id),
-        getSummaryForTrip: (id) => getTripSummary(id, profile?.homeCurrency, fxRates),
+        getSummaryForTrip: (id) =>
+          getTripSummary(id, profile?.homeCurrency, fxRates, fxSnapshots),
       }}
     >
       {children}

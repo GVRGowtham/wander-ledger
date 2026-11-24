@@ -108,6 +108,8 @@ export interface TransportLeg {
   costAmount?: number; // Ticket / rental cost in local currency
   currency?: string;
   homeCost?: number; // Converted cost in trip home currency
+  fxDate?: string; // YYYY-MM-DD payment/booking date whose FX rate is locked
+  payLater?: boolean; // true = unpaid / pay-at-pickup booking (uses live rate until startDate)
   notes?: string;
   createdAt: string;
 }
@@ -135,6 +137,8 @@ export interface Stay {
   costCash: number;
   currency: string;
   homeCost: number;
+  fxDate?: string; // YYYY-MM-DD payment/booking date whose FX rate is locked
+  payLater?: boolean; // true = pay-at-property future stay (uses live rate until checkIn)
   pointsRedeemed: number;
   pointsProgram?: string;
   cashValueEstimate?: number;
@@ -154,6 +158,8 @@ export interface Expense {
   homeCurrency: string;
   fxRateUsed: number;
   expenseDate: string; // YYYY-MM-DD
+  fxDate?: string; // YYYY-MM-DD payment/booking date whose FX rate is locked
+  payLater?: boolean; // true = unpaid future booking (uses live rate until expenseDate)
   paymentMethod?: string;
   pointsEarned?: number;
   receiptUri?: string; // Private by default; visible to Editor co-travelers when isShared is true
@@ -231,6 +237,8 @@ export interface ParsedBoardingPass {
   rawBarcode: string;
   ticketAmount?: number;
   ticketCurrency?: string;
+  /** Document issue / booking date (YYYY-MM-DD) when present on e-tickets, used as default FX lock date. */
+  bookingDate?: string;
   /** All flight legs when a booking confirmation PDF contains multi-leg / round-trip flights. */
   legs?: ParsedFlightLeg[];
   rawText?: string;

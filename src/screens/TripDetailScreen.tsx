@@ -73,6 +73,9 @@ import { shareImageWithCaption } from '../services/shareMediaService';
 import {
   buildTripSpendLedger,
   convertAmountToPreferred,
+  formatShortRateDate,
+  resolveDefaultFxDate,
+  SpendLedgerItem,
 } from '../services/spendCurrencyUtils';
 import { formatTimeHmInput } from '../services/timeInputUtils';
 import {
@@ -136,6 +139,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     trips,
     profile,
     fxRates,
+    fxSnapshots,
     getFlightsForTrip,
     getTransportsForTrip,
     getStopsForTrip,
@@ -158,6 +162,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     removeMemory,
     addExpense,
     removeExpense,
+    updateSpendItemFxDate,
     removeTrip,
     setTripCoverPhoto,
     saveTripSharing,
@@ -252,6 +257,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [stayCurrency, setStayCurrency] = useState(trip?.homeCurrency || 'USD');
   const [stayPoints, setStayPoints] = useState('');
   const [stayPointsProg, setStayPointsProg] = useState('');
+  const [stayPayLater, setStayPayLater] = useState(false);
   const [stayNotes, setStayNotes] = useState('');
 
   // Quick Expense Modal (defaults to Personal; 1-tap toggle to Shared on collaborative trips)
@@ -263,6 +269,11 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('dining');
   const [expIsShared, setExpIsShared] = useState(false);
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'personal' | 'shared'>('all');
+
+  // FX Rate Date Edit Modal (lets user adjust Payment Date or toggle Pay Later on any converted spend row)
+  const [fxEditItem, setFxEditItem] = useState<SpendLedgerItem | null>(null);
+  const [fxEditDate, setFxEditDate] = useState(new Date().toISOString().slice(0, 10));
+  const [fxEditPayLater, setFxEditPayLater] = useState(false);
 
   // Co-Travelers Modal & Instant One-Off Postcard Export
   const [shareModal, setShareModal] = useState(false);
@@ -334,6 +345,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     preferredCurrency,
     fallbackCurrency: trip.homeCurrency,
     fxRates,
+    fxSnapshots,
   });
 
   const fuelExpenses = fullSpendLedger.items.filter((i) => i.category === 'fuel');
@@ -632,6 +644,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       Alert.alert('Check expense', 'Enter a merchant name and valid amount.');
       return;
     }
+    const cleanExpDate = expDate.trim() || new Date().toISOString().slice(0, 10);
     const { converted, rate } = convertCurrency(amt, expCurrency, preferredCurrency, fxRates);
     addExpense({
       id: generateId('exp'),
@@ -643,7 +656,8 @@ export const TripDetailScreen: React.FC<Props> = ({
       homeAmount: converted,
       homeCurrency: preferredCurrency,
       fxRateUsed: rate,
-      expenseDate: expDate.trim() || new Date().toISOString().slice(0, 10),
+      expenseDate: cleanExpDate,
+      fxDate: resolveDefaultFxDate(cleanExpDate),
       isShared: isCollab ? expIsShared : false,
       authorId: profile?.id,
       authorName: profile?.displayName,
@@ -654,6 +668,25 @@ export const TripDetailScreen: React.FC<Props> = ({
     setExpAmount('');
     setExpIsShared(false);
     setExpenseModal(false);
+  };
+
+  const openFxRateModal = (item: SpendLedgerItem) => {
+    setFxEditItem(item);
+    setFxEditDate(item.fxDate || resolveDefaultFxDate(item.date));
+    setFxEditPayLater(Boolean(item.payLater));
+  };
+
+  const handleSaveFxRateDate = () => {
+    if (!fxEditItem) return;
+    const cleanDate = fxEditDate.trim().slice(0, 10) || resolveDefaultFxDate(fxEditItem.date);
+    updateSpendItemFxDate(
+      fxEditItem.source,
+      fxEditItem.id,
+      fxEditPayLater ? null : cleanDate,
+      fxEditPayLater
+    );
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setFxEditItem(null);
   };
 
   const handleDeleteExpense = (expenseId: string, merchant: string) => {
@@ -692,6 +725,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       distanceInput: '',
       costAmount: '',
       currency: preferredCurrency,
+      payLater: false,
       notes: '',
     });
     setFlightModal(true);
@@ -721,6 +755,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       !Number.isNaN(distVal) && distVal > 0
         ? convertToKm(distVal, distanceUnit)
         : undefined;
+    const trnStartDate = transportDraft.startDate.trim() || trip.startDate;
 
     addTransport({
       id: generateId('trn'),
@@ -733,13 +768,18 @@ export const TripDetailScreen: React.FC<Props> = ({
       referenceCode: transportDraft.referenceCode.trim().toUpperCase() || undefined,
       origin: transportDraft.origin.trim() || 'Start',
       destination: transportDraft.destination.trim() || trip.destinationCity,
-      startDate: transportDraft.startDate.trim() || trip.startDate,
+      startDate: trnStartDate,
       endDate: transportDraft.endDate.trim() || undefined,
       seatOrVehicle: transportDraft.seatOrVehicle.trim() || undefined,
       distanceKm,
       costAmount: costNum > 0 ? costNum : undefined,
       currency: costNum > 0 ? tCurr : undefined,
       homeCost: costNum > 0 ? homeCost : undefined,
+      fxDate:
+        costNum > 0 && !transportDraft.payLater
+          ? resolveDefaultFxDate(trnStartDate)
+          : undefined,
+      payLater: costNum > 0 ? Boolean(transportDraft.payLater) : false,
       notes: transportDraft.notes.trim() || undefined,
       createdAt: new Date().toISOString(),
     });
@@ -796,6 +836,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     if (!Number.isNaN(priceNum) && priceNum > 0) {
       const curr = (flightDraft.ticketCurrency || preferredCurrency).toUpperCase();
       const { converted, rate } = convertCurrency(priceNum, curr, preferredCurrency, fxRates);
+      const depDate = outbound.departureTime.slice(0, 10);
       addExpense({
         id: generateId('exp'),
         tripId: trip.id,
@@ -806,7 +847,8 @@ export const TripDetailScreen: React.FC<Props> = ({
         homeAmount: converted,
         homeCurrency: preferredCurrency,
         fxRateUsed: rate,
-        expenseDate: outbound.departureTime.slice(0, 10),
+        expenseDate: depDate,
+        fxDate: resolveDefaultFxDate(depDate),
         createdAt: new Date().toISOString(),
       });
     }
@@ -915,6 +957,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     setStayCurrency(preferredCurrency);
     setStayPoints('');
     setStayPointsProg('');
+    setStayPayLater(false);
     setStayNotes('');
     setStayModal(true);
   };
@@ -950,6 +993,8 @@ export const TripDetailScreen: React.FC<Props> = ({
       costCash: cash,
       currency: curr,
       homeCost: converted,
+      fxDate: cash > 0 && !stayPayLater ? resolveDefaultFxDate(checkIn) : undefined,
+      payLater: cash > 0 ? stayPayLater : false,
       pointsRedeemed: pts,
       pointsProgram: stayPointsProg.trim() || undefined,
       notes: stayNotes.trim() || undefined,
@@ -2020,7 +2065,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                             {item.subtitle ? ` • ${item.subtitle}` : ''}
                             {hasReceipt ? ' • 🧾' : ''}
                           </Text>
-                          {(showExpenseFilter || item.source !== 'expense') && (
+                          {(showExpenseFilter || item.source !== 'expense' || isFxConverted) && (
                             <View style={styles.expBadgeRow}>
                               {item.source === 'transport' ? (
                                 <View style={[styles.expVisBadge, { backgroundColor: '#EDE9FE' }]}>
@@ -2034,7 +2079,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                                     🏨 From Bookings
                                   </Text>
                                 </View>
-                              ) : (
+                              ) : showExpenseFilter ? (
                                 <>
                                   <View
                                     style={[
@@ -2057,6 +2102,37 @@ export const TripDetailScreen: React.FC<Props> = ({
                                     </Text>
                                   ) : null}
                                 </>
+                              ) : null}
+                              {isFxConverted && (
+                                <TouchableOpacity
+                                  onPress={() => openFxRateModal(item)}
+                                  activeOpacity={0.75}
+                                  style={[
+                                    styles.expVisBadge,
+                                    {
+                                      backgroundColor:
+                                        item.rateSource === 'live_pending'
+                                          ? '#FFF7ED'
+                                          : '#E0F2FE',
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.expVisBadgeText,
+                                      {
+                                        color:
+                                          item.rateSource === 'live_pending'
+                                            ? '#C2410C'
+                                            : '#0369A1',
+                                      },
+                                    ]}
+                                  >
+                                    {item.rateSource === 'live_pending'
+                                      ? '⏳ Live rate (pay later)'
+                                      : `💱 Rate ${formatShortRateDate(item.fxDate || item.date)}`}
+                                  </Text>
+                                </TouchableOpacity>
                               )}
                             </View>
                           )}
@@ -2957,6 +3033,32 @@ export const TripDetailScreen: React.FC<Props> = ({
             style={[styles.input, { width: 74, textAlign: 'center' }]}
           />
         </View>
+        {parseFloat(stayCost) > 0 &&
+          stayCheckIn.trim().slice(0, 10) > new Date().toISOString().slice(0, 10) && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Payment Timing (for FX Rate)</Text>
+              <View style={styles.rolePillRow}>
+                <TouchableOpacity
+                  onPress={() => setStayPayLater(false)}
+                  style={[styles.rolePillBtn, !stayPayLater && styles.rolePillBtnActive]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.rolePillText, !stayPayLater && styles.rolePillTextActive]}>
+                    🔒 Paid now (lock rate)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setStayPayLater(true)}
+                  style={[styles.rolePillBtn, stayPayLater && styles.rolePillBtnSharedActive]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.rolePillText, stayPayLater && styles.rolePillTextActive]}>
+                    ⏳ Pay at property
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TextInput
             value={stayPoints}
@@ -2981,6 +3083,77 @@ export const TripDetailScreen: React.FC<Props> = ({
           placeholderTextColor={COLORS.inkSoft}
           style={styles.input}
         />
+      </BottomSheetModal>
+
+      {/* EXCHANGE RATE / PAYMENT DATE MODAL */}
+      <BottomSheetModal
+        visible={Boolean(fxEditItem)}
+        title="💱 Exchange Rate Date"
+        onClose={() => setFxEditItem(null)}
+        footer={
+          <TouchableOpacity
+            onPress={handleSaveFxRateDate}
+            style={styles.modalPrimaryBtn}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.modalPrimaryText}>Save Rate Setting ✓</Text>
+          </TouchableOpacity>
+        }
+      >
+        {fxEditItem && (
+          <View style={{ gap: 12 }}>
+            <Text style={styles.tinyNote}>
+              {fxEditItem.title} • Paid{' '}
+              {formatMoney(fxEditItem.originalAmount, fxEditItem.originalCurrency)} →{' '}
+              {preferredCurrency}
+            </Text>
+
+            <View style={styles.rolePillRow}>
+              <TouchableOpacity
+                onPress={() => setFxEditPayLater(false)}
+                style={[styles.rolePillBtn, !fxEditPayLater && styles.rolePillBtnActive]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.rolePillText, !fxEditPayLater && styles.rolePillTextActive]}
+                >
+                  🔒 Lock Payment Date
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFxEditPayLater(true)}
+                style={[styles.rolePillBtn, fxEditPayLater && styles.rolePillBtnSharedActive]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.rolePillText, fxEditPayLater && styles.rolePillTextActive]}
+                >
+                  ⏳ Pay Later (Live)
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {!fxEditPayLater ? (
+              <View style={{ gap: 6 }}>
+                <DatePickerField
+                  label="Payment / Booking Date"
+                  value={fxEditDate}
+                  onChange={setFxEditDate}
+                  placeholder="Pick payment date"
+                />
+                <Text style={styles.roleHelperText}>
+                  Locks conversion to the European Central Bank exchange rate on this payment date
+                  so your trip totals never drift when currencies fluctuate later.
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.roleHelperText}>
+                Uses today’s live exchange rate while this booking is upcoming, then automatically
+                locks to the travel/check-in date ({fxEditItem.date}) once that day arrives.
+              </Text>
+            )}
+          </View>
+        )}
       </BottomSheetModal>
       </View>
     </View>

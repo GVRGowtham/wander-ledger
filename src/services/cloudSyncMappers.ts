@@ -22,6 +22,7 @@ export interface LocalBackupSnapshot {
   expenses: Expense[];
   memories: Memory[];
   loyaltyAccounts: LoyaltyAccount[];
+  fxSnapshots?: Record<string, Record<string, number>>;
 }
 
 export function normalizeIsoTimestamp(val?: string | null): string {
@@ -513,5 +514,9 @@ export function validateBackupSnapshot(raw: unknown): LocalBackupSnapshot | null
     loyaltyAccounts: Array.isArray(obj.loyaltyAccounts)
       ? (obj.loyaltyAccounts as LoyaltyAccount[])
       : [],
+    fxSnapshots:
+      obj.fxSnapshots && typeof obj.fxSnapshots === 'object' && !Array.isArray(obj.fxSnapshots)
+        ? (obj.fxSnapshots as Record<string, Record<string, number>>)
+        : undefined,
   };
 }

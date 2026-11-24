@@ -16,6 +16,7 @@ export interface TransportDraft {
   distanceInput: string;
   costAmount: string;
   currency: string;
+  payLater?: boolean;
   notes: string;
 }
 
@@ -191,6 +192,40 @@ export const TransportFormFields: React.FC<Props> = ({
           </View>
         </View>
       )}
+
+      {!isOwnCar &&
+        parseFloat(draft.costAmount) > 0 &&
+        draft.startDate.trim().slice(0, 10) > new Date().toISOString().slice(0, 10) && (
+          <View style={{ gap: 4 }}>
+            <Text style={styles.label}>PAYMENT TIMING (FOR FX RATE)</Text>
+            <View style={styles.modeWrap}>
+              <TouchableOpacity
+                onPress={() => onChange({ payLater: false })}
+                style={[
+                  styles.modeChip,
+                  !draft.payLater && { backgroundColor: COLORS.indigo, borderColor: COLORS.indigo },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.modeChipText, !draft.payLater && { color: '#FFFFFF' }]}>
+                  🔒 Paid now (lock today’s rate)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onChange({ payLater: true })}
+                style={[
+                  styles.modeChip,
+                  draft.payLater && { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.modeChipText, draft.payLater && { color: '#FFFFFF' }]}>
+                  ⏳ Pay at pickup (live rate)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
       {isOwnCar && (
         <View style={styles.tipBox}>
