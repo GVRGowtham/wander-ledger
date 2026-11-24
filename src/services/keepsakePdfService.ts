@@ -1,3 +1,4 @@
+import { Image } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -10,7 +11,13 @@ import {
   Trip,
   TripStop,
 } from '../types/models';
-import { buildTripKeepsakeHtml } from './keepsakePdfBuilder';
+import { ImageDimensions, PhotoCrop } from './igStudioHelpers';
+import {
+  buildTripKeepsakeHtml,
+  KEEPSAKE_A4_HEIGHT,
+  KEEPSAKE_A4_WIDTH,
+  KeepsakeTemplateId,
+} from './keepsakePdfBuilder';
 
 export interface ExportKeepsakePdfOptions {
   trip: Trip;
@@ -20,6 +27,11 @@ export interface ExportKeepsakePdfOptions {
   stays: Stay[];
   memories: Memory[];
   distanceUnit: DistanceUnit;
+  templateId?: KeepsakeTemplateId;
+  /** undefined = use trip.coverPhotoUri (or first photo memory); null = no cover photo (art cover); string = specific URI */
+  coverPhotoUriOverride?: string | null;
+  coverDimensions?: ImageDimensions;
+  coverCrop?: PhotoCrop;
 }
 
 function inferImageMimeType(uri: string): string {
@@ -29,7 +41,7 @@ function inferImageMimeType(uri: string): string {
   return 'image/webp';
 }
 
-async function readLocalImageAsDataUri(uri?: string): Promise<string | undefined> {
+async function readLocalImageAsDataUri(uri?: string | null): Promise<string | undefined> {
   if (!uri) return undefined;
   if (uri.startsWith('data:image/')) return uri;
   if (!uri.startsWith('file://') && !uri.startsWith('/')) return undefined;
@@ -46,6 +58,20 @@ async function readLocalImageAsDataUri(uri?: string): Promise<string | undefined
   }
 }
 
+function measureImageSize(uri?: string | null): Promise<ImageDimensions | undefined> {
+  if (!uri) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (width > 0 && height > 0) resolve({ width, height });
+        else resolve(undefined);
+      },
+      () => resolve(undefined)
+    );
+  });
+}
+
 function slugifyTitle(title: string): string {
   return (
     title
@@ -57,17 +83,33 @@ function slugifyTitle(title: string): string {
 
 /**
  * Generates an A4 magazine-style Keepsake PDF completely offline (with base64-inlined photos
- * so both Android & iOS render identically) and opens the native Share sheet.
+ * and exact WYSIWYG cover crop coordinates so Android & iOS render identically) and opens Share.
  */
 export async function exportTripKeepsakePdf(
   options: ExportKeepsakePdfOptions
 ): Promise<{ uri: string; fileName: string }> {
-  const { trip, memories } = options;
+  const {
+    trip,
+    memories,
+    templateId = 'magazine',
+    coverPhotoUriOverride,
+    coverDimensions,
+    coverCrop,
+  } = options;
 
-  // Inline cover photo + memory photos as base64 data URIs (required for iOS WKWebView print)
-  const coverDataUri = await readLocalImageAsDataUri(trip.coverPhotoUri);
+  const resolvedCoverUri =
+    coverPhotoUriOverride === null
+      ? undefined
+      : coverPhotoUriOverride ||
+        trip.coverPhotoUri ||
+        memories.find((m) => m.photoUri)?.photoUri;
+
+  const [coverDataUri, measuredCoverDims] = await Promise.all([
+    readLocalImageAsDataUri(resolvedCoverUri),
+    coverDimensions ? Promise.resolve(coverDimensions) : measureImageSize(resolvedCoverUri),
+  ]);
+
   const photoDataUriMap: Record<string, string> = {};
-
   for (const m of memories) {
     const srcUri = m.photoUri || m.thumbUri;
     if (!srcUri) continue;
@@ -79,18 +121,21 @@ export async function exportTripKeepsakePdf(
 
   const html = buildTripKeepsakeHtml({
     ...options,
+    templateId,
     coverDataUri,
+    coverDimensions: measuredCoverDims,
+    coverCrop,
     photoDataUriMap,
   });
 
   // A4 at 72 PPI = 595 x 842
   const { uri: rawPdfUri } = await Print.printToFileAsync({
     html,
-    width: 595,
-    height: 842,
+    width: KEEPSAKE_A4_WIDTH,
+    height: KEEPSAKE_A4_HEIGHT,
   });
 
-  const fileName = `WanderersLedger_${slugifyTitle(trip.title)}_Keepsake.pdf`;
+  const fileName = `WanderersLedger_${slugifyTitle(trip.title)}_${templateId}.pdf`;
   const cacheDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
   let finalUri = rawPdfUri;
 

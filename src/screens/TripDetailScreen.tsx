@@ -69,6 +69,10 @@ import {
 import { pickAndOptimizeMemoryPhoto } from '../services/mediaService';
 import { enrichFlightDetails } from '../services/flightEnricher';
 import { exportTripKeepsakePdf } from '../services/keepsakePdfService';
+import {
+  KeepsakeExportConfig,
+  KeepsakeStudioModal,
+} from '../components/keepsake/KeepsakeStudioModal';
 import { shareImageWithCaption } from '../services/shareMediaService';
 import {
   buildTripSpendLedger,
@@ -280,6 +284,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<CoTravelerRole>('editor');
   const [sharingPostcard, setSharingPostcard] = useState(false);
+  const [keepsakeStudioOpen, setKeepsakeStudioOpen] = useState(false);
   const [exportingKeepsakePdf, setExportingKeepsakePdf] = useState(false);
   const [refreshingFlightId, setRefreshingFlightId] = useState<string | null>(null);
   const [postcardRenderJob, setPostcardRenderJob] = useState<{
@@ -1191,7 +1196,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     }
   };
 
-  const handleExportKeepsakePdf = async () => {
+  const handleExportKeepsakePdf = async (config: KeepsakeExportConfig) => {
     if (exportingKeepsakePdf) return;
     setExportingKeepsakePdf(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -1204,7 +1209,12 @@ export const TripDetailScreen: React.FC<Props> = ({
         stays,
         memories,
         distanceUnit,
+        templateId: config.templateId,
+        coverPhotoUriOverride: config.coverPhotoUri,
+        coverDimensions: config.coverDimensions,
+        coverCrop: config.coverCrop,
       });
+      setKeepsakeStudioOpen(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to generate keepsake PDF.';
@@ -1518,7 +1528,7 @@ export const TripDetailScreen: React.FC<Props> = ({
             {/* Printable Trip Keepsake PDF (100% offline, strictly excludes expenses & receipts) */}
             {(memories.length > 0 || timelineItems.length > 0) && (
               <TouchableOpacity
-                onPress={handleExportKeepsakePdf}
+                onPress={() => setKeepsakeStudioOpen(true)}
                 disabled={exportingKeepsakePdf}
                 style={[styles.keepsakeBannerBtn, exportingKeepsakePdf && { opacity: 0.72 }]}
                 activeOpacity={0.88}
@@ -1534,10 +1544,10 @@ export const TripDetailScreen: React.FC<Props> = ({
                   <Text style={styles.keepsakeBannerTitle}>
                     {exportingKeepsakePdf
                       ? 'Crafting Keepsake PDF…'
-                      : 'Export Printable Keepsake PDF'}
+                      : 'Keepsake Magazine PDF'}
                   </Text>
                   <Text style={styles.keepsakeBannerSub} numberOfLines={1}>
-                    A4 travelogue with route, itinerary & Polaroids • Zero spend shown
+                    3 cover styles • drag &amp; zoom cover • zero spend shown
                   </Text>
                 </View>
                 <Text style={styles.keepsakeBannerArrow}>↗</Text>
@@ -3155,6 +3165,21 @@ export const TripDetailScreen: React.FC<Props> = ({
           </View>
         )}
       </BottomSheetModal>
+
+      {/* KEEPSAKE MAGAZINE PDF STUDIO (3 Templates + Cover Photo Picker + Drag & Zoom Reframe) */}
+      <KeepsakeStudioModal
+        visible={keepsakeStudioOpen}
+        trip={trip}
+        flights={flights}
+        transports={transports}
+        stops={stops}
+        stays={stays}
+        memories={memories}
+        distanceUnit={distanceUnit}
+        exporting={exportingKeepsakePdf}
+        onClose={() => setKeepsakeStudioOpen(false)}
+        onExport={handleExportKeepsakePdf}
+      />
       </View>
     </View>
   );

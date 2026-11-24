@@ -1971,4 +1971,122 @@ describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
     expect(stayRow.rateSource).toBe('live_pending');
     expect(stayRow.fxDate).toBeUndefined();
   });
+
+  it('stitches connecting flights via layover hubs and preserves hub-and-spoke city revisits (Zurich -> Lucerne -> Zurich -> Venice -> Paris)', () => {
+    const { buildStructuredJourneyRoute } = require('../services/distanceUtils');
+    const europeFlights: Flight[] = [
+      {
+        id: 'f1', tripId: 't_eu', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 239',
+        originIata: 'BLR', originCity: 'Bengaluru', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2025-10-31T21:00:00', arrivalTime: '2025-11-01T00:15:00',
+        durationMinutes: 225, status: 'completed', distanceMiles: 1692, milesEarned: 1692,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+      {
+        id: 'f2', tripId: 't_eu', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 143',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'ZRH', destCity: 'Zurich',
+        departureTime: '2025-11-01T02:25:00', arrivalTime: '2025-11-01T06:55:00',
+        durationMinutes: 420, status: 'completed', distanceMiles: 2970, milesEarned: 2970,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+      {
+        id: 'f3', tripId: 't_eu', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 34',
+        originIata: 'CDG', originCity: 'Paris', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2025-11-16T10:30:00', arrivalTime: '2025-11-16T19:45:00',
+        durationMinutes: 405, status: 'completed', distanceMiles: 3263, milesEarned: 3263,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+      {
+        id: 'f4', tripId: 't_eu', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 232',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'BLR', destCity: 'Bengaluru',
+        departureTime: '2025-11-17T02:00:00', arrivalTime: '2025-11-17T07:30:00',
+        durationMinutes: 225, status: 'completed', distanceMiles: 1692, milesEarned: 1692,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+    ];
+    const europeTransports: TransportLeg[] = [
+      {
+        id: 'tr_ven', tripId: 't_eu', mode: 'train', title: 'Train to Venice',
+        origin: 'Zurich', destination: 'Venice', startDate: '2025-11-06',
+        createdAt: '2025-10-02T00:00:00Z',
+      },
+    ];
+    const europeStops: TripStop[] = [
+      { id: 's1', tripId: 't_eu', cityName: 'Lucerne', sortOrder: 0, createdAt: '2025-10-02T00:00:00Z' },
+      { id: 's2', tripId: 't_eu', cityName: 'Zurich', sortOrder: 1, createdAt: '2025-10-02T00:01:00Z' },
+      { id: 's3', tripId: 't_eu', cityName: 'Venice', sortOrder: 2, createdAt: '2025-10-02T00:02:00Z' },
+    ];
+
+    const route = buildStructuredJourneyRoute(europeFlights, europeTransports, europeStops);
+    // Connecting flights stitched into 2 clean chains (via AUH), NOT 4 separate hubs
+    expect(route.flightChains.length).toBe(2);
+    expect(route.flightChains[0].originIata).toBe('BLR');
+    expect(route.flightChains[0].destIata).toBe('ZRH');
+    expect(route.flightChains[0].viaIatas).toEqual(['AUH']);
+    expect(route.flightChains[1].originIata).toBe('CDG');
+    expect(route.flightChains[1].destIata).toBe('BLR');
+    expect(route.flightChains[1].viaIatas).toEqual(['AUH']);
+
+    // City sequence preserves Zurich -> Lucerne -> Zurich revisit AND includes Paris + return to Bengaluru!
+    expect(route.nodes.map((n: { city: string }) => n.city)).toEqual([
+      'Bengaluru',
+      'Zurich',
+      'Lucerne',
+      'Zurich',
+      'Venice',
+      'Paris',
+      'Bengaluru',
+    ]);
+    expect(route.compactTrail).toContain('✈️ BLR → ZRH (via AUH)');
+    expect(route.compactTrail).toContain('📍 Lucerne');
+    expect(route.compactTrail).toContain('📍 Zurich');
+    expect(route.compactTrail).toContain('📍 Venice');
+    expect(route.compactTrail).toContain('✈️ CDG → BLR (via AUH)');
+  });
+
+  it('renders all 3 Keepsake PDF templates (magazine, artbook, passport) with WYSIWYG cover crop, grouped boarding passes & zero spend', () => {
+    const europeFlights: Flight[] = [
+      {
+        id: 'f1', tripId: 'trip_v06_1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 239',
+        originIata: 'BLR', originCity: 'Bengaluru', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2025-10-31T21:00:00', arrivalTime: '2025-11-01T00:15:00',
+        durationMinutes: 225, status: 'completed', distanceMiles: 1692, milesEarned: 1692,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+      {
+        id: 'f2', tripId: 'trip_v06_1', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 143',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'ZRH', destCity: 'Zurich',
+        departureTime: '2025-11-01T02:25:00', arrivalTime: '2025-11-01T06:55:00',
+        durationMinutes: 420, status: 'completed', distanceMiles: 2970, milesEarned: 2970,
+        enrichedOnline: false, createdAt: '2025-10-01T00:00:00Z',
+      },
+    ];
+
+    for (const templateId of ['magazine', 'artbook', 'passport'] as const) {
+      const html = buildTripKeepsakeHtml({
+        trip: sampleTrip,
+        flights: europeFlights,
+        transports: [],
+        stops: [
+          { id: 'st_luc', tripId: 'trip_v06_1', cityName: 'Lucerne', sortOrder: 0, createdAt: '2025-10-01T00:00:00Z' },
+        ],
+        stays: [sampleStay],
+        memories: [sampleMemory],
+        distanceUnit: 'km',
+        templateId,
+        coverDataUri: 'data:image/jpeg;base64,COVERDATA',
+        coverDimensions: { width: 1600, height: 1000 },
+        coverCrop: { zoom: 1.4, offsetX: 0.25, offsetY: -0.15 },
+        photoDataUriMap: { mem_v06_1: 'data:image/jpeg;base64,MEMDATA' },
+      });
+      expect(html).toContain(`cover-${templateId}`);
+      expect(html).toContain('data:image/jpeg;base64,COVERDATA');
+      expect(html).toContain('position:absolute; left:'); // WYSIWYG crop math applied!
+      expect(html).toContain('via AUH'); // Grouped boarding pass!
+      expect(html).toContain('EY 239 · EY 143');
+      expect(html).toContain('ADMITTED • CH'); // Country passport stamp!
+      expect(html).not.toContain('4500'); // Budget strictly excluded
+      expect(html).not.toContain('1850'); // Stay cash cost strictly excluded
+    }
+  });
 });
