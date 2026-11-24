@@ -389,9 +389,9 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
   };
 
   const ensureGalleryPermission = async (): Promise<boolean> => {
-    const existing = await MediaLibrary.getPermissionsAsync(true, ['photo']);
+    const existing = await MediaLibrary.getPermissionsAsync(true);
     if (existing.granted) return true;
-    const req = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+    const req = await MediaLibrary.requestPermissionsAsync(true);
     if (!req.granted) {
       Alert.alert(
         'Gallery Permission Needed',

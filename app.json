@@ -3,7 +3,7 @@
     "name": "Wanderer's Ledger",
     "slug": "wander-ledger",
     "scheme": "wanderledger",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wanderledger.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.wanderledger.app",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#FFF9F2",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -41,7 +41,9 @@
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -96,7 +98,7 @@
           "photosPermission": "Allow Wanderer's Ledger to save your Instagram postcards and collages to your photo gallery.",
           "savePhotosPermission": "Allow Wanderer's Ledger to save your Instagram postcards and collages to your photo gallery.",
           "isAccessMediaLocationEnabled": false,
-          "granularPermissions": ["photo"]
+          "granularPermissions": []
         }
       ]
     ],
