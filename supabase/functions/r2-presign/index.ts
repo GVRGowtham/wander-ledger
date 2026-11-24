@@ -1,7 +1,9 @@
 // Supabase Edge Function: r2-presign
 // Authorizes the user's Google/Supabase JWT & trip membership, then returns a short-lived
-// Cloudflare R2 presigned PUT URL for compressed WebP memories (~200KB) or private receipts (~70KB).
+// Cloudflare R2 presigned PUT, GET, or DELETE URL for compressed WebP memories (~200KB),
+// trip covers, or private receipts (~70KB).
 // Memory photos live under `memories/{tripId}/{id}.webp`.
+// Trip cover photos live under `covers/{tripId}/{id}.webp`.
 // Private receipts live under `receipts/{tripId}/{userId}/{id}.webp` (never exposed on Postcards).
 
 // @ts-nocheck — Deno Edge Runtime
@@ -27,9 +29,10 @@ serve(async (req) => {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const { tripId, mediaKind, fileId, action } = await req.json();
-    const kind = mediaKind === 'receipt' ? 'receipt' : 'memory';
-    const isDelete = action === 'delete';
+    const { tripId, mediaKind, fileId, action, objectKey } = await req.json();
+    const kind =
+      mediaKind === 'receipt' ? 'receipt' : mediaKind === 'cover' ? 'cover' : 'memory';
+    const op = action === 'delete' ? 'delete' : action === 'get' ? 'get' : 'put';
 
     // Verify user belongs to trip via RLS
     const { data: trip } = await supabase
@@ -42,11 +45,28 @@ serve(async (req) => {
       return new Response('Forbidden', { status: 403 });
     }
 
-    const cleanFileId = String(fileId || '').replace(/\.webp$/i, '');
-    const key =
-      kind === 'receipt'
-        ? `receipts/${tripId}/${userData.user.id}/${cleanFileId}.webp`
-        : `memories/${tripId}/${cleanFileId}.webp`;
+    let key: string;
+    if ((op === 'get' || op === 'delete') && typeof objectKey === 'string' && objectKey.trim()) {
+      // Ensure requested objectKey strictly belongs to this trip (and user for receipts)
+      const normalized = objectKey.trim().replace(/^\/+/, '');
+      const allowedPrefixes = [
+        `memories/${tripId}/`,
+        `covers/${tripId}/`,
+        `receipts/${tripId}/${userData.user.id}/`,
+      ];
+      if (!allowedPrefixes.some((p) => normalized.startsWith(p))) {
+        return new Response('Forbidden object key', { status: 403 });
+      }
+      key = normalized;
+    } else {
+      const cleanFileId = String(fileId || '').replace(/\.webp$/i, '');
+      key =
+        kind === 'receipt'
+          ? `receipts/${tripId}/${userData.user.id}/${cleanFileId}.webp`
+          : kind === 'cover'
+            ? `covers/${tripId}/${cleanFileId}.webp`
+            : `memories/${tripId}/${cleanFileId}.webp`;
+    }
 
     const r2AccountId = Deno.env.get('R2_ACCOUNT_ID')!;
     const r2Bucket = Deno.env.get('R2_BUCKET_NAME') || 'wanderledger-media';
@@ -57,23 +77,26 @@ serve(async (req) => {
       region: 'auto',
     });
 
+    const method = op === 'delete' ? 'DELETE' : op === 'get' ? 'GET' : 'PUT';
     const url = `https://${r2AccountId}.r2.cloudflarestorage.com/${r2Bucket}/${key}`;
     const signed = await aws.sign(
       new Request(url, {
-        method: isDelete ? 'DELETE' : 'PUT',
-        headers: isDelete ? undefined : { 'Content-Type': 'image/webp' },
+        method,
+        headers: op === 'put' ? { 'Content-Type': 'image/webp' } : undefined,
       }),
       { aws: { signQuery: true } }
     );
 
-    return new Response(
-      JSON.stringify(
-        isDelete
-          ? { deleteUrl: signed.url, objectKey: key }
-          : { uploadUrl: signed.url, objectKey: key }
-      ),
-      { headers: { 'Content-Type': 'application/json' } }
-    );
+    const body =
+      op === 'delete'
+        ? { deleteUrl: signed.url, objectKey: key }
+        : op === 'get'
+          ? { downloadUrl: signed.url, objectKey: key }
+          : { uploadUrl: signed.url, objectKey: key };
+
+    return new Response(JSON.stringify(body), {
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,

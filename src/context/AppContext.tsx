@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   clearProfile,
+  getSupabaseClient,
   isCloudConfigured,
   loadSavedProfile,
   saveProfile,
@@ -19,6 +20,7 @@ import {
   deleteTripStop,
   FlightEditablePatch,
   getDb,
+  getPendingSyncCount,
   getTripSummary,
   insertExpense,
   insertFlight,
@@ -53,6 +55,12 @@ import {
   updateMemoryInCloud,
 } from '../services/cloudDeleteService';
 import {
+  CloudSyncResult,
+  CloudSyncStatus,
+  getLastSyncedAt,
+  runFullCloudSync,
+} from '../services/cloudSyncService';
+import {
   deleteLocalPhotoFiles,
   deleteLocalTripMediaDir,
 } from '../services/mediaService';
@@ -79,6 +87,11 @@ interface AppContextValue {
   ready: boolean;
   profile: UserProfile | null;
   cloudConfigured: boolean;
+  syncStatus: CloudSyncStatus;
+  pendingSyncCount: number;
+  lastSyncedAt: string | null;
+  syncError: string | null;
+  lastSyncSummary: string | null;
   trips: Trip[];
   allFlights: Flight[];
   allTransports: TransportLeg[];
@@ -90,6 +103,9 @@ interface AppContextValue {
   fxSource: 'live' | 'fallback';
   refreshAll: () => void;
   clearAllData: () => void;
+  syncNow: () => Promise<CloudSyncResult>;
+  connectGoogleCloud: () => Promise<boolean>;
+  disconnectCloud: () => Promise<void>;
   startLocalTravelogue: (
     homeCurrency?: string,
     firstName?: string,
@@ -134,6 +150,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const cloudReady = isCloudConfigured();
   const [ready, setReady] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -145,8 +162,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loyaltyAccounts, setLoyaltyAccounts] = useState<LoyaltyAccount[]>([]);
   const [fxRates, setFxRates] = useState<FxRatesMap>(DEFAULT_USD_RATES);
   const [fxSource, setFxSource] = useState<'live' | 'fallback'>('fallback');
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>(
+    cloudReady ? 'signed_out' : 'offline_only'
+  );
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncSummary, setLastSyncSummary] = useState<string | null>(null);
 
-  const refreshAll = useCallback(() => {
+  const syncInFlightRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
+  profileRef.current = profile;
+
+  const loadLocalSnapshotIntoState = useCallback(() => {
     setTrips(listTrips());
     setAllFlights(listFlights());
     setAllTransports(listTransports());
@@ -154,7 +183,154 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAllExpenses(listExpenses());
     setAllMemories(listMemories());
     setLoyaltyAccounts(listLoyaltyAccounts());
+    setPendingSyncCount(getPendingSyncCount());
   }, []);
+
+  const syncNowWithProfile = useCallback(
+    async (targetProfile: UserProfile | null): Promise<CloudSyncResult> => {
+      if (!cloudReady) {
+        setSyncStatus('offline_only');
+        return {
+          status: 'unconfigured',
+          pushedRows: 0,
+          pulledRows: 0,
+          deletedRows: 0,
+          mediaUploaded: 0,
+          mediaDownloaded: 0,
+        };
+      }
+      if (!targetProfile || targetProfile.authMode !== 'google') {
+        setSyncStatus('signed_out');
+        return {
+          status: 'signed_out',
+          pushedRows: 0,
+          pulledRows: 0,
+          deletedRows: 0,
+          mediaUploaded: 0,
+          mediaDownloaded: 0,
+        };
+      }
+      if (syncInFlightRef.current) {
+        return {
+          status: 'synced',
+          pushedRows: 0,
+          pulledRows: 0,
+          deletedRows: 0,
+          mediaUploaded: 0,
+          mediaDownloaded: 0,
+          syncedAt: lastSyncedAt ?? undefined,
+        };
+      }
+
+      syncInFlightRef.current = true;
+      setSyncStatus('syncing');
+      setSyncError(null);
+      try {
+        const res = await runFullCloudSync(targetProfile, { uploadMedia: true });
+        loadLocalSnapshotIntoState();
+        if (res.status === 'synced') {
+          setSyncStatus('synced');
+          if (res.syncedAt) {
+            setLastSyncedAt(res.syncedAt);
+            const updatedProfile: UserProfile = { ...targetProfile, lastSyncedAt: res.syncedAt };
+            await saveProfile(updatedProfile);
+            setProfile(updatedProfile);
+          }
+          const parts: string[] = [];
+          if (res.pushedRows > 0) parts.push(`↑ ${res.pushedRows} backed up`);
+          if (res.pulledRows > 0) parts.push(`↓ ${res.pulledRows} restored`);
+          if (res.mediaUploaded > 0) parts.push(`📸 ${res.mediaUploaded} uploaded`);
+          if (res.mediaDownloaded > 0) parts.push(`📥 ${res.mediaDownloaded} downloaded`);
+          setLastSyncSummary(parts.length > 0 ? parts.join(' • ') : 'Everything up to date ✓');
+        } else if (res.status === 'signed_out') {
+          setSyncStatus('signed_out');
+        } else if (res.status === 'unconfigured') {
+          setSyncStatus('offline_only');
+        } else {
+          setSyncStatus('error');
+          setSyncError(res.error || 'Sync failed — local changes are still safe.');
+        }
+        return res;
+      } finally {
+        syncInFlightRef.current = false;
+      }
+    },
+    [cloudReady, lastSyncedAt, loadLocalSnapshotIntoState]
+  );
+
+  const scheduleBackgroundSync = useCallback(() => {
+    if (!cloudReady) return;
+    const p = profileRef.current;
+    if (!p || p.authMode !== 'google') return;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      syncNowWithProfile(profileRef.current).catch(() => {});
+    }, 2500);
+  }, [cloudReady, syncNowWithProfile]);
+
+  const refreshAll = useCallback(() => {
+    loadLocalSnapshotIntoState();
+    scheduleBackgroundSync();
+  }, [loadLocalSnapshotIntoState, scheduleBackgroundSync]);
+
+  const syncNow = useCallback(
+    () => syncNowWithProfile(profileRef.current),
+    [syncNowWithProfile]
+  );
+
+  const connectGoogleCloud = useCallback(async (): Promise<boolean> => {
+    if (!cloudReady) return false;
+    const cur = profileRef.current;
+    const signedIn = await signInWithGoogle(
+      cur?.homeCurrency || 'USD',
+      cur?.email,
+      cur?.displayName,
+      cur?.distanceUnit || 'km'
+    );
+    if (signedIn.authMode !== 'google') {
+      return false;
+    }
+    // Preserve local preferences if user already personalized them
+    const merged: UserProfile = {
+      ...signedIn,
+      homeCurrency: cur?.homeCurrency || signedIn.homeCurrency,
+      distanceUnit: cur?.distanceUnit || signedIn.distanceUnit,
+      wifiOnlyPhotoSync: cur?.wifiOnlyPhotoSync ?? true,
+    };
+    await saveProfile(merged);
+    setProfile(merged);
+    profileRef.current = merged;
+    await syncNowWithProfile(merged);
+    return true;
+  }, [cloudReady, syncNowWithProfile]);
+
+  const disconnectCloud = useCallback(async (): Promise<void> => {
+    const sb = getSupabaseClient();
+    if (sb) {
+      try {
+        await sb.auth.signOut();
+      } catch {
+        // Ignore offline sign-out errors
+      }
+    }
+    const cur = profileRef.current;
+    if (cur) {
+      const localOnly: UserProfile = {
+        ...cur,
+        email: '',
+        authMode: 'local_test',
+      };
+      await saveProfile(localOnly);
+      setProfile(localOnly);
+      profileRef.current = localOnly;
+    }
+    setSyncStatus(cloudReady ? 'signed_out' : 'offline_only');
+    setSyncError(null);
+    setLastSyncSummary(null);
+  }, [cloudReady]);
 
   useEffect(() => {
     let mounted = true;
@@ -164,13 +340,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         purgeLegacySeedDataIfNeeded();
         const saved = await loadSavedProfile();
         const cachedFx = loadCachedFxRates();
+        const savedSyncTime = getLastSyncedAt();
         if (mounted) {
           setFxRates(cachedFx);
+          setLastSyncedAt(savedSyncTime || saved?.lastSyncedAt || null);
           if (saved) {
             setProfile(saved);
-            refreshAll();
+            profileRef.current = saved;
+            loadLocalSnapshotIntoState();
+            if (!cloudReady) {
+              setSyncStatus('offline_only');
+            } else if (saved.authMode === 'google') {
+              setSyncStatus('idle');
+            } else {
+              setSyncStatus('signed_out');
+            }
           }
           setReady(true);
+        }
+
+        // Silent background sync on startup ONLY when cloud is configured & user signed into Google
+        if (mounted && cloudReady && saved?.authMode === 'google') {
+          syncNowWithProfile(saved).catch(() => {});
         }
 
         // Background daily FX rate refresh (free Frankfurter ECB API)
@@ -188,16 +379,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })();
     return () => {
       mounted = false;
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [refreshAll]);
+  }, [cloudReady, loadLocalSnapshotIntoState, syncNowWithProfile]);
 
   const startLocalTravelogue = useCallback(
     async (homeCurrency = 'USD', firstName?: string, distanceUnit: DistanceUnit = 'km') => {
       const p = await startLocalSession(homeCurrency, firstName, distanceUnit);
       setProfile(p);
-      refreshAll();
+      profileRef.current = p;
+      loadLocalSnapshotIntoState();
+      setSyncStatus(cloudReady ? 'signed_out' : 'offline_only');
     },
-    [refreshAll]
+    [cloudReady, loadLocalSnapshotIntoState]
   );
 
   const loginWithGoogle = useCallback(
@@ -209,23 +403,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ) => {
       const p = await signInWithGoogle(homeCurrency, email, name, distanceUnit);
       setProfile(p);
-      refreshAll();
+      profileRef.current = p;
+      loadLocalSnapshotIntoState();
+      if (cloudReady && p.authMode === 'google') {
+        await syncNowWithProfile(p);
+      }
     },
-    [refreshAll]
+    [cloudReady, loadLocalSnapshotIntoState, syncNowWithProfile]
   );
 
   const clearAllData = useCallback(() => {
     const existingTrips = listTrips();
     clearAllLocalData();
-    refreshAll();
+    loadLocalSnapshotIntoState();
     existingTrips.forEach((t) => {
       deleteLocalTripMediaDir(t.id).catch(() => {});
     });
-  }, [refreshAll]);
+  }, [loadLocalSnapshotIntoState]);
 
   const logout = useCallback(async () => {
     await clearProfile();
     setProfile(null);
+    profileRef.current = null;
   }, []);
 
   const updateProfileSettings = useCallback(
@@ -234,8 +433,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated: UserProfile = { ...profile, ...patch };
       await saveProfile(updated);
       setProfile(updated);
+      profileRef.current = updated;
+      scheduleBackgroundSync();
     },
-    [profile]
+    [profile, scheduleBackgroundSync]
   );
 
   const addTrip = useCallback(
@@ -429,7 +630,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         ready,
         profile,
-        cloudConfigured: isCloudConfigured(),
+        cloudConfigured: cloudReady,
+        syncStatus,
+        pendingSyncCount,
+        lastSyncedAt,
+        syncError,
+        lastSyncSummary,
         trips,
         allFlights,
         allTransports,
@@ -441,6 +647,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fxSource,
         refreshAll,
         clearAllData,
+        syncNow,
+        connectGoogleCloud,
+        disconnectCloud,
         startLocalTravelogue,
         loginWithGoogle,
         logout,

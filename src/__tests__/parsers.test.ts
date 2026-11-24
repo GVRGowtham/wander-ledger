@@ -1215,3 +1215,202 @@ describe('v0.4.6 Multi-Country Trip Geography (Visited Countries vs. Airport Tra
     expect(withFlights.byTripId[europeRegionTrip.id].countriesLabel).toBe('Switzerland • Germany');
   });
 });
+
+import {
+  cloudRowToExpense,
+  cloudRowToFlight,
+  cloudRowToLoyalty,
+  cloudRowToMemory,
+  cloudRowToStay,
+  cloudRowToStop,
+  cloudRowToTransport,
+  cloudRowToTrip,
+  expenseToCloudRow,
+  flightToCloudRow,
+  loyaltyToCloudRow,
+  memoryToCloudRow,
+  shouldAcceptRemoteRecord,
+  stayToCloudRow,
+  stopToCloudRow,
+  transportToCloudRow,
+  tripToCloudRow,
+  validateBackupSnapshot,
+} from '../services/cloudSyncMappers';
+
+describe('v0.5.0 Bidirectional Cloud Sync Engine (Offline-Safe + Supabase/R2 Mappers)', () => {
+  it('treats missing Supabase env keys as unconfigured offline-first mode', () => {
+    const configured = Boolean(
+      process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+    );
+    expect(configured).toBe(false);
+  });
+
+  it('round-trips trips, flights, transports, stops, stays, expenses, memories, and loyalty rows cleanly', () => {
+    const uid = '11111111-2222-3333-4444-555555555555';
+    const trip: Trip = {
+      id: 'trip_sync_1',
+      ownerId: 'local_wanderer',
+      title: 'Europe Autumn',
+      destinationCity: 'Europe',
+      destinationCountry: 'Europe',
+      countryCode: 'CH',
+      flagEmoji: '🇨🇭',
+      startDate: '2025-10-31',
+      endDate: '2025-11-09',
+      homeCurrency: 'INR',
+      budget: 150000,
+      vibe: 'alpine',
+      isShared: true,
+      shareToken: 'wl_1234',
+      coTravelers: ['Priya'],
+      lat: 47.46,
+      lng: 8.55,
+      createdAt: '2025-10-01T10:00:00Z',
+      updatedAt: '2025-10-02T10:00:00Z',
+    };
+    const cloudTrip = tripToCloudRow(trip, uid, 'covers/trip_sync_1/cover.webp');
+    expect(cloudTrip.owner_id).toBe(uid);
+    expect(cloudTrip.co_travelers).toEqual(['Priya']);
+    const restoredTrip = cloudRowToTrip(cloudTrip, 'file:///local/cover.webp');
+    expect(restoredTrip.title).toBe('Europe Autumn');
+    expect(restoredTrip.coTravelers).toEqual(['Priya']);
+    expect(restoredTrip.coverPhotoUri).toBe('file:///local/cover.webp');
+
+    const flight: Flight = {
+      id: 'flt_1',
+      tripId: 'trip_sync_1',
+      airlineCode: 'EY',
+      airlineName: 'Etihad Airways',
+      flightNumber: 'EY 217',
+      pnr: '7CHIQH',
+      originIata: 'BLR',
+      originCity: 'Bengaluru',
+      destIata: 'AUH',
+      destCity: 'Abu Dhabi',
+      departureTime: '2025-10-31T22:00:00',
+      arrivalTime: '2025-11-01T00:50:00',
+      durationMinutes: 260,
+      status: 'scheduled',
+      distanceMiles: 1690,
+      milesEarned: 1690,
+      loyaltyProgram: 'Etihad Guest',
+      enrichedOnline: false,
+      createdAt: '2025-10-01T10:00:00Z',
+    };
+    const restoredFlight = cloudRowToFlight(flightToCloudRow(flight));
+    expect(restoredFlight.flightNumber).toBe('EY 217');
+    expect(restoredFlight.pnr).toBe('7CHIQH');
+
+    const trn: TransportLeg = {
+      id: 'trn_1',
+      tripId: 'trip_sync_1',
+      mode: 'train',
+      title: 'SBB InterCity',
+      operatorName: 'SBB',
+      origin: 'Zurich HB',
+      destination: 'Lucerne',
+      startDate: '2025-11-03',
+      distanceKm: 55,
+      costAmount: 29,
+      currency: 'CHF',
+      homeCost: 2784,
+      createdAt: '2025-10-01T10:00:00Z',
+    };
+    const restoredTrn = cloudRowToTransport(transportToCloudRow(trn));
+    expect(restoredTrn.mode).toBe('train');
+    expect(restoredTrn.distanceKm).toBe(55);
+
+    const stop: TripStop = {
+      id: 'stop_1',
+      tripId: 'trip_sync_1',
+      cityName: 'Lucerne',
+      startDate: '2025-11-03',
+      endDate: '2025-11-05',
+      sortOrder: 1,
+      createdAt: '2025-10-01T10:00:00Z',
+    };
+    expect(cloudRowToStop(stopToCloudRow(stop)).cityName).toBe('Lucerne');
+
+    const stay: Stay = {
+      id: 'stay_1',
+      tripId: 'trip_sync_1',
+      name: 'Hotel Schweizerhof',
+      stayType: 'hotel',
+      checkIn: '2025-11-01',
+      checkOut: '2025-11-03',
+      nights: 2,
+      costCash: 500,
+      currency: 'CHF',
+      homeCost: 48000,
+      pointsRedeemed: 0,
+      notes: 'Lake view',
+      createdAt: '2025-10-01T10:00:00Z',
+    };
+    expect(cloudRowToStay(stayToCloudRow(stay, 'receipts/trip_sync_1/u/stay.webp'), 'file:///r.webp').notes).toBe('Lake view');
+
+    const expRow = expenseToCloudRow(
+      {
+        id: 'exp_1',
+        tripId: 'trip_sync_1',
+        merchant: 'Etihad Airways',
+        category: 'flights',
+        localAmount: 69422,
+        localCurrency: 'INR',
+        homeAmount: 69422,
+        homeCurrency: 'INR',
+        fxRateUsed: 1,
+        expenseDate: '2025-10-31',
+        createdAt: '2025-10-01T10:00:00Z',
+      },
+      uid,
+      'receipts/trip_sync_1/u/exp_1.webp'
+    );
+    expect(expRow.created_by).toBe(uid);
+    expect(cloudRowToExpense(expRow, 'file:///exp.webp').homeAmount).toBe(69422);
+
+    const memRow = memoryToCloudRow(
+      {
+        id: 'mem_1',
+        tripId: 'trip_sync_1',
+        stopId: 'stop_1',
+        title: 'Lake Lucerne',
+        note: 'Golden hour',
+        capturedAt: '2025-11-03T17:30:00Z',
+        moodSticker: '🏔️ Pure Magic',
+        isHighlight: true,
+        createdAt: '2025-11-03T18:00:00Z',
+      },
+      uid,
+      'memories/trip_sync_1/mem_1.webp',
+      'memories/trip_sync_1/mem_1_thumb.webp'
+    );
+    const restoredMem = cloudRowToMemory(memRow, 'file:///p.webp', 'file:///t.webp');
+    expect(restoredMem.stopId).toBe('stop_1');
+    expect(restoredMem.photoUri).toBe('file:///p.webp');
+
+    const loyRow = loyaltyToCloudRow(
+      {
+        id: 'loy_1',
+        programName: 'Etihad Guest',
+        category: 'airline',
+        balance: 9360,
+        unitLabel: 'mi',
+        updatedAt: '2025-11-01T10:00:00Z',
+      },
+      uid
+    );
+    expect(cloudRowToLoyalty(loyRow).balance).toBe(9360);
+  });
+
+  it('resolves LWW conflicts by updated_at and validates local JSON backup snapshots', () => {
+    expect(shouldAcceptRemoteRecord('2025-11-01T10:00:00Z', '2025-11-02T10:00:00Z')).toBe(true);
+    expect(shouldAcceptRemoteRecord('2025-11-03T10:00:00Z', '2025-11-02T10:00:00Z')).toBe(false);
+    expect(shouldAcceptRemoteRecord(undefined, '2025-11-02T10:00:00Z')).toBe(true);
+
+    expect(validateBackupSnapshot(null)).toBeNull();
+    expect(validateBackupSnapshot({ foo: 'bar' })).toBeNull();
+    const valid = validateBackupSnapshot({ trips: [], flights: [] });
+    expect(valid?.schemaVersion).toBe(2);
+    expect(valid?.transports).toEqual([]);
+  });
+});

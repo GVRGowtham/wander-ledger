@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
+import { buildLocalBackupSnapshot } from '../services/cloudSyncService';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
@@ -35,19 +37,30 @@ interface Props {
 export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const {
     profile,
+    cloudConfigured,
+    syncStatus,
+    pendingSyncCount,
+    lastSyncedAt,
+    syncError,
+    lastSyncSummary,
     trips,
     allFlights,
     allTransports,
     allStops,
     allExpenses,
+    allMemories,
     loyaltyAccounts,
     fxSource,
+    syncNow,
+    connectGoogleCloud,
+    disconnectCloud,
     updateProfileSettings,
     clearAllData,
   } = useApp();
 
   const [renameModal, setRenameModal] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [connectingCloud, setConnectingCloud] = useState(false);
 
   // Multi-country geography: counts visited countries across trips, stops & open-jaw legs,
   // while keeping <24h airside airport layovers separate as Transit Hubs.
@@ -76,6 +89,80 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         : clean.slice(0, 2).toUpperCase() || 'WL';
     await updateProfileSettings({ displayName: clean, avatarInitials: initials });
     setRenameModal(false);
+  };
+
+  const handleConnectGoogle = async () => {
+    setConnectingCloud(true);
+    try {
+      const ok = await connectGoogleCloud();
+      if (ok) {
+        Alert.alert('Cloud Sync Enabled ☁️', 'Your travelogue is now syncing securely with Google + Supabase.');
+      } else {
+        Alert.alert('Sign-in Cancelled', 'No worries — your local travelogue remains 100% intact on this device.');
+      }
+    } catch {
+      Alert.alert('Cloud Sign-in Error', 'Could not complete Google sign-in. Your local data is untouched.');
+    } finally {
+      setConnectingCloud(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    const res = await syncNow();
+    if (res.status === 'error') {
+      Alert.alert('Sync Paused', res.error || 'Could not reach the cloud right now. Local data is safe.');
+    }
+  };
+
+  const handleDisconnectCloud = () => {
+    Alert.alert(
+      'Disconnect Cloud Sync?',
+      'Your phone will keep all your trips, flights, memories & receipts locally, and simply pause cloud syncing until you sign back in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => {
+            disconnectCloud().catch(() => {});
+          },
+        },
+      ]
+    );
+  };
+
+  const handleExportLocalBackup = async () => {
+    try {
+      const snapshot = buildLocalBackupSnapshot();
+      const dateTag = new Date().toISOString().slice(0, 10);
+      const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
+      const uri = `${baseDir}wanderers_ledger_backup_${dateTag}.json`;
+      await FileSystem.writeAsStringAsync(uri, JSON.stringify(snapshot, null, 2));
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/json',
+          dialogTitle: "Export Wanderer's Ledger Backup (.json)",
+        });
+      } else {
+        Alert.alert(
+          'Backup Ready 📦',
+          `Saved ${snapshot.trips.length} trips and ${snapshot.flights.length + snapshot.transports.length} travel legs.`
+        );
+      }
+    } catch {
+      Alert.alert('Backup Error', 'Unable to export local backup file on this device.');
+    }
+  };
+
+  const formatSyncTime = (iso: string | null): string => {
+    if (!iso) return 'Not synced yet';
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso.slice(0, 16);
+      return `${d.toISOString().slice(0, 10)} ${d.toTimeString().slice(0, 5)}`;
+    } catch {
+      return iso.slice(0, 16);
+    }
   };
 
   const handleExportCsv = async () => {
@@ -258,6 +345,145 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               </Text>
             </View>
           ))
+        )}
+      </View>
+
+      {/* Cloud Backup & Sync Card (Offline-first + Plug-and-play Supabase & R2) */}
+      <View style={styles.card}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.cardTitle}>☁️ Cloud Backup &amp; Sync</Text>
+          {!cloudConfigured ? (
+            <View style={styles.syncPillOffline}>
+              <Text style={styles.syncPillOfflineText}>📱 Local Vault</Text>
+            </View>
+          ) : profile?.authMode === 'google' ? (
+            <View
+              style={
+                syncStatus === 'error'
+                  ? styles.syncPillError
+                  : syncStatus === 'syncing'
+                    ? styles.syncPillSyncing
+                    : pendingSyncCount > 0
+                      ? styles.syncPillPending
+                      : styles.syncPillSynced
+              }
+            >
+              <Text
+                style={
+                  syncStatus === 'error'
+                    ? styles.syncPillErrorText
+                    : syncStatus === 'syncing'
+                      ? styles.syncPillSyncingText
+                      : pendingSyncCount > 0
+                        ? styles.syncPillPendingText
+                        : styles.syncPillSyncedText
+                }
+              >
+                {syncStatus === 'syncing'
+                  ? 'Syncing…'
+                  : syncStatus === 'error'
+                    ? '⚠️ Retry'
+                    : pendingSyncCount > 0
+                      ? `${pendingSyncCount} pending`
+                      : '✓ Synced'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.syncPillPending}>
+              <Text style={styles.syncPillPendingText}>Not Signed In</Text>
+            </View>
+          )}
+        </View>
+
+        {!cloudConfigured ? (
+          <>
+            <Text style={styles.prefSub}>
+              Running 100% offline on this device ({trips.length}{' '}
+              {trips.length === 1 ? 'trip' : 'trips'} •{' '}
+              {allFlights.length + allTransports.length} travel legs • {allMemories.length}{' '}
+              memories). Cloud Sync (Supabase + Cloudflare R2) is pre-wired and ready as soon as
+              you connect your backend keys.
+            </Text>
+            <TouchableOpacity
+              onPress={handleExportLocalBackup}
+              style={styles.backupBtn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
+            </TouchableOpacity>
+          </>
+        ) : profile?.authMode !== 'google' ? (
+          <>
+            <Text style={styles.prefSub}>
+              Sign in with Google to automatically back up your {trips.length}{' '}
+              {trips.length === 1 ? 'trip' : 'trips'}, flights, memories &amp; private receipts to
+              your personal cloud vault and restore on any iOS or Android device.
+            </Text>
+            <TouchableOpacity
+              onPress={handleConnectGoogle}
+              disabled={connectingCloud}
+              activeOpacity={0.9}
+              style={styles.cloudPrimaryBtn}
+            >
+              {connectingCloud ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.cloudPrimaryBtnText}>🔐 Sign in with Google to Sync</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleExportLocalBackup}
+              style={styles.backupBtn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <View style={styles.syncMetaBox}>
+              <Text style={styles.syncAccountText} numberOfLines={1}>
+                Google Account: {profile.email || profile.displayName}
+              </Text>
+              <Text style={styles.syncTimeText}>
+                Last synced: {formatSyncTime(lastSyncedAt)}
+              </Text>
+              {lastSyncSummary ? (
+                <Text style={styles.syncSummaryText}>{lastSyncSummary}</Text>
+              ) : null}
+              {syncError ? <Text style={styles.syncErrorText}>{syncError}</Text> : null}
+            </View>
+
+            <View style={styles.footerSubRow}>
+              <TouchableOpacity
+                onPress={handleSyncNow}
+                disabled={syncStatus === 'syncing'}
+                style={[styles.cloudPrimaryBtn, { flex: 1.3 }]}
+                activeOpacity={0.9}
+              >
+                {syncStatus === 'syncing' ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.cloudPrimaryBtnText}>☁️ Sync Now</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDisconnectCloud}
+                style={[styles.disconnectBtn, { flex: 0.7 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.disconnectBtnText}>Disconnect</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleExportLocalBackup}
+              style={styles.backupBtn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
@@ -550,4 +776,92 @@ const styles = StyleSheet.create({
     color: COLORS.inkSoft,
     lineHeight: 15,
   },
+  syncPillOffline: {
+    backgroundColor: COLORS.emeraldSoft,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  syncPillOfflineText: { fontSize: 11, fontWeight: '800', color: '#047857' },
+  syncPillSynced: {
+    backgroundColor: COLORS.emeraldSoft,
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  syncPillSyncedText: { fontSize: 11, fontWeight: '800', color: '#047857' },
+  syncPillSyncing: {
+    backgroundColor: COLORS.skySoft,
+    borderWidth: 1,
+    borderColor: '#7DD3FC',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  syncPillSyncingText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
+  syncPillPending: {
+    backgroundColor: COLORS.amberSoft,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  syncPillPendingText: { fontSize: 11, fontWeight: '800', color: '#92400E' },
+  syncPillError: {
+    backgroundColor: COLORS.roseSoft,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  syncPillErrorText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
+  syncMetaBox: {
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    padding: 11,
+    gap: 3,
+  },
+  syncAccountText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+  syncTimeText: { fontSize: 11, color: COLORS.inkMuted },
+  syncSummaryText: { fontSize: 11, fontWeight: '700', color: '#047857', marginTop: 2 },
+  syncErrorText: { fontSize: 11, fontWeight: '700', color: COLORS.rose, marginTop: 2 },
+  cloudPrimaryBtn: {
+    backgroundColor: COLORS.navy,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cloudPrimaryBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  disconnectBtn: {
+    backgroundColor: COLORS.canvas,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disconnectBtnText: { color: COLORS.inkMuted, fontWeight: '800', fontSize: 12 },
+  backupBtn: {
+    backgroundColor: COLORS.cardWarm,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backupBtnText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 12.5 },
 });

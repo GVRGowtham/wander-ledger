@@ -257,7 +257,20 @@ export function getTripById(id: string): Trip | null {
   return row ? mapTripRow(row) : null;
 }
 
-export function insertTrip(trip: Trip): void {
+export interface DbWriteOptions {
+  skipSyncQueue?: boolean;
+}
+
+export interface SyncQueueItem {
+  id: string;
+  entity: string;
+  entityId: string;
+  action: 'upsert' | 'delete';
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export function insertTrip(trip: Trip, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO trips (
@@ -289,6 +302,9 @@ export function insertTrip(trip: Trip): void {
       trip.updatedAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('trips', trip.id, 'upsert', { tripId: trip.id });
+  }
 }
 
 export type TripEditablePatch = Partial<
@@ -339,6 +355,54 @@ export function clearSyncMutation(
   db.runSync('DELETE FROM sync_queue WHERE id = ?', [`${entity}_${entityId}_${action}`]);
 }
 
+export function listSyncQueue(): SyncQueueItem[] {
+  const db = getDb();
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM sync_queue ORDER BY created_at ASC'
+  );
+  return rows.map((r) => {
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = JSON.parse(String(r.payload || '{}'));
+    } catch {
+      payload = {};
+    }
+    return {
+      id: String(r.id),
+      entity: String(r.entity),
+      entityId: String(r.entity_id),
+      action: r.action === 'delete' ? 'delete' : 'upsert',
+      payload,
+      createdAt: String(r.created_at),
+    };
+  });
+}
+
+export function getPendingSyncCount(): number {
+  const db = getDb();
+  const row = db.getFirstSync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM sync_queue');
+  return Number(row?.cnt ?? 0);
+}
+
+export function clearSyncQueueIds(ids: string[]): void {
+  if (!ids.length) return;
+  const db = getDb();
+  for (const id of ids) {
+    db.runSync('DELETE FROM sync_queue WHERE id = ?', [id]);
+  }
+}
+
+export function getAppMeta(key: string): string | null {
+  const db = getDb();
+  const row = db.getFirstSync<{ value: string }>('SELECT value FROM app_meta WHERE key = ?', [key]);
+  return row ? String(row.value) : null;
+}
+
+export function setAppMeta(key: string, value: string): void {
+  const db = getDb();
+  db.runSync('INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)', [key, value]);
+}
+
 export function updateTrip(tripId: string, patch: TripEditablePatch): void {
   const existing = getTripById(tripId);
   if (!existing) return;
@@ -349,7 +413,6 @@ export function updateTrip(tripId: string, patch: TripEditablePatch): void {
     updatedAt: new Date().toISOString(),
   };
   insertTrip(updated);
-  enqueueSyncMutation('trips', tripId, 'upsert', { tripId });
 }
 
 export function updateTripCover(tripId: string, coverPhotoUri: string | null): void {
@@ -379,6 +442,7 @@ export function updateTripSharing(
       tripId,
     ]
   );
+  enqueueSyncMutation('trips', tripId, 'upsert', { tripId });
 }
 
 export function deleteTrip(tripId: string): void {
@@ -467,7 +531,7 @@ export function listFlights(tripId?: string): Flight[] {
   }));
 }
 
-export function insertFlight(f: Flight): void {
+export function insertFlight(f: Flight, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO flights (
@@ -507,9 +571,12 @@ export function insertFlight(f: Flight): void {
     ]
   );
 
-  // Auto-credit loyalty miles vault
-  if (f.milesEarned > 0 && f.loyaltyProgram) {
-    creditLoyaltyProgram(f.loyaltyProgram, 'airline', f.milesEarned, 'mi', f.frequentFlyerNumber);
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('flights', f.id, 'upsert', { tripId: f.tripId });
+    // Auto-credit loyalty miles vault only on local inserts (not cloud pulls)
+    if (f.milesEarned > 0 && f.loyaltyProgram) {
+      creditLoyaltyProgram(f.loyaltyProgram, 'airline', f.milesEarned, 'mi', f.frequentFlyerNumber);
+    }
   }
 }
 
@@ -573,6 +640,7 @@ export function updateFlight(flightId: string, patch: FlightEditablePatch): void
       flightId,
     ]
   );
+  enqueueSyncMutation('flights', flightId, 'upsert', { flightId });
 }
 
 // --- TRANSPORTS (Train, Bus, Ferry, Rental Car, Own Car) ---
@@ -612,7 +680,7 @@ export function listTransports(tripId?: string): TransportLeg[] {
   }));
 }
 
-export function insertTransport(t: TransportLeg): void {
+export function insertTransport(t: TransportLeg, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO transports (
@@ -640,6 +708,9 @@ export function insertTransport(t: TransportLeg): void {
       t.createdAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('transports', t.id, 'upsert', { tripId: t.tripId });
+  }
 }
 
 export function deleteTransport(transportId: string): void {
@@ -672,7 +743,7 @@ export function listTripStops(tripId?: string): TripStop[] {
   }));
 }
 
-export function insertTripStop(s: TripStop): void {
+export function insertTripStop(s: TripStop, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO trip_stops (
@@ -688,6 +759,9 @@ export function insertTripStop(s: TripStop): void {
       s.createdAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('trip_stops', s.id, 'upsert', { tripId: s.tripId });
+  }
 }
 
 export function deleteTripStop(stopId: string): void {
@@ -699,12 +773,16 @@ export function deleteTripStop(stopId: string): void {
 
 // --- STAYS ---
 
-export function listStays(tripId: string): Stay[] {
+export function listStays(tripId?: string): Stay[] {
   const db = getDb();
-  const rows = db.getAllSync<Record<string, unknown>>(
-    'SELECT * FROM stays WHERE trip_id = ? ORDER BY check_in ASC',
-    [tripId]
-  );
+  const rows = tripId
+    ? db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM stays WHERE trip_id = ? ORDER BY check_in ASC',
+        [tripId]
+      )
+    : db.getAllSync<Record<string, unknown>>(
+        'SELECT * FROM stays ORDER BY check_in DESC'
+      );
   return rows.map((r) => ({
     id: String(r.id),
     tripId: String(r.trip_id),
@@ -727,7 +805,7 @@ export function listStays(tripId: string): Stay[] {
   }));
 }
 
-export function insertStay(s: Stay): void {
+export function insertStay(s: Stay, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO stays (
@@ -756,6 +834,9 @@ export function insertStay(s: Stay): void {
       s.createdAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('stays', s.id, 'upsert', { tripId: s.tripId });
+  }
 }
 
 // --- EXPENSES (Receipts tucked safely here!) ---
@@ -791,7 +872,7 @@ export function listExpenses(tripId?: string): Expense[] {
   }));
 }
 
-export function insertExpense(e: Expense): void {
+export function insertExpense(e: Expense, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO expenses (
@@ -818,6 +899,9 @@ export function insertExpense(e: Expense): void {
       e.createdAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('expenses', e.id, 'upsert', { tripId: e.tripId });
+  }
 }
 
 // --- MEMORIES (Clean Polaroid Timeline — zero receipts!) ---
@@ -853,7 +937,7 @@ export function listMemories(tripId?: string): Memory[] {
   }));
 }
 
-export function insertMemory(m: Memory): void {
+export function insertMemory(m: Memory, options?: DbWriteOptions): void {
   const db = getDb();
   db.runSync(
     `INSERT OR REPLACE INTO memories (
@@ -879,6 +963,9 @@ export function insertMemory(m: Memory): void {
       m.createdAt,
     ]
   );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('memories', m.id, 'upsert', { tripId: m.tripId });
+  }
 }
 
 export interface MemoryEditablePatch {
@@ -1078,11 +1165,36 @@ export function creditLoyaltyProgram(
       'UPDATE loyalty_accounts SET balance = ?, member_number = COALESCE(?, member_number), updated_at = ? WHERE id = ?',
       [existing.balance + delta, memberNumber ?? null, now, existing.id]
     );
+    enqueueSyncMutation('loyalty_accounts', existing.id, 'upsert', { id: existing.id });
   } else {
+    const newId = generateId('loy');
     db.runSync(
       'INSERT INTO loyalty_accounts (id, program_name, category, member_number, balance, unit_label, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [generateId('loy'), programName, category, memberNumber ?? null, delta, unitLabel, now]
+      [newId, programName, category, memberNumber ?? null, delta, unitLabel, now]
     );
+    enqueueSyncMutation('loyalty_accounts', newId, 'upsert', { id: newId });
+  }
+}
+
+export function upsertLoyaltyAccount(
+  acc: LoyaltyAccount,
+  options?: DbWriteOptions
+): void {
+  const db = getDb();
+  db.runSync(
+    'INSERT OR REPLACE INTO loyalty_accounts (id, program_name, category, member_number, balance, unit_label, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [
+      acc.id,
+      acc.programName,
+      acc.category,
+      acc.memberNumber ?? null,
+      acc.balance,
+      acc.unitLabel,
+      acc.updatedAt,
+    ]
+  );
+  if (!options?.skipSyncQueue) {
+    enqueueSyncMutation('loyalty_accounts', acc.id, 'upsert', { id: acc.id });
   }
 }
 
