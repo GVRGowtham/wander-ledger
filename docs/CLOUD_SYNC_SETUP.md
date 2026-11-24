@@ -7,9 +7,10 @@ Whenever you are ready to enable **automatic cloud backup & multi-device sync**,
 
 ## 1. Create a Free Supabase Project (~2 mins)
 1. Go to [supabase.com](https://supabase.com) and create a free project.
-2. Open **SQL Editor** and run both migrations in order:
+2. Open **SQL Editor** and run all three migrations in order:
    - [`supabase/migrations/001_init.sql`](../supabase/migrations/001_init.sql)
    - [`supabase/migrations/002_transports_stops_and_sync.sql`](../supabase/migrations/002_transports_stops_and_sync.sql)
+   - [`supabase/migrations/003_roles_and_shared_expenses.sql`](../supabase/migrations/003_roles_and_shared_expenses.sql)
 3. Enable **Google OAuth** under **Authentication → Providers → Google**, and add the redirect URL:
    - `wanderledger://`
 4. Copy your **Project URL** and **anon public key** from **Project Settings → API**.

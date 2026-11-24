@@ -23,7 +23,12 @@ import {
 } from '../db/database';
 import { getSupabaseClient, isCloudConfigured } from './authService';
 import { deleteEntityFromCloud, deleteMemoryFromCloud, deleteTripFromCloud } from './cloudDeleteService';
-import { UserProfile } from '../types/models';
+import { CoTravelerRole, UserProfile } from '../types/models';
+import {
+  buildTripMemberRows,
+  isLocalOwnerId,
+  normalizeCoTravelerKey,
+} from './sharingHelpers';
 import {
   cloudRowToExpense,
   cloudRowToFlight,
@@ -139,7 +144,7 @@ async function ensureLocalSubDir(subDir: string): Promise<string> {
 async function uploadLocalMediaToR2(
   localUri: string | undefined,
   tripId: string,
-  mediaKind: 'memory' | 'receipt' | 'cover',
+  mediaKind: 'memory' | 'receipt' | 'shared_receipt' | 'cover',
   fallbackId: string,
   accessToken: string,
   keyMap: MediaKeyMap
@@ -195,7 +200,7 @@ async function uploadLocalMediaToR2(
 async function downloadCloudMediaFromR2(
   objectKey: string | null | undefined,
   tripId: string,
-  mediaKind: 'memory' | 'receipt' | 'cover',
+  mediaKind: 'memory' | 'receipt' | 'shared_receipt' | 'cover',
   accessToken: string,
   keyMap: MediaKeyMap
 ): Promise<{ localUri?: string; downloaded: boolean }> {
@@ -229,7 +234,10 @@ async function downloadCloudMediaFromR2(
     const data = (await presignRes.json()) as { downloadUrl?: string };
     if (!data.downloadUrl) return { downloaded: false };
 
-    const folder = mediaKind === 'receipt' ? `receipts/${tripId}` : `memories/${tripId}`;
+    const folder =
+      mediaKind === 'receipt' || mediaKind === 'shared_receipt'
+        ? `receipts/${tripId}`
+        : `memories/${tripId}`;
     const dir = await ensureLocalSubDir(folder);
     const fileName = objectKey.split('/').pop() || `dl_${Date.now()}.webp`;
     const destUri = `${dir}${fileName}`;
@@ -372,18 +380,61 @@ export async function runFullCloudSync(
     const localMemories = listMemories();
     const localLoyalty = listLoyaltyAccounts();
 
-    // 2a. Trips first (FK parent for all children & R2 membership check)
-    if (localTrips.length > 0) {
-      const tripRows = localTrips.map((t) =>
+    // Build set of trips where the current user is strictly a 'viewer' (never push writes for those)
+    const myEmail = normalizeCoTravelerKey(session.user.email || profile.email || '');
+    const viewerTripIds = new Set<string>();
+    const ownedTrips = localTrips.filter((t) => {
+      const owned = isLocalOwnerId(t.ownerId) || t.ownerId === userId;
+      if (!owned && myEmail && t.coTravelerRoles?.[myEmail] === 'viewer') {
+        viewerTripIds.add(t.id);
+      }
+      return owned;
+    });
+
+    // 2a. Owned Trips first (FK parent for all children, trip_members & R2 membership check)
+    if (ownedTrips.length > 0) {
+      const tripRows = ownedTrips.map((t) =>
         tripToCloudRow(t, userId, t.coverPhotoUri ? keyMap.localToKey[t.coverPhotoUri] ?? null : null)
       );
       const { error } = await sb.from('trips').upsert(tripRows, { onConflict: 'id' });
       if (error) throw new Error(`Trips sync failed: ${error.message}`);
       pushedRows += tripRows.length;
 
+      // Sync trip_members table (upserts invited emails+roles and prunes removed members)
+      const desiredMembers = ownedTrips.flatMap((t) => buildTripMemberRows(t));
+      if (desiredMembers.length > 0) {
+        const { error: memUpsertErr } = await sb
+          .from('trip_members')
+          .upsert(desiredMembers, { onConflict: 'trip_id,invited_email' });
+        if (memUpsertErr) {
+          throw new Error(`Trip members sync failed: ${memUpsertErr.message}`);
+        }
+      }
+      const ownedIds = ownedTrips.map((t) => t.id);
+      const desiredSet = new Set(
+        desiredMembers.map((m) => `${m.trip_id}:${m.invited_email}`)
+      );
+      const { data: existingCloudMembers } = await sb
+        .from('trip_members')
+        .select('trip_id, invited_email')
+        .in('trip_id', ownedIds);
+      for (const cm of (existingCloudMembers ?? []) as Array<{
+        trip_id: string;
+        invited_email: string;
+      }>) {
+        const normEmail = normalizeCoTravelerKey(cm.invited_email || '');
+        if (!desiredSet.has(`${cm.trip_id}:${normEmail}`)) {
+          await sb
+            .from('trip_members')
+            .delete()
+            .eq('trip_id', cm.trip_id)
+            .eq('invited_email', cm.invited_email);
+        }
+      }
+
       // Upload any new trip cover photos now that trip rows exist in RLS
       if (shouldUploadMedia) {
-        for (const t of localTrips) {
+        for (const t of ownedTrips) {
           if (t.coverPhotoUri && !keyMap.localToKey[t.coverPhotoUri]) {
             const up = await uploadLocalMediaToR2(
               t.coverPhotoUri,
@@ -402,34 +453,38 @@ export async function runFullCloudSync(
       }
     }
 
-    // 2b. Flights
-    if (localFlights.length > 0) {
-      const rows = localFlights.map(flightToCloudRow);
+    // 2b. Flights (skip viewer-only trips)
+    const editableFlights = localFlights.filter((f) => !viewerTripIds.has(f.tripId));
+    if (editableFlights.length > 0) {
+      const rows = editableFlights.map(flightToCloudRow);
       const { error } = await sb.from('flights').upsert(rows, { onConflict: 'id' });
       if (error) throw new Error(`Flights sync failed: ${error.message}`);
       pushedRows += rows.length;
     }
 
     // 2c. Transports (Train / Bus / Ferry / Car)
-    if (localTransports.length > 0) {
-      const rows = localTransports.map(transportToCloudRow);
+    const editableTransports = localTransports.filter((t) => !viewerTripIds.has(t.tripId));
+    if (editableTransports.length > 0) {
+      const rows = editableTransports.map(transportToCloudRow);
       const { error } = await sb.from('transports').upsert(rows, { onConflict: 'id' });
       if (error) throw new Error(`Transports sync failed: ${error.message}`);
       pushedRows += rows.length;
     }
 
     // 2d. Trip Stops
-    if (localStops.length > 0) {
-      const rows = localStops.map(stopToCloudRow);
+    const editableStops = localStops.filter((s) => !viewerTripIds.has(s.tripId));
+    if (editableStops.length > 0) {
+      const rows = editableStops.map(stopToCloudRow);
       const { error } = await sb.from('trip_stops').upsert(rows, { onConflict: 'id' });
       if (error) throw new Error(`Stops sync failed: ${error.message}`);
       pushedRows += rows.length;
     }
 
     // 2e. Stays (+ optional receipt R2 upload)
-    if (localStays.length > 0) {
+    const editableStays = localStays.filter((s) => !viewerTripIds.has(s.tripId));
+    if (editableStays.length > 0) {
       const rows: Record<string, unknown>[] = [];
-      for (const s of localStays) {
+      for (const s of editableStays) {
         let receiptKey = s.receiptUri ? keyMap.localToKey[s.receiptUri] ?? null : null;
         if (shouldUploadMedia && s.receiptUri && !receiptKey) {
           const up = await uploadLocalMediaToR2(
@@ -450,16 +505,29 @@ export async function runFullCloudSync(
       pushedRows += rows.length;
     }
 
-    // 2f. Expenses (+ strictly private receipt R2 upload under receipts/{tripId}/{userId}/)
-    if (localExpenses.length > 0) {
+    // 2f. Expenses authored by this user:
+    //     - Personal (isShared = false): receipt goes under receipts/{tripId}/{userId}/
+    //     - Shared   (isShared = true):  receipt goes under shared-receipts/{tripId}/ (viewable by Editors)
+    const myEditableExpenses = localExpenses.filter(
+      (e) =>
+        !viewerTripIds.has(e.tripId) &&
+        (!e.authorId || isLocalOwnerId(e.authorId) || e.authorId === userId)
+    );
+    if (myEditableExpenses.length > 0) {
       const rows: Record<string, unknown>[] = [];
-      for (const e of localExpenses) {
+      for (const e of myEditableExpenses) {
+        const expectedPrefix = e.isShared
+          ? `shared-receipts/${e.tripId}/`
+          : `receipts/${e.tripId}/${userId}/`;
         let receiptKey = e.receiptUri ? keyMap.localToKey[e.receiptUri] ?? null : null;
+        if (receiptKey && !receiptKey.startsWith(expectedPrefix)) {
+          receiptKey = null;
+        }
         if (shouldUploadMedia && e.receiptUri && !receiptKey) {
           const up = await uploadLocalMediaToR2(
             e.receiptUri,
             e.tripId,
-            'receipt',
+            e.isShared ? 'shared_receipt' : 'receipt',
             `exp_${e.id}`,
             accessToken,
             keyMap
@@ -475,9 +543,10 @@ export async function runFullCloudSync(
     }
 
     // 2g. Memories (+ WebP photo & thumbnail R2 upload)
-    if (localMemories.length > 0) {
+    const editableMemories = localMemories.filter((m) => !viewerTripIds.has(m.tripId));
+    if (editableMemories.length > 0) {
       const rows: Record<string, unknown>[] = [];
-      for (const m of localMemories) {
+      for (const m of editableMemories) {
         let photoKey = m.photoUri ? keyMap.localToKey[m.photoUri] ?? null : null;
         let thumbKey = m.thumbUri ? keyMap.localToKey[m.thumbUri] ?? null : null;
         if (shouldUploadMedia && m.photoUri && !photoKey) {
@@ -545,6 +614,7 @@ export async function runFullCloudSync(
 
     const [
       remoteTripsRes,
+      remoteMembersRes,
       remoteFlightsRes,
       remoteTransportsRes,
       remoteStopsRes,
@@ -554,6 +624,7 @@ export async function runFullCloudSync(
       remoteLoyaltyRes,
     ] = await Promise.all([
       sb.from('trips').select('*'),
+      sb.from('trip_members').select('trip_id, invited_email, role'),
       sb.from('flights').select('*'),
       sb.from('transports').select('*'),
       sb.from('trip_stops').select('*'),
@@ -562,6 +633,19 @@ export async function runFullCloudSync(
       sb.from('memories').select('*'),
       sb.from('loyalty_accounts').select('*'),
     ]);
+
+    const memberRolesByTrip: Record<string, Record<string, CoTravelerRole>> = {};
+    for (const m of (remoteMembersRes.data ?? []) as Array<{
+      trip_id: string;
+      invited_email: string;
+      role: string;
+    }>) {
+      const tid = String(m.trip_id || '');
+      const email = normalizeCoTravelerKey(String(m.invited_email || ''));
+      if (!tid || !email) continue;
+      if (!memberRolesByTrip[tid]) memberRolesByTrip[tid] = {};
+      memberRolesByTrip[tid][email] = m.role === 'viewer' ? 'viewer' : 'editor';
+    }
 
     for (const row of (remoteTripsRes.data ?? []) as Record<string, unknown>[]) {
       const id = String(row.id);
@@ -580,7 +664,7 @@ export async function runFullCloudSync(
           if (dl.downloaded) mediaDownloaded += 1;
           coverUri = dl.localUri;
         }
-        insertTrip(cloudRowToTrip(row, coverUri), { skipSyncQueue: true });
+        insertTrip(cloudRowToTrip(row, coverUri, memberRolesByTrip[id]), { skipSyncQueue: true });
         pulledRows += 1;
       }
     }
@@ -639,10 +723,13 @@ export async function runFullCloudSync(
       if (!localExpenseIds.has(id)) {
         let receiptUri: string | undefined;
         if (row.receipt_r2_key) {
+          const r2Key = String(row.receipt_r2_key);
+          const isSharedReceipt =
+            Boolean(row.is_shared) || r2Key.startsWith('shared-receipts/');
           const dl = await downloadCloudMediaFromR2(
-            String(row.receipt_r2_key),
+            r2Key,
             String(row.trip_id),
-            'receipt',
+            isSharedReceipt ? 'shared_receipt' : 'receipt',
             accessToken,
             keyMap
           );

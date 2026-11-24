@@ -1,4 +1,5 @@
 import {
+  CoTravelerRole,
   Expense,
   Flight,
   LoyaltyAccount,
@@ -63,6 +64,13 @@ export function tripToCloudRow(
   userId: string,
   coverPhotoKey?: string | null
 ): Record<string, unknown> {
+  const cleanRoles: Record<string, CoTravelerRole> = {};
+  if (trip.coTravelerRoles) {
+    for (const [k, v] of Object.entries(trip.coTravelerRoles)) {
+      const key = k.trim().toLowerCase();
+      if (key) cleanRoles[key] = v === 'viewer' ? 'viewer' : 'editor';
+    }
+  }
   return {
     id: trip.id,
     owner_id: userId,
@@ -83,6 +91,7 @@ export function tripToCloudRow(
     is_shared: Boolean(trip.isShared),
     share_token: trip.shareToken ?? null,
     co_travelers: trip.coTravelers ?? [],
+    co_traveler_roles: cleanRoles,
     lat: Number(trip.lat ?? 0),
     lng: Number(trip.lng ?? 0),
     created_at: normalizeIsoTimestamp(trip.createdAt),
@@ -92,7 +101,8 @@ export function tripToCloudRow(
 
 export function cloudRowToTrip(
   row: Record<string, unknown>,
-  localCoverUri?: string
+  localCoverUri?: string,
+  memberRoleOverrides?: Record<string, CoTravelerRole>
 ): Trip {
   let coTravelers: string[] = [];
   if (Array.isArray(row.co_travelers)) {
@@ -103,6 +113,29 @@ export function cloudRowToTrip(
       if (Array.isArray(parsed)) coTravelers = parsed.map(String);
     } catch {
       coTravelers = [];
+    }
+  }
+  const coTravelerRoles: Record<string, CoTravelerRole> = {};
+  const rawRoles =
+    typeof row.co_traveler_roles === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(row.co_traveler_roles);
+          } catch {
+            return {};
+          }
+        })()
+      : row.co_traveler_roles;
+  if (rawRoles && typeof rawRoles === 'object') {
+    for (const [k, v] of Object.entries(rawRoles as Record<string, unknown>)) {
+      const key = k.trim().toLowerCase();
+      if (key) coTravelerRoles[key] = v === 'viewer' ? 'viewer' : 'editor';
+    }
+  }
+  if (memberRoleOverrides) {
+    for (const [k, v] of Object.entries(memberRoleOverrides)) {
+      const key = k.trim().toLowerCase();
+      if (key) coTravelerRoles[key] = v === 'viewer' ? 'viewer' : 'editor';
     }
   }
   return {
@@ -122,6 +155,7 @@ export function cloudRowToTrip(
     isShared: Boolean(row.is_shared),
     shareToken: (row.share_token as string) || undefined,
     coTravelers,
+    coTravelerRoles,
     lat: Number(row.lat ?? 0),
     lng: Number(row.lng ?? 0),
     createdAt: String(row.created_at || new Date().toISOString()),
@@ -346,6 +380,8 @@ export function expenseToCloudRow(
     receipt_r2_key: receiptR2Key ?? null,
     receipt_raw_text: e.receiptRawText ?? null,
     notes: e.notes ?? null,
+    is_shared: Boolean(e.isShared),
+    author_name: e.authorName ?? null,
     created_at: normalizeIsoTimestamp(e.createdAt),
     updated_at: new Date().toISOString(),
   };
@@ -371,6 +407,9 @@ export function cloudRowToExpense(
     receiptUri: localReceiptUri || undefined,
     receiptRawText: (row.receipt_raw_text as string) || undefined,
     notes: (row.notes as string) || undefined,
+    isShared: Boolean(row.is_shared),
+    authorId: (row.created_by as string) || undefined,
+    authorName: (row.author_name as string) || undefined,
     createdAt: String(row.created_at || new Date().toISOString()),
   };
 }

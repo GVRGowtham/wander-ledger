@@ -239,10 +239,10 @@ const ActiveHeroCard: React.FC<{
               ☀️ DAY {currentDay} OF {totalDays}
             </Text>
           </View>
-          {trip.isShared && (
+          {trip.coTravelers.length > 0 && (
             <View style={styles.sharedPill}>
               <Text style={styles.sharedPillText}>
-                💌 Shared ({trip.coTravelers.length + 1})
+                🤝 Shared ({trip.coTravelers.length + 1})
               </Text>
             </View>
           )}

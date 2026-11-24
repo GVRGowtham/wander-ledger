@@ -21,6 +21,13 @@ import {
   resolveAirportOrCity,
   searchAirports,
 } from '../services/manualFlightBuilder';
+import {
+  buildTripMemberRows,
+  getCoTravelerRole,
+  getEditorCount,
+  getTripAccessRole,
+  isCollaborativeTrip,
+} from '../services/sharingHelpers';
 
 describe('IATA BCBP Boarding Pass Parser (100% Offline)', () => {
   it('decodes ANA LAX -> HND boarding pass with PNR, seat, miles & loyalty number', () => {
@@ -1412,5 +1419,127 @@ describe('v0.5.0 Bidirectional Cloud Sync Engine (Offline-Safe + Supabase/R2 Map
     const valid = validateBackupSnapshot({ trips: [], flights: [] });
     expect(valid?.schemaVersion).toBe(2);
     expect(valid?.transports).toEqual([]);
+  });
+
+  it('handles Editor vs Viewer roles, trip_members rows, and Personal vs Shared expense mapping', () => {
+    const uid = '11111111-2222-3333-4444-555555555555';
+    const otherUid = '99999999-8888-7777-6666-555555555555';
+
+    const collabTrip: Trip = {
+      id: 'trip_collab_1',
+      ownerId: uid,
+      title: 'Japan Group',
+      destinationCity: 'Tokyo',
+      destinationCountry: 'Japan',
+      countryCode: 'JP',
+      flagEmoji: '🇯🇵',
+      startDate: '2026-10-01',
+      endDate: '2026-10-10',
+      homeCurrency: 'USD',
+      budget: 3000,
+      vibe: 'japan',
+      isShared: true,
+      coTravelers: ['Priya@gmail.com', 'Mom@gmail.com', 'priya@gmail.com'],
+      coTravelerRoles: {
+        'priya@gmail.com': 'editor',
+        'mom@gmail.com': 'viewer',
+      },
+      lat: 35.68,
+      lng: 139.76,
+      createdAt: '2026-09-01T10:00:00Z',
+      updatedAt: '2026-09-02T10:00:00Z',
+    };
+
+    // Role lookups & editor count (excludes Viewers!)
+    expect(getCoTravelerRole(collabTrip, 'Priya@gmail.com')).toBe('editor');
+    expect(getCoTravelerRole(collabTrip, 'Mom@gmail.com')).toBe('viewer');
+    expect(getCoTravelerRole(collabTrip, 'legacy_friend@gmail.com')).toBe('editor');
+
+    const memberRows = buildTripMemberRows(collabTrip);
+    expect(memberRows).toEqual([
+      { trip_id: 'trip_collab_1', invited_email: 'priya@gmail.com', role: 'editor' },
+      { trip_id: 'trip_collab_1', invited_email: 'mom@gmail.com', role: 'viewer' },
+    ]);
+
+    expect(
+      getEditorCount({
+        coTravelers: ['priya@gmail.com', 'mom@gmail.com'],
+        coTravelerRoles: { 'priya@gmail.com': 'editor', 'mom@gmail.com': 'viewer' },
+      })
+    ).toBe(2); // 1 owner + 1 editor (viewer excluded)
+
+    // Access role resolution for owner, editor, and viewer
+    expect(
+      getTripAccessRole(collabTrip, { id: uid, email: 'me@gmail.com', authMode: 'google' })
+    ).toBe('owner');
+    expect(
+      getTripAccessRole(collabTrip, { id: otherUid, email: 'Priya@gmail.com', authMode: 'google' })
+    ).toBe('editor');
+    expect(
+      getTripAccessRole(collabTrip, { id: otherUid, email: 'mom@gmail.com', authMode: 'google' })
+    ).toBe('viewer');
+
+    // Solo trip is NOT collaborative even if legacy isShared flag was set
+    expect(isCollaborativeTrip({ ownerId: uid, coTravelers: [] }, { id: uid, authMode: 'google' })).toBe(false);
+    expect(isCollaborativeTrip(collabTrip, { id: uid, authMode: 'google' })).toBe(true);
+
+    // Cloud mapper round-trip for coTravelerRoles & memberRoleOverrides
+    const cloudTrip = tripToCloudRow(collabTrip, uid);
+    expect(cloudTrip.co_traveler_roles).toEqual({
+      'priya@gmail.com': 'editor',
+      'mom@gmail.com': 'viewer',
+    });
+    const restoredTrip = cloudRowToTrip(cloudTrip, undefined, { 'mom@gmail.com': 'viewer' });
+    expect(restoredTrip.coTravelerRoles?.['mom@gmail.com']).toBe('viewer');
+
+    // Expense mapper round-trip for Personal (default false) and Shared (true + authorName)
+    const personalRow = expenseToCloudRow(
+      {
+        id: 'exp_p1',
+        tripId: 'trip_collab_1',
+        merchant: 'Matcha Cafe',
+        category: 'dining',
+        localAmount: 600,
+        localCurrency: 'JPY',
+        homeAmount: 4,
+        homeCurrency: 'USD',
+        fxRateUsed: 0.0067,
+        expenseDate: '2026-10-02',
+        createdAt: '2026-10-02T12:00:00Z',
+      },
+      uid,
+      `receipts/trip_collab_1/${uid}/exp_p1.webp`
+    );
+    expect(personalRow.is_shared).toBe(false);
+    const restoredPersonal = cloudRowToExpense(personalRow);
+    expect(restoredPersonal.isShared).toBe(false);
+    expect(restoredPersonal.authorId).toBe(uid);
+
+    const sharedRow = expenseToCloudRow(
+      {
+        id: 'exp_s1',
+        tripId: 'trip_collab_1',
+        merchant: 'Ichiran Ramen Group Dinner',
+        category: 'dining',
+        localAmount: 8000,
+        localCurrency: 'JPY',
+        homeAmount: 54,
+        homeCurrency: 'USD',
+        fxRateUsed: 0.0067,
+        expenseDate: '2026-10-03',
+        isShared: true,
+        authorId: uid,
+        authorName: 'Gowtham',
+        createdAt: '2026-10-03T19:00:00Z',
+      },
+      uid,
+      'shared-receipts/trip_collab_1/exp_s1.webp'
+    );
+    expect(sharedRow.is_shared).toBe(true);
+    expect(sharedRow.author_name).toBe('Gowtham');
+    const restoredShared = cloudRowToExpense(sharedRow, 'file:///local/exp_s1.webp');
+    expect(restoredShared.isShared).toBe(true);
+    expect(restoredShared.authorName).toBe('Gowtham');
+    expect(restoredShared.receiptUri).toBe('file:///local/exp_s1.webp');
   });
 });

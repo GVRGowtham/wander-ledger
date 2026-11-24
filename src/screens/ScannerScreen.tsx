@@ -55,6 +55,7 @@ import {
   ScanResult,
   Trip,
 } from '../types/models';
+import { isCollaborativeTrip } from '../services/sharingHelpers';
 
 interface Props {
   onClose: () => void;
@@ -115,6 +116,13 @@ export const ScannerScreen: React.FC<Props> = ({
     trips.length > 0 ? 'existing' : 'new'
   );
   const [selectedTripId, setSelectedTripId] = useState<string>(trips[0]?.id ?? '');
+  const [receiptIsShared, setReceiptIsShared] = useState(false);
+
+  const targetTripForShare =
+    destinationChoice === 'existing' ? trips.find((t) => t.id === selectedTripId) : undefined;
+  const targetTripIsCollab = targetTripForShare
+    ? isCollaborativeTrip(targetTripForShare, profile)
+    : false;
 
   const homeCurrency = profile?.homeCurrency || 'USD';
 
@@ -890,8 +898,12 @@ export const ScannerScreen: React.FC<Props> = ({
         expenseDate: scanResult.date,
         receiptUri: scanResult.imageUri,
         receiptRawText: scanResult.rawText,
+        isShared: targetTripIsCollab ? receiptIsShared : false,
+        authorId: profile?.id,
+        authorName: profile?.displayName,
         createdAt: now,
       });
+      setReceiptIsShared(false);
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1702,9 +1714,52 @@ export const ScannerScreen: React.FC<Props> = ({
                       );
                     })}
                   </ScrollView>
+                  {targetTripIsCollab && (
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => setReceiptIsShared(false)}
+                        style={[
+                          styles.typeSwitchChip,
+                          { flex: 1, alignItems: 'center', paddingVertical: 8 },
+                          !receiptIsShared && styles.typeSwitchChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.typeSwitchText,
+                            !receiptIsShared && { color: '#FFFFFF' },
+                          ]}
+                        >
+                          🔒 Personal
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setReceiptIsShared(true)}
+                        style={[
+                          styles.typeSwitchChip,
+                          { flex: 1, alignItems: 'center', paddingVertical: 8 },
+                          receiptIsShared && {
+                            backgroundColor: '#15803D',
+                            borderColor: '#15803D',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.typeSwitchText,
+                            receiptIsShared && { color: '#FFFFFF' },
+                          ]}
+                        >
+                          🤝 Shared
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                   <View style={styles.routeNoteBox}>
                     <Text style={styles.routeNoteText}>
-                      🔒 Tucked safely inside the Spend tab (keeps Polaroid Memories clean!)
+                      {targetTripIsCollab && receiptIsShared
+                        ? '🤝 Shared with Editor co-travelers on this trip (including receipt photo)'
+                        : '🔒 Tucked safely inside the Spend tab (visible only to you)'}
                     </Text>
                   </View>
                 </View>

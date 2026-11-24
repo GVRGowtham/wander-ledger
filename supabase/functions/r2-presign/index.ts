@@ -1,10 +1,10 @@
 // Supabase Edge Function: r2-presign
-// Authorizes the user's Google/Supabase JWT & trip membership, then returns a short-lived
-// Cloudflare R2 presigned PUT, GET, or DELETE URL for compressed WebP memories (~200KB),
-// trip covers, or private receipts (~70KB).
-// Memory photos live under `memories/{tripId}/{id}.webp`.
-// Trip cover photos live under `covers/{tripId}/{id}.webp`.
-// Private receipts live under `receipts/{tripId}/{userId}/{id}.webp` (never exposed on Postcards).
+// Authorizes the user's Google/Supabase JWT, trip membership, and role ('owner' | 'editor' | 'viewer'),
+// then returns a short-lived Cloudflare R2 presigned PUT, GET, or DELETE URL:
+//   - Memory photos:    `memories/{tripId}/{id}.webp` (Owner/Editor read+write, Viewer read-only)
+//   - Trip covers:      `covers/{tripId}/{id}.webp`   (Owner/Editor read+write, Viewer read-only)
+//   - Shared receipts:  `shared-receipts/{tripId}/{id}.webp` (Owner/Editor read+write, Viewer FORBIDDEN)
+//   - Personal receipts:`receipts/{tripId}/{userId}/{id}.webp` (Strictly uploader-only)
 
 // @ts-nocheck — Deno Edge Runtime
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
@@ -29,15 +29,24 @@ serve(async (req) => {
       return new Response('Unauthorized', { status: 401 });
     }
 
+    const userId = userData.user.id;
+    const userEmail = (userData.user.email || '').trim().toLowerCase();
+
     const { tripId, mediaKind, fileId, action, objectKey } = await req.json();
     const kind =
-      mediaKind === 'receipt' ? 'receipt' : mediaKind === 'cover' ? 'cover' : 'memory';
+      mediaKind === 'shared_receipt'
+        ? 'shared_receipt'
+        : mediaKind === 'receipt'
+          ? 'receipt'
+          : mediaKind === 'cover'
+            ? 'cover'
+            : 'memory';
     const op = action === 'delete' ? 'delete' : action === 'get' ? 'get' : 'put';
 
-    // Verify user belongs to trip via RLS
+    // Verify user belongs to trip via RLS and resolve role ('owner' | 'editor' | 'viewer')
     const { data: trip } = await supabase
       .from('trips')
-      .select('id')
+      .select('id, owner_id')
       .eq('id', tripId)
       .maybeSingle();
 
@@ -45,15 +54,41 @@ serve(async (req) => {
       return new Response('Forbidden', { status: 403 });
     }
 
+    let canEdit = trip.owner_id === userId;
+    if (!canEdit) {
+      const { data: members } = await supabase
+        .from('trip_members')
+        .select('role, user_id, invited_email')
+        .eq('trip_id', tripId);
+
+      const myMember = (members || []).find(
+        (m) =>
+          m.user_id === userId ||
+          (userEmail && String(m.invited_email || '').trim().toLowerCase() === userEmail)
+      );
+      canEdit = Boolean(myMember && (myMember.role === 'owner' || myMember.role === 'editor'));
+    }
+
+    // Viewers cannot upload/delete any files and cannot access any receipts (personal or shared)
+    if ((op === 'put' || op === 'delete') && !canEdit) {
+      return new Response('Forbidden: viewer role is read-only', { status: 403 });
+    }
+    if ((kind === 'receipt' || kind === 'shared_receipt') && !canEdit) {
+      return new Response('Forbidden: receipts are hidden from viewers', { status: 403 });
+    }
+
     let key: string;
     if ((op === 'get' || op === 'delete') && typeof objectKey === 'string' && objectKey.trim()) {
-      // Ensure requested objectKey strictly belongs to this trip (and user for receipts)
       const normalized = objectKey.trim().replace(/^\/+/, '');
-      const allowedPrefixes = [
-        `memories/${tripId}/`,
-        `covers/${tripId}/`,
-        `receipts/${tripId}/${userData.user.id}/`,
-      ];
+      const allowedPrefixes = canEdit
+        ? [
+            `memories/${tripId}/`,
+            `covers/${tripId}/`,
+            `shared-receipts/${tripId}/`,
+            `receipts/${tripId}/${userId}/`,
+          ]
+        : [`memories/${tripId}/`, `covers/${tripId}/`];
+
       if (!allowedPrefixes.some((p) => normalized.startsWith(p))) {
         return new Response('Forbidden object key', { status: 403 });
       }
@@ -61,11 +96,13 @@ serve(async (req) => {
     } else {
       const cleanFileId = String(fileId || '').replace(/\.webp$/i, '');
       key =
-        kind === 'receipt'
-          ? `receipts/${tripId}/${userData.user.id}/${cleanFileId}.webp`
-          : kind === 'cover'
-            ? `covers/${tripId}/${cleanFileId}.webp`
-            : `memories/${tripId}/${cleanFileId}.webp`;
+        kind === 'shared_receipt'
+          ? `shared-receipts/${tripId}/${cleanFileId}.webp`
+          : kind === 'receipt'
+            ? `receipts/${tripId}/${userId}/${cleanFileId}.webp`
+            : kind === 'cover'
+              ? `covers/${tripId}/${cleanFileId}.webp`
+              : `memories/${tripId}/${cleanFileId}.webp`;
     }
 
     const r2AccountId = Deno.env.get('R2_ACCOUNT_ID')!;

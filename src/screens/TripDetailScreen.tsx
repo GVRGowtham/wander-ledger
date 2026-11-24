@@ -5,6 +5,7 @@ import {
   Image,
   PixelRatio,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -68,6 +69,13 @@ import {
 import { pickAndOptimizeMemoryPhoto } from '../services/mediaService';
 import { shareImageWithCaption } from '../services/shareMediaService';
 import {
+  getCoTravelerRole,
+  getEditorCount,
+  getTripAccessRole,
+  isCollaborativeTrip,
+  normalizeCoTravelerKey,
+} from '../services/sharingHelpers';
+import {
   CATEGORY_META,
   COLORS,
   formatMoney,
@@ -76,6 +84,7 @@ import {
   TRANSPORT_MODE_META,
 } from '../theme/tokens';
 import {
+  CoTravelerRole,
   DistanceUnit,
   ExpenseCategory,
   Flight,
@@ -238,17 +247,20 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [stayPointsProg, setStayPointsProg] = useState('');
   const [stayNotes, setStayNotes] = useState('');
 
-  // Quick Expense Modal
+  // Quick Expense Modal (defaults to Personal; 1-tap toggle to Shared on collaborative trips)
   const [expenseModal, setExpenseModal] = useState(false);
   const [expMerchant, setExpMerchant] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expCurrency, setExpCurrency] = useState(trip?.homeCurrency || 'USD');
   const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('dining');
+  const [expIsShared, setExpIsShared] = useState(false);
+  const [expenseFilter, setExpenseFilter] = useState<'all' | 'personal' | 'shared'>('all');
 
-  // Share Modal & Auto-Collage Postcard Export
+  // Co-Travelers Modal & Instant One-Off Postcard Export
   const [shareModal, setShareModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<CoTravelerRole>('editor');
   const [sharingPostcard, setSharingPostcard] = useState(false);
   const [postcardRenderJob, setPostcardRenderJob] = useState<{
     jobKey: string;
@@ -285,6 +297,12 @@ export const TripDetailScreen: React.FC<Props> = ({
   const memories = getMemoriesForTrip(trip.id);
   const summary = getSummaryForTrip(trip.id);
 
+  const myRole = getTripAccessRole(trip, profile);
+  const isOwner = myRole === 'owner';
+  const isViewer = myRole === 'viewer';
+  const isCollab = isCollaborativeTrip(trip, profile);
+  const editorCount = getEditorCount(trip);
+
   const stopMap = new Map(stops.map((s) => [s.id, s]));
   const activeStopFilter =
     selectedStopFilterId && stopMap.has(selectedStopFilterId)
@@ -301,20 +319,38 @@ export const TripDetailScreen: React.FC<Props> = ({
   const suggestedStops = suggestStopsFromBookings(flights, transports, stays, stops);
   const tripGeo = deriveTripGeography(trip, flights, transports, stops);
 
-  // Spend breakdown by category
+  // Personal vs Shared expense filtering (Option A: full bill amounts + subtle per-person reference on Shared)
+  const personalExpenses = expenses.filter((e) => !e.isShared);
+  const sharedExpenses = expenses.filter((e) => Boolean(e.isShared));
+  const showExpenseFilter = isCollab || sharedExpenses.length > 0;
+  const activeExpenseFilter = showExpenseFilter ? expenseFilter : 'all';
+  const visibleExpenses =
+    activeExpenseFilter === 'personal'
+      ? personalExpenses
+      : activeExpenseFilter === 'shared'
+        ? sharedExpenses
+        : expenses;
+
+  // Spend breakdown by category (follows active All / Personal / Shared filter)
   const catTotals: Record<string, number> = {};
-  for (const e of expenses) {
+  for (const e of visibleExpenses) {
     catTotals[e.category] = (catTotals[e.category] ?? 0) + e.homeAmount;
   }
-  for (const s of stays) {
-    catTotals.lodging = (catTotals.lodging ?? 0) + s.homeCost;
-  }
-  for (const t of transports) {
-    if (t.homeCost && t.homeCost > 0) {
-      catTotals.transit = (catTotals.transit ?? 0) + t.homeCost;
+  if (activeExpenseFilter === 'all') {
+    for (const s of stays) {
+      catTotals.lodging = (catTotals.lodging ?? 0) + s.homeCost;
+    }
+    for (const t of transports) {
+      if (t.homeCost && t.homeCost > 0) {
+        catTotals.transit = (catTotals.transit ?? 0) + t.homeCost;
+      }
     }
   }
-  const grandTotal = Math.max(1, summary.totalSpentHome);
+  const filteredTotalHome =
+    activeExpenseFilter === 'all'
+      ? summary.totalSpentHome
+      : visibleExpenses.reduce((sum, e) => sum + e.homeAmount, 0);
+  const grandTotal = Math.max(1, filteredTotalHome);
 
   // --- EDIT TRIP ---
   const openEditTripModal = () => {
@@ -569,6 +605,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     setExpCurrency(trip.homeCurrency || 'USD');
     setExpDate(new Date().toISOString().slice(0, 10));
     setExpCategory(presetCategory);
+    setExpIsShared(false);
     setExpenseModal(true);
   };
 
@@ -590,11 +627,15 @@ export const TripDetailScreen: React.FC<Props> = ({
       homeCurrency: trip.homeCurrency,
       fxRateUsed: rate,
       expenseDate: expDate.trim() || new Date().toISOString().slice(0, 10),
+      isShared: isCollab ? expIsShared : false,
+      authorId: profile?.id,
+      authorName: profile?.displayName,
       createdAt: new Date().toISOString(),
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setExpMerchant('');
     setExpAmount('');
+    setExpIsShared(false);
     setExpenseModal(false);
   };
 
@@ -929,14 +970,46 @@ export const TripDetailScreen: React.FC<Props> = ({
   const handleInviteBuddy = () => {
     const buddy = inviteEmail.trim();
     if (!buddy) return;
+    const normKey = normalizeCoTravelerKey(buddy);
     const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
-    const nextList = Array.from(new Set([...trip.coTravelers, buddy]));
-    saveTripSharing(trip.id, true, nextList, token);
+    const existingMatch = trip.coTravelers.find((c) => normalizeCoTravelerKey(c) === normKey);
+    const nextList = existingMatch ? trip.coTravelers : [...trip.coTravelers, buddy];
+    const nextRoles: Record<string, CoTravelerRole> = {
+      ...(trip.coTravelerRoles ?? {}),
+      [normKey]: inviteRole,
+    };
+    saveTripSharing(trip.id, true, nextList, token, nextRoles);
     setInviteEmail('');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     Alert.alert(
-      'Co-Traveler Added 💌',
-      `${buddy} has been added to "${trip.title}". Share the invite link so they can join via Google Sign-In!`
+      'Co-Traveler Added 🤝',
+      `${buddy} now has ${inviteRole === 'viewer' ? 'Viewer (read-only)' : 'Editor'} access to "${trip.title}". Once Cloud Sync is connected, they'll see this trip automatically on Google Sign-In.`
     );
+  };
+
+  const handleToggleBuddyRole = (member: string) => {
+    if (!isOwner) return;
+    const normKey = normalizeCoTravelerKey(member);
+    const current = getCoTravelerRole(trip, member);
+    const nextRole: CoTravelerRole = current === 'editor' ? 'viewer' : 'editor';
+    const nextRoles: Record<string, CoTravelerRole> = {
+      ...(trip.coTravelerRoles ?? {}),
+      [normKey]: nextRole,
+    };
+    const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
+    saveTripSharing(trip.id, trip.coTravelers.length > 0, trip.coTravelers, token, nextRoles);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  };
+
+  const handleRemoveBuddy = (member: string) => {
+    if (!isOwner) return;
+    const normKey = normalizeCoTravelerKey(member);
+    const nextList = trip.coTravelers.filter((c) => normalizeCoTravelerKey(c) !== normKey);
+    const nextRoles: Record<string, CoTravelerRole> = { ...(trip.coTravelerRoles ?? {}) };
+    delete nextRoles[normKey];
+    const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
+    saveTripSharing(trip.id, nextList.length > 0, nextList, token, nextRoles);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   const handleSharePostcard = async () => {
@@ -945,16 +1018,30 @@ export const TripDetailScreen: React.FC<Props> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
     try {
-      const token = trip.shareToken || `wl_${trip.id.slice(-8)}`;
-      if (!trip.isShared) {
-        saveTripSharing(trip.id, true, trip.coTravelers, token);
-      }
+      // Pure one-off postcard share: never stores history and never marks the trip as collaborative
+      const photoMemories = memories.filter((m) => Boolean(m.photoUri));
+      const sortedForCollage = photoMemories.slice(0, 4);
 
-      // Prefer memories that have photos so the auto-collage looks vibrant
-      const sortedForCollage = [
-        ...memories.filter((m) => Boolean(m.photoUri)),
-        ...memories.filter((m) => !m.photoUri),
-      ].slice(0, 4);
+      const routeStatsCaption = generateOfflineIgCaption({
+        trip,
+        memories: sortedForCollage.length > 0 ? sortedForCollage : memories,
+        flights,
+        transports,
+        distanceUnit,
+        tone: 'stats',
+        includeHashtags: false,
+        includeWatermarkTag: false,
+      });
+
+      // No photo memories yet -> share clean text travelogue immediately without rendering a blank image
+      if (sortedForCollage.length === 0) {
+        await Share.share({
+          title: `${trip.title} ${trip.flagEmoji} — Wanderer's Ledger Postcard`,
+          message: routeStatsCaption,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        return;
+      }
 
       // Measure natural photo dimensions for smart layout & face-friendly framing
       const dimsMap: Record<string, ImageDimensions> = {};
@@ -1006,17 +1093,6 @@ export const TripDetailScreen: React.FC<Props> = ({
         }
       });
 
-      const routeStatsCaption = generateOfflineIgCaption({
-        trip,
-        memories: sortedForCollage.length > 0 ? sortedForCollage : memories,
-        flights,
-        transports,
-        distanceUnit,
-        tone: 'stats',
-        includeHashtags: false,
-        includeWatermarkTag: false,
-      });
-
       // Render crisp 1080x1350 postcard collage behind the UI and wait for every photo to decode
       const readyPromise = new Promise<void>((resolve) => {
         postcardReadyResolverRef.current = resolve;
@@ -1037,7 +1113,6 @@ export const TripDetailScreen: React.FC<Props> = ({
         throw new Error('Could not render postcard collage.');
       }
 
-      setShareModal(false);
       await shareImageWithCaption({
         imageUri,
         caption: routeStatsCaption,
@@ -1114,15 +1189,37 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.glassBtnText}>← Trips</Text>
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
-            <TouchableOpacity onPress={openEditTripModal} style={styles.glassBtn} activeOpacity={0.85}>
-              <Text style={styles.glassBtnText}>✏️ Edit</Text>
+            <TouchableOpacity
+              onPress={() => setShareModal(true)}
+              style={styles.glassBtn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.glassBtnText}>
+                👥{trip.coTravelers.length > 0 ? ` ${trip.coTravelers.length}` : ''}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShareModal(true)} style={styles.shareGlassBtn} activeOpacity={0.85}>
-              <Text style={styles.shareGlassText}>💌 Share</Text>
+            <TouchableOpacity
+              onPress={handleSharePostcard}
+              disabled={sharingPostcard}
+              style={[styles.shareGlassBtn, sharingPostcard && { opacity: 0.72 }]}
+              activeOpacity={0.85}
+            >
+              {sharingPostcard ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.shareGlassText}>📮 Postcard</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleDeleteTrip} style={styles.iconGlassBtn} activeOpacity={0.85}>
-              <Text style={styles.glassBtnText}>🗑️</Text>
-            </TouchableOpacity>
+            {!isViewer && (
+              <TouchableOpacity onPress={openEditTripModal} style={styles.iconGlassBtn} activeOpacity={0.85}>
+                <Text style={styles.glassBtnText}>✏️</Text>
+              </TouchableOpacity>
+            )}
+            {isOwner && (
+              <TouchableOpacity onPress={handleDeleteTrip} style={styles.iconGlassBtn} activeOpacity={0.85}>
+                <Text style={styles.glassBtnText}>🗑️</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1133,13 +1230,14 @@ export const TripDetailScreen: React.FC<Props> = ({
           </Text>
           <Text style={styles.tripDates} numberOfLines={1}>
             {tripGeo.visitedCountries.length > 0 ? `${tripGeo.countriesLabel} • ` : ''}
-            {trip.startDate} → {trip.endDate} • {formatMoney(summary.totalSpentHome, trip.homeCurrency)} •{' '}
+            {trip.startDate} → {trip.endDate}
+            {!isViewer ? ` • ${formatMoney(summary.totalSpentHome, trip.homeCurrency)}` : ''} •{' '}
             {formatDistance(summary.totalDistanceKm, distanceUnit)}
           </Text>
         </View>
       </View>
 
-      {/* 3 Focused Tabs: 📸 Memories | 🧭 Bookings | 🧾 Spend */}
+      {/* Focused Tabs: 📸 Memories | 🧭 Bookings | 🧾 Spend (Spend hidden for Viewers) */}
       <View style={styles.tabsWrap}>
         <TabPill
           active={tab === 'memories'}
@@ -1151,11 +1249,13 @@ export const TripDetailScreen: React.FC<Props> = ({
           label={`🧭 Bookings (${flights.length + transports.length + stays.length})`}
           onPress={() => setTab('bookings')}
         />
-        <TabPill
-          active={tab === 'spend'}
-          label={`🧾 Spend (${expenses.length})`}
-          onPress={() => setTab('spend')}
-        />
+        {!isViewer && (
+          <TabPill
+            active={tab === 'spend'}
+            label={`🧾 Spend (${expenses.length})`}
+            onPress={() => setTab('spend')}
+          />
+        )}
       </View>
 
       <ScrollView
@@ -1606,17 +1706,65 @@ export const TripDetailScreen: React.FC<Props> = ({
           </View>
         )}
 
-        {/* TAB 3: SPEND LEDGER WITH TUCKED-AWAY PRIVATE RECEIPTS */}
-        {tab === 'spend' && (
+        {/* TAB 3: SPEND LEDGER WITH PERSONAL / SHARED FILTER & TUCKED RECEIPTS */}
+        {tab === 'spend' && !isViewer && (
           <View style={styles.sectionGap}>
+            {showExpenseFilter && (
+              <View style={styles.expenseFilterRow}>
+                {(
+                  [
+                    { id: 'all', label: `All (${expenses.length})` },
+                    { id: 'personal', label: `🔒 Personal (${personalExpenses.length})` },
+                    { id: 'shared', label: `🤝 Shared (${sharedExpenses.length})` },
+                  ] as const
+                ).map((opt) => {
+                  const active = activeExpenseFilter === opt.id;
+                  return (
+                    <TouchableOpacity
+                      key={opt.id}
+                      onPress={() => setExpenseFilter(opt.id)}
+                      style={[
+                        styles.expenseFilterPill,
+                        active && styles.expenseFilterPillActive,
+                      ]}
+                      activeOpacity={0.82}
+                    >
+                      <Text
+                        style={[
+                          styles.expenseFilterText,
+                          active && styles.expenseFilterTextActive,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
             <View style={styles.spendSummaryCard}>
               <View style={styles.rowBetween}>
-                <Text style={styles.subHeading}>💰 Spend Overview</Text>
+                <Text style={styles.subHeading}>
+                  {activeExpenseFilter === 'personal'
+                    ? '🔒 Personal Spend'
+                    : activeExpenseFilter === 'shared'
+                      ? '🤝 Shared Group Spend'
+                      : '💰 Spend Overview'}
+                </Text>
                 <Text style={styles.spendTotal}>
-                  {formatMoney(summary.totalSpentHome, trip.homeCurrency)}
-                  {trip.budget > 0 ? ` / ${formatMoney(trip.budget, trip.homeCurrency)}` : ''}
+                  {formatMoney(filteredTotalHome, trip.homeCurrency)}
+                  {activeExpenseFilter === 'all' && trip.budget > 0
+                    ? ` / ${formatMoney(trip.budget, trip.homeCurrency)}`
+                    : ''}
                 </Text>
               </View>
+
+              {activeExpenseFilter === 'shared' && editorCount >= 2 && filteredTotalHome > 0 && (
+                <Text style={styles.perPersonHint}>
+                  ≈ {formatMoney(filteredTotalHome / editorCount, trip.homeCurrency)} / person ({editorCount} editors)
+                </Text>
+              )}
 
               {/* Category Proportional Bar */}
               <View style={styles.catBar}>
@@ -1665,16 +1813,24 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
             </View>
 
-            {expenses.length === 0 ? (
+            {visibleExpenses.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={{ fontSize: 28 }}>🧾</Text>
-                <Text style={styles.emptyTitle}>No expenses logged yet</Text>
+                <Text style={styles.emptyTitle}>
+                  {activeExpenseFilter === 'shared'
+                    ? 'No shared expenses yet'
+                    : activeExpenseFilter === 'personal'
+                      ? 'No personal expenses yet'
+                      : 'No expenses logged yet'}
+                </Text>
                 <Text style={styles.emptySub}>
-                  Scan restaurant bills in any currency — we convert them offline and keep receipts tucked neatly here!
+                  {activeExpenseFilter === 'shared'
+                    ? 'Toggle “🤝 Shared” when adding an expense to share group bills & receipts with your Editor co-travelers.'
+                    : 'Scan restaurant bills in any currency — we convert them offline and keep receipts tucked neatly here!'}
                 </Text>
               </View>
             ) : (
-              expenses.map((e) => {
+              visibleExpenses.map((e) => {
                 const meta = CATEGORY_META[e.category] ?? CATEGORY_META.other;
                 const hasReceipt = Boolean(e.receiptUri || e.receiptRawText);
                 const isOpen = expandedReceiptId === e.id;
@@ -1700,6 +1856,30 @@ export const TripDetailScreen: React.FC<Props> = ({
                             {e.expenseDate} • {formatMoney(e.localAmount, e.localCurrency)}
                             {hasReceipt ? ' • 🧾' : ''}
                           </Text>
+                          {showExpenseFilter && (
+                            <View style={styles.expBadgeRow}>
+                              <View
+                                style={[
+                                  styles.expVisBadge,
+                                  e.isShared && styles.expVisBadgeShared,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.expVisBadgeText,
+                                    e.isShared && styles.expVisBadgeTextShared,
+                                  ]}
+                                >
+                                  {e.isShared ? '🤝 Shared' : '🔒 Personal'}
+                                </Text>
+                              </View>
+                              {e.isShared && e.authorName ? (
+                                <Text style={styles.expAuthorText} numberOfLines={1}>
+                                  by {e.authorName}
+                                </Text>
+                              ) : null}
+                            </View>
+                          )}
                         </View>
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -1725,7 +1905,9 @@ export const TripDetailScreen: React.FC<Props> = ({
                     {isOpen && (
                       <View style={styles.receiptDrawer}>
                         <Text style={styles.receiptPrivateBadge}>
-                          🔒 Private Receipt (Hidden from shared Postcards)
+                          {e.isShared
+                            ? '🤝 Shared Receipt (Visible to trip Editors • Hidden from Viewers & Postcards)'
+                            : '🔒 Personal Receipt (Visible only to you)'}
                         </Text>
                         {e.receiptUri && (
                           <Image
@@ -2074,6 +2256,41 @@ export const TripDetailScreen: React.FC<Props> = ({
           placeholder="Pick date"
         />
 
+        {isCollab && (
+          <View style={styles.expToggleWrap}>
+            <Text style={styles.fieldLabel}>Expense Visibility</Text>
+            <View style={styles.rolePillRow}>
+              <TouchableOpacity
+                onPress={() => setExpIsShared(false)}
+                style={[styles.rolePillBtn, !expIsShared && styles.rolePillBtnActive]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.rolePillText, !expIsShared && styles.rolePillTextActive]}
+                >
+                  🔒 Personal
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setExpIsShared(true)}
+                style={[styles.rolePillBtn, expIsShared && styles.rolePillBtnSharedActive]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.rolePillText, expIsShared && styles.rolePillTextActive]}
+                >
+                  🤝 Shared
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.roleHelperText}>
+              {expIsShared
+                ? 'Visible to Editor co-travelers on this trip (including receipt photo).'
+                : 'Private — visible only to you, even on this shared trip.'}
+            </Text>
+          </View>
+        )}
+
         <Text style={styles.fieldLabel}>Category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
           {(Object.keys(CATEGORY_META) as ExpenseCategory[]).map((cat) => {
@@ -2094,111 +2311,156 @@ export const TripDetailScreen: React.FC<Props> = ({
         </ScrollView>
       </BottomSheetModal>
 
-      {/* SHARE TRIP & POSTCARD MODAL */}
+      {/* DEDICATED CO-TRAVELERS MODAL (Trip Sharing & Roles — Postcards are separate 1-tap action) */}
       <BottomSheetModal
         visible={shareModal}
-        title={`💌 Share ${trip.title}`}
+        title={`👥 Co-Travelers • ${trip.title}`}
         onClose={() => setShareModal(false)}
       >
-        <View style={styles.shareCardWarm}>
-          <Text style={styles.shareCardHead}>✨ Invite Co-Travelers</Text>
-          <Text style={styles.shareCardSub}>
-            Friends sign in with Google to add their own Polaroids, flights & shared bills.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-            <TextInput
-              value={inviteEmail}
-              onChangeText={setInviteEmail}
-              placeholder="friend@gmail.com"
-              placeholderTextColor={COLORS.inkSoft}
-              autoCapitalize="none"
-              style={[styles.input, { flex: 1, backgroundColor: '#FFFFFF' }]}
-            />
-            <TouchableOpacity onPress={handleInviteBuddy} style={styles.inviteBtn}>
-              <Text style={styles.inviteBtnText}>Add</Text>
-            </TouchableOpacity>
+        {isOwner ? (
+          <View style={styles.shareCardWarm}>
+            <Text style={styles.shareCardHead}>✨ Invite Co-Travelers</Text>
+            <Text style={styles.shareCardSub}>
+              Add friends by their Google email and pick what they can access.
+            </Text>
+
+            <View style={styles.rolePillRow}>
+              <TouchableOpacity
+                onPress={() => setInviteRole('editor')}
+                style={[
+                  styles.rolePillBtn,
+                  inviteRole === 'editor' && styles.rolePillBtnSharedActive,
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.rolePillText,
+                    inviteRole === 'editor' && styles.rolePillTextActive,
+                  ]}
+                >
+                  ✏️ Editor
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setInviteRole('viewer')}
+                style={[
+                  styles.rolePillBtn,
+                  inviteRole === 'viewer' && styles.rolePillBtnViewerActive,
+                ]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.rolePillText,
+                    inviteRole === 'viewer' && styles.rolePillTextActive,
+                  ]}
+                >
+                  👀 Viewer
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.roleHelperText}>
+              {inviteRole === 'editor'
+                ? 'Can add photos, bookings & shared expenses. Personal expenses stay private.'
+                : 'Read-only itinerary & photos. Expenses and receipts are completely hidden.'}
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+              <TextInput
+                value={inviteEmail}
+                onChangeText={setInviteEmail}
+                placeholder="friend@gmail.com"
+                placeholderTextColor={COLORS.inkSoft}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={[styles.input, { flex: 1, backgroundColor: '#FFFFFF' }]}
+              />
+              <TouchableOpacity onPress={handleInviteBuddy} style={styles.inviteBtn}>
+                <Text style={styles.inviteBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          {trip.coTravelers.length > 0 && (
-            <Text style={styles.coTravelerList}>
-              Co-travelers: {trip.coTravelers.join(', ')}
+        ) : (
+          <View style={styles.shareCardSky}>
+            <Text style={[styles.shareCardHead, { color: '#0369A1' }]}>
+              {isViewer ? '👀 You have Viewer access' : '✏️ You have Editor access'}
+            </Text>
+            <Text style={styles.shareCardSub}>
+              {isViewer
+                ? 'You can view this trip’s route, bookings & memories. Expenses are hidden.'
+                : 'You can add photos, bookings & shared expenses. Only the trip owner can manage members.'}
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.memberSection}>
+          <Text style={styles.fieldLabel}>
+            People on this Trip ({trip.coTravelers.length + 1})
+          </Text>
+
+          <View style={styles.memberRow}>
+            <Text style={styles.memberName} numberOfLines={1}>
+              {isOwner ? `${profile?.displayName || 'You'} (Owner)` : 'Trip Owner'}
+            </Text>
+            <View style={[styles.memberRoleBadge, { backgroundColor: '#FEF3C7' }]}>
+              <Text style={[styles.memberRoleBadgeText, { color: '#B45309' }]}>👑 Owner</Text>
+            </View>
+          </View>
+
+          {trip.coTravelers.length === 0 ? (
+            <Text style={styles.memberEmptyHint}>
+              No co-travelers added yet — this is currently a solo trip.
+            </Text>
+          ) : (
+            trip.coTravelers.map((member) => {
+              const role = getCoTravelerRole(trip, member);
+              return (
+                <View key={member} style={styles.memberRow}>
+                  <Text style={styles.memberName} numberOfLines={1}>
+                    {member}
+                  </Text>
+                  <View style={styles.memberRowActions}>
+                    <TouchableOpacity
+                      onPress={() => handleToggleBuddyRole(member)}
+                      disabled={!isOwner}
+                      style={[
+                        styles.memberRoleBadge,
+                        role === 'viewer'
+                          ? { backgroundColor: COLORS.skySoft }
+                          : { backgroundColor: '#DCFCE7' },
+                      ]}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.memberRoleBadgeText,
+                          role === 'viewer' ? { color: '#0369A1' } : { color: '#15803D' },
+                        ]}
+                      >
+                        {role === 'viewer' ? '👀 Viewer' : '✏️ Editor'}
+                      </Text>
+                    </TouchableOpacity>
+                    {isOwner && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveBuddy(member)}
+                        style={styles.memberRemoveBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.memberRemoveText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          )}
+          {isOwner && trip.coTravelers.length > 0 && (
+            <Text style={styles.roleHelperText}>
+              Tip: Tap a person’s role badge to switch between Editor and Viewer anytime.
             </Text>
           )}
         </View>
-
-        <View style={styles.shareCardSky}>
-          <Text style={[styles.shareCardHead, { color: '#0369A1' }]}>
-            📮 Send Read-Only Family Postcard
-          </Text>
-          <Text style={styles.shareCardSub}>
-            Auto-creates a 1080p photo collage postcard with your Route Stats caption in a single WhatsApp / Messages share — private receipts & spend stay hidden!
-          </Text>
-          <TouchableOpacity
-            onPress={handleSharePostcard}
-            disabled={sharingPostcard}
-            style={[
-              styles.postcardShareBtn,
-              { flexDirection: 'row', justifyContent: 'center', gap: 8 },
-              sharingPostcard && { opacity: 0.72 },
-            ]}
-            activeOpacity={0.88}
-          >
-            {sharingPostcard ? (
-              <>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.postcardShareText}>Creating Postcard Collage…</Text>
-              </>
-            ) : (
-              <Text style={styles.postcardShareText}>Share Postcard Collage ✈️</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {memories.length > 0 ? (
-          <TouchableOpacity
-            onPress={() => {
-              setShareModal(false);
-              onOpenIgStudio(trip.id);
-            }}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={['#F58529', '#DD2A7B', '#8134AF']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.igBannerBtn}
-            >
-              <View style={styles.igLogoCircle}>
-                <InstagramIcon size={18} variant="white" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.igBannerTitle}>Open Instagram Post Studio</Text>
-                <Text style={styles.igBannerSub} numberOfLines={1}>
-                  Export Collages, Stories, Carousels & Captions
-                </Text>
-              </View>
-              <Text style={styles.igBannerArrow}>→</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => {
-              setShareModal(false);
-              setTab('memories');
-              openAddMemoryModal();
-            }}
-            style={styles.igLockedHintBtn}
-            activeOpacity={0.85}
-          >
-            <InstagramIcon size={18} variant="gradient" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.igLockedHintTitle}>Add a memory to unlock IG Post Studio</Text>
-              <Text style={styles.igLockedHintSub}>
-                Tap to capture your first photo & unlock collages & carousels
-              </Text>
-            </View>
-            <Text style={styles.igLockedHintArrow}>+</Text>
-          </TouchableOpacity>
-        )}
       </BottomSheetModal>
 
       {/* UNIFIED ADD TRAVEL MODAL (FLIGHT OR TRAIN / BUS / FERRY / RENTAL / OWN CAR) */}
@@ -3165,5 +3427,165 @@ const styles = StyleSheet.create({
     color: COLORS.inkSoft,
     letterSpacing: 0.4,
     paddingLeft: 2,
+  },
+  expenseFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  expenseFilterPill: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 99,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  expenseFilterPillActive: {
+    backgroundColor: COLORS.ink,
+    borderColor: COLORS.ink,
+  },
+  expenseFilterText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.inkMuted,
+  },
+  expenseFilterTextActive: {
+    color: '#FFFFFF',
+  },
+  perPersonHint: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#047857',
+    marginTop: 2,
+  },
+  expBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  expVisBadge: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  expVisBadgeShared: {
+    backgroundColor: '#DCFCE7',
+  },
+  expVisBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.inkMuted,
+  },
+  expVisBadgeTextShared: {
+    color: '#15803D',
+  },
+  expAuthorText: {
+    fontSize: 10.5,
+    color: COLORS.inkSoft,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  expToggleWrap: {
+    gap: 6,
+    marginTop: 2,
+  },
+  rolePillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  rolePillBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  rolePillBtnActive: {
+    backgroundColor: COLORS.ink,
+    borderColor: COLORS.ink,
+  },
+  rolePillBtnSharedActive: {
+    backgroundColor: '#15803D',
+    borderColor: '#15803D',
+  },
+  rolePillBtnViewerActive: {
+    backgroundColor: '#0369A1',
+    borderColor: '#0369A1',
+  },
+  rolePillText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
+  rolePillTextActive: {
+    color: '#FFFFFF',
+  },
+  roleHelperText: {
+    fontSize: 11,
+    color: COLORS.inkMuted,
+    lineHeight: 16,
+  },
+  memberSection: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    padding: 14,
+    gap: 10,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSoft,
+  },
+  memberName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.ink,
+  },
+  memberRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberRoleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+  },
+  memberRoleBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  memberRemoveBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberRemoveText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#DC2626',
+  },
+  memberEmptyHint: {
+    fontSize: 12,
+    color: COLORS.inkSoft,
+    fontStyle: 'italic',
   },
 });

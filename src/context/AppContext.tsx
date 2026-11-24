@@ -70,6 +70,7 @@ import {
   FxRatesMap,
 } from '../services/fxService';
 import {
+  CoTravelerRole,
   DistanceUnit,
   Expense,
   Flight,
@@ -123,7 +124,13 @@ interface AppContextValue {
   editTrip: (tripId: string, patch: TripEditablePatch) => void;
   removeTrip: (tripId: string) => Promise<void>;
   setTripCoverPhoto: (tripId: string, uri: string | null) => void;
-  saveTripSharing: (tripId: string, isShared: boolean, coTravelers: string[], shareToken: string) => void;
+  saveTripSharing: (
+    tripId: string,
+    isShared: boolean,
+    coTravelers: string[],
+    shareToken: string,
+    coTravelerRoles?: Record<string, CoTravelerRole>
+  ) => void;
   addFlight: (flight: Flight) => void;
   editFlight: (flightId: string, patch: FlightEditablePatch) => void;
   removeFlight: (flightId: string) => Promise<void>;
@@ -478,8 +485,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const saveTripSharing = useCallback(
-    (tripId: string, isShared: boolean, coTravelers: string[], shareToken: string) => {
-      updateTripSharing(tripId, isShared, coTravelers, shareToken);
+    (
+      tripId: string,
+      isShared: boolean,
+      coTravelers: string[],
+      shareToken: string,
+      coTravelerRoles?: Record<string, CoTravelerRole>
+    ) => {
+      updateTripSharing(tripId, isShared, coTravelers, shareToken, coTravelerRoles);
       refreshAll();
     },
     [refreshAll]

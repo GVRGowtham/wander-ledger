@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import {
+  CoTravelerRole,
   Expense,
   Flight,
   LoyaltyAccount,
@@ -45,6 +46,7 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       is_shared INTEGER NOT NULL DEFAULT 0,
       share_token TEXT,
       co_travelers TEXT NOT NULL DEFAULT '[]',
+      co_traveler_roles TEXT NOT NULL DEFAULT '{}',
       lat REAL NOT NULL DEFAULT 0,
       lng REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -147,6 +149,9 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
       receipt_uri TEXT,
       receipt_raw_text TEXT,
       notes TEXT,
+      is_shared INTEGER NOT NULL DEFAULT 0,
+      author_id TEXT,
+      author_name TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -200,11 +205,33 @@ function initSchema(db: SQLite.SQLiteDatabase): void {
     );
   `);
 
-  // Safe non-destructive migration for existing v0.1-v0.3 databases: ensure memories.stop_id exists
+  // Safe non-destructive migrations for existing databases
   try {
-    const cols = db.getAllSync<{ name: string }>('PRAGMA table_info(memories)');
-    if (!cols.some((c) => c.name === 'stop_id')) {
+    const memCols = db.getAllSync<{ name: string }>('PRAGMA table_info(memories)');
+    if (!memCols.some((c) => c.name === 'stop_id')) {
       db.execSync('ALTER TABLE memories ADD COLUMN stop_id TEXT');
+    }
+  } catch {
+    // Ignore if already migrated
+  }
+  try {
+    const tripCols = db.getAllSync<{ name: string }>('PRAGMA table_info(trips)');
+    if (!tripCols.some((c) => c.name === 'co_traveler_roles')) {
+      db.execSync("ALTER TABLE trips ADD COLUMN co_traveler_roles TEXT NOT NULL DEFAULT '{}'");
+    }
+  } catch {
+    // Ignore if already migrated
+  }
+  try {
+    const expCols = db.getAllSync<{ name: string }>('PRAGMA table_info(expenses)');
+    if (!expCols.some((c) => c.name === 'is_shared')) {
+      db.execSync('ALTER TABLE expenses ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!expCols.some((c) => c.name === 'author_id')) {
+      db.execSync('ALTER TABLE expenses ADD COLUMN author_id TEXT');
+    }
+    if (!expCols.some((c) => c.name === 'author_name')) {
+      db.execSync('ALTER TABLE expenses ADD COLUMN author_name TEXT');
     }
   } catch {
     // Ignore if already migrated
@@ -276,9 +303,9 @@ export function insertTrip(trip: Trip, options?: DbWriteOptions): void {
     `INSERT OR REPLACE INTO trips (
       id, owner_id, title, destination_city, destination_country, country_code,
       flag_emoji, start_date, end_date, home_currency, budget, vibe,
-      cover_photo_uri, is_shared, share_token, co_travelers, lat, lng,
+      cover_photo_uri, is_shared, share_token, co_travelers, co_traveler_roles, lat, lng,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       trip.id,
       trip.ownerId,
@@ -296,6 +323,7 @@ export function insertTrip(trip: Trip, options?: DbWriteOptions): void {
       trip.isShared ? 1 : 0,
       trip.shareToken ?? null,
       JSON.stringify(trip.coTravelers ?? []),
+      JSON.stringify(trip.coTravelerRoles ?? {}),
       trip.lat,
       trip.lng,
       trip.createdAt,
@@ -429,14 +457,23 @@ export function updateTripSharing(
   tripId: string,
   isShared: boolean,
   coTravelers: string[],
-  shareToken: string
+  shareToken: string,
+  coTravelerRoles?: Record<string, CoTravelerRole>
 ): void {
   const db = getDb();
+  const cleanRoles: Record<string, CoTravelerRole> = {};
+  if (coTravelerRoles) {
+    for (const [k, v] of Object.entries(coTravelerRoles)) {
+      const key = k.trim().toLowerCase();
+      if (key) cleanRoles[key] = v === 'viewer' ? 'viewer' : 'editor';
+    }
+  }
   db.runSync(
-    'UPDATE trips SET is_shared = ?, co_travelers = ?, share_token = ?, updated_at = ? WHERE id = ?',
+    'UPDATE trips SET is_shared = ?, co_travelers = ?, co_traveler_roles = ?, share_token = ?, updated_at = ? WHERE id = ?',
     [
       isShared ? 1 : 0,
       JSON.stringify(coTravelers),
+      JSON.stringify(cleanRoles),
       shareToken,
       new Date().toISOString(),
       tripId,
@@ -464,6 +501,17 @@ function mapTripRow(r: Record<string, unknown>): Trip {
   } catch {
     coTravelers = [];
   }
+  let coTravelerRoles: Record<string, CoTravelerRole> = {};
+  try {
+    const parsedRoles = JSON.parse((r.co_traveler_roles as string) || '{}');
+    if (parsedRoles && typeof parsedRoles === 'object') {
+      for (const [k, v] of Object.entries(parsedRoles as Record<string, unknown>)) {
+        coTravelerRoles[k.trim().toLowerCase()] = v === 'viewer' ? 'viewer' : 'editor';
+      }
+    }
+  } catch {
+    coTravelerRoles = {};
+  }
   return {
     id: String(r.id),
     ownerId: String(r.owner_id),
@@ -481,6 +529,7 @@ function mapTripRow(r: Record<string, unknown>): Trip {
     isShared: Number(r.is_shared) === 1,
     shareToken: (r.share_token as string) || undefined,
     coTravelers,
+    coTravelerRoles,
     lat: Number(r.lat ?? 0),
     lng: Number(r.lng ?? 0),
     createdAt: String(r.created_at),
@@ -868,6 +917,9 @@ export function listExpenses(tripId?: string): Expense[] {
     receiptUri: (r.receipt_uri as string) || undefined,
     receiptRawText: (r.receipt_raw_text as string) || undefined,
     notes: (r.notes as string) || undefined,
+    isShared: Number(r.is_shared ?? 0) === 1,
+    authorId: (r.author_id as string) || undefined,
+    authorName: (r.author_name as string) || undefined,
     createdAt: String(r.created_at),
   }));
 }
@@ -878,8 +930,9 @@ export function insertExpense(e: Expense, options?: DbWriteOptions): void {
     `INSERT OR REPLACE INTO expenses (
       id, trip_id, merchant, category, local_amount, local_currency,
       home_amount, home_currency, fx_rate_used, expense_date,
-      payment_method, points_earned, receipt_uri, receipt_raw_text, notes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      payment_method, points_earned, receipt_uri, receipt_raw_text, notes,
+      is_shared, author_id, author_name, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.id,
       e.tripId,
@@ -896,6 +949,9 @@ export function insertExpense(e: Expense, options?: DbWriteOptions): void {
       e.receiptUri ?? null,
       e.receiptRawText ?? null,
       e.notes ?? null,
+      e.isShared ? 1 : 0,
+      e.authorId ?? null,
+      e.authorName ?? null,
       e.createdAt,
     ]
   );

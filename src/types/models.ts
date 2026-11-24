@@ -35,6 +35,10 @@ export interface UserProfile {
   lastSyncedAt?: string;
 }
 
+export type CoTravelerRole = 'editor' | 'viewer';
+
+export type TripAccessRole = 'owner' | 'editor' | 'viewer';
+
 export interface Trip {
   id: string;
   ownerId: string;
@@ -52,6 +56,7 @@ export interface Trip {
   isShared: boolean;
   shareToken?: string;
   coTravelers: string[]; // display names or emails
+  coTravelerRoles?: Record<string, CoTravelerRole>; // lowercase email/name -> 'editor' | 'viewer'
   lat: number;
   lng: number;
   createdAt: string;
@@ -151,9 +156,12 @@ export interface Expense {
   expenseDate: string; // YYYY-MM-DD
   paymentMethod?: string;
   pointsEarned?: number;
-  receiptUri?: string; // Strictly private — tucked inside Spend tab only!
+  receiptUri?: string; // Private by default; visible to Editor co-travelers when isShared is true
   receiptRawText?: string;
   notes?: string;
+  isShared?: boolean; // false/undefined = Personal (only creator), true = Shared with Editor co-travelers
+  authorId?: string;
+  authorName?: string;
   createdAt: string;
 }
 

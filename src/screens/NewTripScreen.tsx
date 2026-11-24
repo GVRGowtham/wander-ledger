@@ -215,6 +215,10 @@ export const NewTripScreen: React.FC<Props> = ({
           .map((c) => c.trim())
           .filter(Boolean)
       : [];
+    const companionRoles = companions.reduce<Record<string, 'editor' | 'viewer'>>((acc, c) => {
+      acc[c.trim().toLowerCase()] = 'editor';
+      return acc;
+    }, {});
 
     const cleanStart = startDate.trim() || fmt(0);
     const cleanEnd = endDate.trim() || cleanStart;
@@ -235,6 +239,7 @@ export const NewTripScreen: React.FC<Props> = ({
       isShared: companions.length > 0,
       shareToken: companions.length > 0 ? `wl_${id.slice(-8)}` : undefined,
       coTravelers: companions,
+      coTravelerRoles: companionRoles,
       lat: inferred.lat,
       lng: inferred.lng,
       createdAt: now,
