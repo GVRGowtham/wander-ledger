@@ -1,5 +1,6 @@
 import { Image } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Print from 'expo-print';
 import {
   DistanceUnit,
@@ -34,6 +35,22 @@ export interface ExportKeepsakePdfOptions {
   coverCrop?: PhotoCrop;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMessage)), ms);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 function inferImageMimeType(uri: string): string {
   const lower = uri.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
@@ -41,35 +58,99 @@ function inferImageMimeType(uri: string): string {
   return 'image/webp';
 }
 
-async function readLocalImageAsDataUri(uri?: string | null): Promise<string | undefined> {
-  if (!uri) return undefined;
-  if (uri.startsWith('data:image/')) return uri;
-  if (!uri.startsWith('file://') && !uri.startsWith('/')) return undefined;
-  try {
-    const info = await FileSystem.getInfoAsync(uri);
-    if (!info.exists) return undefined;
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    if (!base64) return undefined;
-    return `data:${inferImageMimeType(uri)};base64,${base64}`;
-  } catch {
-    return undefined;
-  }
-}
-
 function measureImageSize(uri?: string | null): Promise<ImageDimensions | undefined> {
   if (!uri) return Promise.resolve(undefined);
   return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(undefined);
+      }
+    }, 3000);
+
     Image.getSize(
       uri,
       (width, height) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
         if (width > 0 && height > 0) resolve({ width, height });
         else resolve(undefined);
       },
-      () => resolve(undefined)
+      () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(undefined);
+      }
     );
   });
+}
+
+/**
+ * Downscales and compresses a local photo into a compact JPEG data URI for fast, reliable
+ * Android/iOS WebView PDF rendering (~15x smaller HTML payload than raw camera photos,
+ * preventing Android PrintPDFRenderTask stalls and keeping WhatsApp PDFs crisp & lightweight).
+ */
+async function encodePhotoForPdf(
+  uri: string | null | undefined,
+  maxWidth: number,
+  compress: number,
+  knownDims?: ImageDimensions
+): Promise<{ dataUri?: string; dims?: ImageDimensions }> {
+  if (!uri) return {};
+  if (uri.startsWith('data:image/')) {
+    return { dataUri: uri, dims: knownDims };
+  }
+  if (!uri.startsWith('file://') && !uri.startsWith('/')) {
+    return {};
+  }
+
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists) return {};
+
+    // Resize only if image is wider than maxWidth (or unknown width) so we never upscale small images
+    const actions: ImageManipulator.Action[] =
+      !knownDims || knownDims.width > maxWidth ? [{ resize: { width: maxWidth } }] : [];
+
+    const manipulated = await withTimeout(
+      ImageManipulator.manipulateAsync(uri, actions, {
+        compress,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }),
+      6000,
+      'Image resize timeout'
+    );
+
+    if (manipulated.base64) {
+      return {
+        dataUri: `data:image/jpeg;base64,${manipulated.base64}`,
+        dims:
+          manipulated.width > 0 && manipulated.height > 0
+            ? { width: manipulated.width, height: manipulated.height }
+            : knownDims,
+      };
+    }
+  } catch {
+    // Fall back to direct base64 read if manipulator fails on this file
+  }
+
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!base64) return {};
+    const dims = knownDims ?? (await measureImageSize(uri));
+    return {
+      dataUri: `data:${inferImageMimeType(uri)};base64,${base64}`,
+      dims,
+    };
+  } catch {
+    return {};
+  }
 }
 
 function slugifyTitle(title: string): string {
@@ -82,8 +163,8 @@ function slugifyTitle(title: string): string {
 }
 
 /**
- * Generates an A4 magazine-style Keepsake PDF completely offline (with base64-inlined photos
- * and exact WYSIWYG cover crop coordinates so Android & iOS render identically) and opens Share.
+ * Generates an A4 magazine-style Keepsake PDF completely offline (with optimized base64-inlined
+ * photos, exact WYSIWYG cover crop coordinates, and strict print/share timeouts) and opens Share.
  */
 export async function exportTripKeepsakePdf(
   options: ExportKeepsakePdfOptions
@@ -104,36 +185,42 @@ export async function exportTripKeepsakePdf(
         trip.coverPhotoUri ||
         memories.find((m) => m.photoUri)?.photoUri;
 
-  const [coverDataUri, measuredCoverDims] = await Promise.all([
-    readLocalImageAsDataUri(resolvedCoverUri),
-    coverDimensions ? Promise.resolve(coverDimensions) : measureImageSize(resolvedCoverUri),
-  ]);
+  const coverEncoded = await encodePhotoForPdf(
+    resolvedCoverUri,
+    1200,
+    0.82,
+    coverDimensions
+  );
 
   const photoDataUriMap: Record<string, string> = {};
   for (const m of memories) {
     const srcUri = m.photoUri || m.thumbUri;
     if (!srcUri) continue;
-    const dataUri = await readLocalImageAsDataUri(srcUri);
-    if (dataUri) {
-      photoDataUriMap[m.id] = dataUri;
+    const encoded = await encodePhotoForPdf(srcUri, 800, 0.78);
+    if (encoded.dataUri) {
+      photoDataUriMap[m.id] = encoded.dataUri;
     }
   }
 
   const html = buildTripKeepsakeHtml({
     ...options,
     templateId,
-    coverDataUri,
-    coverDimensions: measuredCoverDims,
+    coverDataUri: coverEncoded.dataUri,
+    coverDimensions: coverEncoded.dims ?? coverDimensions,
     coverCrop,
     photoDataUriMap,
   });
 
-  // A4 at 72 PPI = 595 x 842
-  const { uri: rawPdfUri } = await Print.printToFileAsync({
-    html,
-    width: KEEPSAKE_A4_WIDTH,
-    height: KEEPSAKE_A4_HEIGHT,
-  });
+  // A4 at 72 PPI = 595 x 842; strict 20s timeout guarantees WebView cold-start stalls never lock UI
+  const { uri: rawPdfUri } = await withTimeout(
+    Print.printToFileAsync({
+      html,
+      width: KEEPSAKE_A4_WIDTH,
+      height: KEEPSAKE_A4_HEIGHT,
+    }),
+    20000,
+    'The PDF renderer took too long to respond. Please tap Export again.'
+  );
 
   const fileName = `WanderersLedger_${slugifyTitle(trip.title)}_${templateId}.pdf`;
   const cacheDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
