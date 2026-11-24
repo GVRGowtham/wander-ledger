@@ -1643,30 +1643,213 @@ export function parseDocumentOcrText(
         /(?:confirmation|booking(?:\s+confirmed)?|reservation|trip\s*id|voucher|pin\s*code|ref(?:erence)?)\s*(?:no\.?|number|id|code|#|:)*\s*#?([A-Z0-9-]*\d[A-Z0-9-]{2,15})\b/i
       );
     const otaHeaderNoise =
-      /^(?:booking\.com|agoda|makemytrip|goibibo|ixigo|cleartrip|yatra|expedia|hotels\.com|trip\.com|airbnb|hotel\s*voucher|e-?voucher|booking\s*voucher|booking\s*confirmed|reservation\s*confirmed|confirmation|itinerary|tax\s*invoice)\b/i;
-    const hotelNameLine =
-      lines.find(
-        (l) =>
-          /(hotel|resort|ryokan|inn|suites|thousand|marriott|hilton|hyatt|airbnb|villa|house|taj|oberoi|radisson|sheraton|westin|ibis|novotel|accor|chalet|lodge|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|homestay|guesthouse)/i.test(
-            l
-          ) && !otaHeaderNoise.test(l)
-      ) ??
-      lines.find((l) => !otaHeaderNoise.test(l) && /[A-Za-z]{3,}/.test(l)) ??
-      'Scanned Stay';
+      /^(?:booking\.com|agoda|makemytrip|goibibo|ixigo|cleartrip|yatra|expedia|hotels\.com|trip\.com|airbnb|djubo|powered\s+by|hotel\s*voucher|e-?voucher|booking\s*voucher|booking\s*confirmed|reservation\s*confirmed|reservation\s*confirmation|confirmation|itinerary|tax\s*invoice|confirmed)\b/i;
 
-    const addressLine = lines.find((l) =>
-      /(ward|street|st\.|strasse|straße|ave|road|rd\.|ku,|kyoto|tokyo|lisbon|rome|paris|zurich|lucerne|interlaken|geneva|zermatt|address|bengaluru|mumbai|goa|delhi|london|new york)/i.test(l)
-    );
+    const disclaimerOrProseNoise =
+      /\b(?:fraud|fraudster|phishing|beware|fake\s+booking|block\s+your\s+card|card\s+details|contact\s+your\s+bank|otp|cvv|pin\s+through|click\s+the\s+link|do\s+not\s+click|never\s+ask\s+you|disclaimer|susceptible\s+to\s+change|shall\s+not\s+be\s+liable|improper\s+or\s+incomplete|terms\s*&?\s*conditions|cancellation\s+(?:policy|charges)|no[\s-]?show|refund|thanks\s+for\s+booking|thank\s+you\s+for\s+booking|follow\s+on\s+queries|contact\s+the\s+hotel|please\s+note|check[\s-]?in\s*policy|check[\s-]?out\s*policy|early\s+check[\s-]?in|subject\s+to\s+availability|free\s+wi[\s-]?fi|free\s+parking|inclusions|powered\s+by|all\s+rights\s+reserved|generated\s+electronically)\b/i;
 
-    // Infer destination city from known travel cities (word-boundary match so 'Goa' matches cleanly)
+    const metadataLineNoise =
+      /^(?:dear|hi|hello|guest\s+name|guest\s+email|guest\s+contact|reservation\s+id|booking\s+id|confirmation\s+(?:no|number|id|code)|check[\s-]?in|check[\s-]?out|s\.?\s*no\.?|room\s+rent|sub\s*total|total(?:\s+taxes|\s+net|\s+outstanding|\s+price)?|created\s+(?:by|on)|modified\s+(?:by|on)|type\s+of\s+reservation|website|email|e-?mail|phone|tel|fax|mobile|meal\s+plan|currency|adults?|children|infants?|nights?|powered\s+by|inclusions|terms\s*&?\s*conditions|cancellation\s+policy|important\s+notice)\b/i;
+
+    const looksLikeProseSentence = (l: string): boolean => {
+      if (l.length > 115) return true;
+      const words = l.split(/\s+/).filter(Boolean);
+      if (words.length >= 15) return true;
+      // Two sentences separated by a period + capital letter (e.g. "to check. If you have...")
+      if (/[.!?]\s+[A-Z]/.test(l) && !/\b(?:St|Rd|Ave|Dr|Blvd|No|Mt|Pt)\.\s+[A-Z]/.test(l)) {
+        return true;
+      }
+      return false;
+    };
+
+    const isAddressNoise = (l: string): boolean => {
+      const t = l.trim();
+      if (t.length < 6 || t.length > 120) return true;
+      if (otaHeaderNoise.test(t) || disclaimerOrProseNoise.test(t) || metadataLineNoise.test(t)) {
+        return true;
+      }
+      if (looksLikeProseSentence(t)) return true;
+      if (/@|https?:\/\/|www\./i.test(t)) return true;
+      return false;
+    };
+
+    const streetOrLocalityPattern =
+      /\b(?:street|st\.|strasse|straße|avenue|ave\.?|road|rd\.?|lane|ln\.?|boulevard|blvd\.?|drive|dr\.?|platz|way|circle|court|ct\.|ward|taluk|taluka|district|dist\.?|post|nagar|layout|cross|main\s+road|sector|phase|block|village\s*&\s*post|village|colony|enclave|marg|chowk|bazaar|beach\s+road|nh\s*\d+|sh\s*\d+|ku,|kyoto|tokyo|osaka|lisbon|rome|paris|zurich|lucerne|interlaken|geneva|zermatt|frankfurt|munich|vienna|prague|amsterdam|london|new\s+york|singapore|dubai|bengaluru|bangalore|mumbai|goa|delhi|jaipur|udaipur|kochi|madikeri|kodagu|coorg|munnar|wayanad|ooty|manali|shimla|rishikesh|alleppey|hampi|pondicherry)\b/i;
+
+    const postalCodePattern =
+      /(?:\b\d{6}\b|\b\d{3}-\d{4}\b|\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b|\b\d{5}(?:-\d{4})?\b|\b\d{4}\s+[A-Z][a-z]{2,}\b)/;
+
+    const extractHotelAddress = (): { address?: string; startIdx: number } => {
+      // Priority 1: Explicit labeled Address / Property Address / Location line
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(
+          /^(?:property\s+address|hotel\s+address|address|location)\s*[:\-]\s*(.*)$/i
+        );
+        if (m) {
+          const inlineVal = m[1].trim();
+          if (inlineVal && !isAddressNoise(inlineVal)) {
+            const parts = [inlineVal];
+            if (i + 1 < lines.length && !isAddressNoise(lines[i + 1]) && (postalCodePattern.test(lines[i + 1]) || streetOrLocalityPattern.test(lines[i + 1]))) {
+              parts.push(lines[i + 1].trim());
+            }
+            return {
+              address: parts.join(', ').replace(/\s*,\s*/g, ', ').slice(0, 140),
+              startIdx: i,
+            };
+          }
+          if (i + 1 < lines.length && !isAddressNoise(lines[i + 1])) {
+            const parts = [lines[i + 1].trim()];
+            if (i + 2 < lines.length && !isAddressNoise(lines[i + 2]) && (postalCodePattern.test(lines[i + 2]) || streetOrLocalityPattern.test(lines[i + 2]))) {
+              parts.push(lines[i + 2].trim());
+            }
+            return {
+              address: parts.join(', ').replace(/\s*,\s*/g, ', ').slice(0, 140),
+              startIdx: i + 1,
+            };
+          }
+        }
+      }
+
+      // Priority 2: Clean line with postal/PIN code (e.g., "Madikeri 571201 India") — optionally joined with preceding street/locality line
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (isAddressNoise(line)) continue;
+        // Skip phone numbers or booking IDs that look like 6-digit numbers
+        if (/^(?:\+?\d[\d\s\-()]{7,})$/.test(line)) continue;
+        if (postalCodePattern.test(line) && /[A-Za-z]{3,}/.test(line)) {
+          let startIdx = i;
+          const parts = [line];
+          if (i > 0) {
+            const prev = lines[i - 1].trim();
+            if (
+              !isAddressNoise(prev) &&
+              (streetOrLocalityPattern.test(prev) || /,/.test(prev) || /&/.test(prev))
+            ) {
+              parts.unshift(prev);
+              startIdx = i - 1;
+            }
+          }
+          return {
+            address: parts.join(', ').replace(/\s*,\s*/g, ', ').slice(0, 140),
+            startIdx,
+          };
+        }
+      }
+
+      // Priority 3: Clean line with strict word-boundary street/locality anchor (e.g. "Bahnhofplatz 7, Zurich, Switzerland")
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (isAddressNoise(line)) continue;
+        if (streetOrLocalityPattern.test(line)) {
+          // Avoid picking the hotel's own brand name line if it's purely a hotel title without street/comma/number
+          const looksLikePureHotelTitle =
+            /\b(?:hotel|resort|ryokan|inn|suites|marriott|hilton|hyatt|taj|oberoi|radisson|sheraton|westin|ibis|novotel)\b/i.test(
+              line
+            ) && !/[,#\d]/.test(line);
+          if (looksLikePureHotelTitle) continue;
+          return {
+            address: line.replace(/\s*,\s*/g, ', ').slice(0, 140),
+            startIdx: i,
+          };
+        }
+      }
+
+      return { address: undefined, startIdx: -1 };
+    };
+
+    const { address: addressLine, startIdx: addressStartIdx } = extractHotelAddress();
+
+    const roomCategoryOnlyPattern =
+      /^(?:\d+\s+)?(?:standard|deluxe|superior|executive|classic|premium|luxury|family|twin|double|king|queen|single|studio|junior)\b.*\b(?:room|deluxe|view|balcony|cottage|tent|suite)\b/i;
+
+    const isHotelNameNoise = (l: string): boolean => {
+      const t = l.trim();
+      if (t.length < 3 || t.length > 65) return true;
+      const words = t.split(/\s+/).filter(Boolean);
+      if (words.length > 8) return true;
+      if (otaHeaderNoise.test(t) || disclaimerOrProseNoise.test(t) || metadataLineNoise.test(t)) {
+        return true;
+      }
+      if (roomCategoryOnlyPattern.test(t)) return true;
+      if (/[.!?]\s+[A-Z]/.test(t)) return true;
+      if (/@|https?:\/\/|www\.|\+\d{1,3}[\s-]?\d{6,}/i.test(t)) return true;
+      if (/^[\d\s:/.\-,]+$/.test(t)) return true;
+      if (parseDateFromString(t) && words.length <= 4) return true;
+      return false;
+    };
+
+    const propertyBrandPattern =
+      /\b(?:hotel|hotels|resort|resorts|ryokan|inn|suites|suite|thousand|marriott|hilton|hyatt|airbnb|villa|villas|eco\s*village|village|house|taj|oberoi|radisson|sheraton|westin|ibis|novotel|accor|chalet|lodge|oyo|lemon\s*tree|ginger|itc|vivanta|trident|treebo|fabhotel|zostel|homestay|guesthouse|guest\s*house|retreat|estate|sanctuary|palace|manor|haveli|cottage|cottages|club\s*mahindra|evolve\s*back|tamara|hosteller)\b/i;
+
+    const extractHotelName = (): string => {
+      // Tier 1: Explicit labeled Property / Hotel Name
+      for (const l of lines) {
+        const m = l.match(/^(?:hotel|property|stay|accommodation)\s*(?:name)?\s*[:\-]\s*(.+)$/i);
+        if (m) {
+          const candidate = m[1].trim();
+          if (!isHotelNameNoise(candidate)) return candidate;
+        }
+      }
+
+      // Tier 2: Line directly above the detected address block (universal on Djubo, Booking.com, Agoda, MakeMyTrip, Google Maps pin cards)
+      if (addressStartIdx > 0) {
+        const above = lines[addressStartIdx - 1].trim();
+        if (!isHotelNameNoise(above) && !postalCodePattern.test(above)) {
+          return above;
+        }
+      }
+
+      // Tier 3: Clean short title line containing a lodging/brand keyword
+      const brandMatch = lines.find(
+        (l) => !isHotelNameNoise(l) && propertyBrandPattern.test(l)
+      );
+      if (brandMatch) return brandMatch.trim();
+
+      // Tier 4: Clean non-noise short title line near the top
+      const firstClean = lines.find(
+        (l) => !isHotelNameNoise(l) && /[A-Za-z]{3,}/.test(l) && !/^[A-Z0-9-]{4,14}$/.test(l.trim())
+      );
+      return firstClean ? firstClean.trim() : 'Scanned Stay';
+    };
+
+    const hotelNameLine = extractHotelName();
+
+    // Infer destination city from popular leisure regions & known travel cities (word-boundary match)
     const lowerAll = rawText.toLowerCase();
     let cityHint: string | undefined;
-    for (const ap of Object.values(AIRPORTS)) {
-      if (ap.city.length >= 3) {
-        const escaped = ap.city.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
-          cityHint = ap.city;
-          break;
+    const leisureCityAliases: [RegExp, string][] = [
+      [/\b(?:coorg|kodagu|madikeri|kushalnagar|virajpet|suntikoppa)\b/i, 'Coorg'],
+      [/\b(?:munnar)\b/i, 'Munnar'],
+      [/\b(?:wayanad|kalpetta|vythiri)\b/i, 'Wayanad'],
+      [/\b(?:ooty|udhagamandalam|coonoor)\b/i, 'Ooty'],
+      [/\b(?:manali|kullu)\b/i, 'Manali'],
+      [/\b(?:shimla)\b/i, 'Shimla'],
+      [/\b(?:rishikesh)\b/i, 'Rishikesh'],
+      [/\b(?:alleppey|alappuzha|kumarakom)\b/i, 'Alleppey'],
+      [/\b(?:pondicherry|puducherry)\b/i, 'Pondicherry'],
+      [/\b(?:hampi)\b/i, 'Hampi'],
+      [/\b(?:chikmagalur|chikkamagaluru)\b/i, 'Chikmagalur'],
+      [/\b(?:lonavala|khandala|mahabaleshwar)\b/i, 'Lonavala'],
+      [/\b(?:darjeeling)\b/i, 'Darjeeling'],
+      [/\b(?:gangtok)\b/i, 'Gangtok'],
+      [/\b(?:interlaken|grindelwald|lauterbrunnen)\b/i, 'Interlaken'],
+      [/\b(?:lucerne|luzern)\b/i, 'Lucerne'],
+      [/\b(?:zermatt)\b/i, 'Zermatt'],
+    ];
+    for (const [re, cityName] of leisureCityAliases) {
+      if (re.test(lowerAll)) {
+        cityHint = cityName;
+        break;
+      }
+    }
+    if (!cityHint) {
+      for (const ap of Object.values(AIRPORTS)) {
+        if (ap.city.length >= 3) {
+          const escaped = ap.city.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
+            cityHint = ap.city;
+            break;
+          }
         }
       }
     }

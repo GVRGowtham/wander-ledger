@@ -14,6 +14,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DatePickerField } from '../components/forms/DatePickerField';
+import { PlaceAddressHelper } from '../components/forms/PlaceAddressHelper';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -683,10 +684,8 @@ export const ScannerScreen: React.FC<Props> = ({
     }
     if (scanResult.kind === 'transport') {
       const city = scanResult.destination || scanResult.origin || scanResult.operatorName;
-      const inferred = inferDestinationVibe(city);
-      const modeEmoji = TRANSPORT_MODE_META[scanResult.mode].emoji;
       return {
-        title: `${city} Trip ${inferred.flag || modeEmoji}`,
+        title: `${city} Trip`,
         city,
         dateStart: scanResult.startDate,
         dateEnd: scanResult.endDate || addDays(scanResult.startDate, 4),
@@ -694,9 +693,8 @@ export const ScannerScreen: React.FC<Props> = ({
     }
     if (scanResult.kind === 'hotel') {
       const city = scanResult.cityHint || scanResult.hotelName;
-      const inferred = inferDestinationVibe(city);
       return {
-        title: scanResult.cityHint ? `${scanResult.cityHint} Trip ${inferred.flag}` : `${scanResult.hotelName} Stay`,
+        title: scanResult.cityHint ? `${scanResult.cityHint} Trip` : `${scanResult.hotelName} Stay`,
         city,
         dateStart: scanResult.checkIn,
         dateEnd: scanResult.checkOut,
@@ -870,9 +868,9 @@ export const ScannerScreen: React.FC<Props> = ({
       addStay({
         id: generateId('stay'),
         tripId: finalTripId,
-        name: scanResult.hotelName,
+        name: scanResult.hotelName.trim() || 'Scanned Stay',
         stayType: 'hotel',
-        address: scanResult.address,
+        address: scanResult.address?.trim() || undefined,
         confirmationCode: scanResult.confirmationCode,
         checkIn: scanResult.checkIn,
         checkOut: scanResult.checkOut,
@@ -1789,6 +1787,16 @@ export const ScannerScreen: React.FC<Props> = ({
                     label="Hotel / Stay Name"
                     value={scanResult.hotelName}
                     onChangeText={(v) => updateHotelField({ hotelName: v })}
+                  />
+                  <PlaceAddressHelper
+                    label="Location / Address (Optional)"
+                    propertyName={scanResult.hotelName}
+                    regionHint={
+                      scanResult.cityHint ||
+                      trips.find((t) => t.id === selectedTripId)?.destinationCity
+                    }
+                    value={scanResult.address || ''}
+                    onChangeText={(v) => updateHotelField({ address: v })}
                   />
                   <View style={styles.editRow}>
                     <DatePickerField

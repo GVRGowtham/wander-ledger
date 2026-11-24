@@ -82,6 +82,11 @@ import {
   SpendLedgerItem,
 } from '../services/spendCurrencyUtils';
 import { formatTimeHmInput } from '../services/timeInputUtils';
+import { PlaceAddressHelper } from '../components/forms/PlaceAddressHelper';
+import {
+  formatTripTitleWithFlags,
+  openPropertyInGoogleMaps,
+} from '../services/placeLookupService';
 import {
   getCoTravelerRole,
   getEditorCount,
@@ -160,6 +165,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     addTripStop,
     removeTripStop,
     addStay,
+    editStay,
     removeStay,
     addMemory,
     editMemory,
@@ -249,8 +255,9 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [stopStartDate, setStopStartDate] = useState(trip?.startDate || '');
   const [stopEndDate, setStopEndDate] = useState(trip?.endDate || '');
 
-  // Manual Stay Modal
+  // Manual / Edit Stay Modal
   const [stayModal, setStayModal] = useState(false);
+  const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [stayName, setStayName] = useState('');
   const [stayType, setStayType] = useState<Stay['stayType']>('hotel');
   const [stayCheckIn, setStayCheckIn] = useState(trip?.startDate || '');
@@ -952,6 +959,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   };
 
   const openManualStayModal = () => {
+    setEditingStayId(null);
     setStayName('');
     setStayType('hotel');
     setStayCheckIn(trip.startDate);
@@ -964,6 +972,23 @@ export const TripDetailScreen: React.FC<Props> = ({
     setStayPointsProg('');
     setStayPayLater(false);
     setStayNotes('');
+    setStayModal(true);
+  };
+
+  const openEditStayModal = (s: Stay) => {
+    setEditingStayId(s.id);
+    setStayName(s.name);
+    setStayType(s.stayType);
+    setStayCheckIn(s.checkIn);
+    setStayCheckOut(s.checkOut);
+    setStayConf(s.confirmationCode || '');
+    setStayAddress(s.address || '');
+    setStayCost(s.costCash > 0 ? String(s.costCash) : '');
+    setStayCurrency(s.currency || preferredCurrency);
+    setStayPoints(s.pointsRedeemed > 0 ? String(s.pointsRedeemed) : '');
+    setStayPointsProg(s.pointsProgram || '');
+    setStayPayLater(Boolean(s.payLater));
+    setStayNotes(s.notes || '');
     setStayModal(true);
   };
 
@@ -985,8 +1010,14 @@ export const TripDetailScreen: React.FC<Props> = ({
     const { converted } = convertCurrency(cash, curr, preferredCurrency, fxRates);
     const pts = parseInt(stayPoints.replace(/[^0-9]/g, ''), 10) || 0;
 
-    addStay({
-      id: generateId('stay'),
+    const existing = editingStayId ? stays.find((s) => s.id === editingStayId) : undefined;
+    const nextFxDate =
+      cash > 0 && !stayPayLater
+        ? existing?.fxDate || resolveDefaultFxDate(checkIn)
+        : undefined;
+
+    const payload: Stay = {
+      id: existing ? existing.id : generateId('stay'),
       tripId: trip.id,
       name: stayName.trim(),
       stayType,
@@ -998,15 +1029,24 @@ export const TripDetailScreen: React.FC<Props> = ({
       costCash: cash,
       currency: curr,
       homeCost: converted,
-      fxDate: cash > 0 && !stayPayLater ? resolveDefaultFxDate(checkIn) : undefined,
+      fxDate: nextFxDate,
       payLater: cash > 0 ? stayPayLater : false,
       pointsRedeemed: pts,
       pointsProgram: stayPointsProg.trim() || undefined,
+      cashValueEstimate: existing?.cashValueEstimate,
+      receiptUri: existing?.receiptUri,
       notes: stayNotes.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    });
+      createdAt: existing ? existing.createdAt : new Date().toISOString(),
+    };
+
+    if (existing) {
+      editStay(payload);
+    } else {
+      addStay(payload);
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setStayModal(false);
+    setEditingStayId(null);
   };
 
   const handleDeleteStay = (stayId: string, name: string) => {
@@ -1393,8 +1433,10 @@ export const TripDetailScreen: React.FC<Props> = ({
 
         <View style={styles.headerBottomText}>
           <Text style={styles.tripTitle} numberOfLines={1}>
-            {trip.title}{' '}
-            {tripGeo.visitedCountries.length > 0 ? tripGeo.flagsLabel : trip.flagEmoji}
+            {formatTripTitleWithFlags(
+              trip.title,
+              tripGeo.visitedCountries.length > 0 ? tripGeo.flagsLabel : trip.flagEmoji
+            )}
           </Text>
           <Text style={styles.tripDates} numberOfLines={1}>
             {tripGeo.visitedCountries.length > 0 ? `${tripGeo.countriesLabel} • ` : ''}
@@ -1888,21 +1930,59 @@ export const TripDetailScreen: React.FC<Props> = ({
                           {s.confirmationCode ? (
                             <Text style={styles.confCode}>#{s.confirmationCode}</Text>
                           ) : null}
-                          <TouchableOpacity
-                            onPress={() => handleDeleteStay(s.id, s.name)}
-                            style={styles.memDeletePill}
-                          >
-                            <Text style={styles.deleteAction}>🗑️</Text>
-                          </TouchableOpacity>
+                          {!isViewer && (
+                            <TouchableOpacity
+                              onPress={() => openEditStayModal(s)}
+                              style={styles.memActionPill}
+                              accessibilityLabel={`Edit ${s.name}`}
+                            >
+                              <Text style={styles.coverAction}>✏️</Text>
+                            </TouchableOpacity>
+                          )}
+                          {!isViewer && (
+                            <TouchableOpacity
+                              onPress={() => handleDeleteStay(s.id, s.name)}
+                              style={styles.memDeletePill}
+                              accessibilityLabel={`Delete ${s.name}`}
+                            >
+                              <Text style={styles.deleteAction}>🗑️</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                       <Text style={styles.stayName}>{s.name}</Text>
                       <Text style={styles.stayDates}>
                         Check-in {s.checkIn} → Check-out {s.checkOut}
                       </Text>
-                      {s.address ? (
-                        <Text style={styles.stayAddr}>📍 {s.address} (Saved offline)</Text>
-                      ) : null}
+                      <View style={styles.stayLocationRow}>
+                        {s.address ? (
+                          <TouchableOpacity
+                            onPress={() =>
+                              openPropertyInGoogleMaps(s.name, s.address, trip.destinationCity)
+                            }
+                            style={{ flex: 1 }}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={styles.stayAddr} numberOfLines={2}>
+                              📍 {s.address}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={[styles.stayAddr, { flex: 1, fontStyle: 'italic' }]}>
+                            📍 Tap Maps for directions{!isViewer ? ' or ✏️ to add location' : ''}
+                          </Text>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => {
+                            Haptics.selectionAsync().catch(() => {});
+                            openPropertyInGoogleMaps(s.name, s.address, trip.destinationCity);
+                          }}
+                          style={styles.stayMapsPill}
+                          activeOpacity={0.82}
+                        >
+                          <Text style={styles.stayMapsPillText}>🗺️ Maps</Text>
+                        </TouchableOpacity>
+                      </View>
                       <View style={styles.stayCostBox}>
                         <Text style={styles.stayCostText}>
                           {s.pointsRedeemed > 0
@@ -2954,14 +3034,19 @@ export const TripDetailScreen: React.FC<Props> = ({
         </View>
       </BottomSheetModal>
 
-      {/* MANUAL STAY / HOTEL MODAL */}
+      {/* MANUAL / EDIT STAY MODAL */}
       <BottomSheetModal
         visible={stayModal}
-        title="🏨 Add Hotel / Stay"
-        onClose={() => setStayModal(false)}
+        title={editingStayId ? '✏️ Edit Hotel / Stay' : '🏨 Add Hotel / Stay'}
+        onClose={() => {
+          setStayModal(false);
+          setEditingStayId(null);
+        }}
         footer={
           <TouchableOpacity onPress={handleSaveManualStay} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-            <Text style={styles.modalPrimaryText}>Save Stay to Trip 🏨</Text>
+            <Text style={styles.modalPrimaryText}>
+              {editingStayId ? 'Save Stay Changes ✓' : 'Save Stay to Trip 🏨'}
+            </Text>
           </TouchableOpacity>
         }
       >
@@ -2992,6 +3077,13 @@ export const TripDetailScreen: React.FC<Props> = ({
             );
           })}
         </ScrollView>
+        <PlaceAddressHelper
+          label="Location / Address (Optional)"
+          propertyName={stayName}
+          regionHint={trip.destinationCity}
+          value={stayAddress}
+          onChangeText={setStayAddress}
+        />
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <DatePickerField
             label="Check-in"
@@ -3008,23 +3100,14 @@ export const TripDetailScreen: React.FC<Props> = ({
             compact
           />
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput
-            value={stayConf}
-            onChangeText={setStayConf}
-            placeholder="Confirmation # (opt)"
-            placeholderTextColor={COLORS.inkSoft}
-            autoCapitalize="characters"
-            style={[styles.input, { flex: 1 }]}
-          />
-          <TextInput
-            value={stayAddress}
-            onChangeText={setStayAddress}
-            placeholder="Address / Area (opt)"
-            placeholderTextColor={COLORS.inkSoft}
-            style={[styles.input, { flex: 1.3 }]}
-          />
-        </View>
+        <TextInput
+          value={stayConf}
+          onChangeText={setStayConf}
+          placeholder="Confirmation # (opt)"
+          placeholderTextColor={COLORS.inkSoft}
+          autoCapitalize="characters"
+          style={styles.input}
+        />
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TextInput
             value={stayCost}
@@ -3417,7 +3500,27 @@ const styles = StyleSheet.create({
   confCode: { fontSize: 12, fontWeight: '800', color: COLORS.indigo },
   stayName: { fontSize: 16, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
   stayDates: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
-  stayAddr: { fontSize: 12, color: COLORS.inkMuted },
+  stayAddr: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
+  stayLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 2,
+  },
+  stayMapsPill: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+  },
+  stayMapsPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#047857',
+  },
   stayCostBox: {
     marginTop: 4,
     backgroundColor: COLORS.canvas,

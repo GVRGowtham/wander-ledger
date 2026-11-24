@@ -18,6 +18,7 @@ import {
   filterTripsBySearchAndYear,
 } from '../services/tripSearchHelpers';
 import { convertAmountToPreferred } from '../services/spendCurrencyUtils';
+import { formatTripTitleWithFlags } from '../services/placeLookupService';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
 
@@ -455,7 +456,7 @@ const ActiveHeroCard: React.FC<{
         <View style={styles.heroTitleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>
-              {trip.title} {flagsLabel}
+              {formatTripTitleWithFlags(trip.title, flagsLabel)}
             </Text>
             <Text style={styles.heroSubtitle}>
               {countriesLabel || trip.destinationCity} is treating you well! • {trip.startDate} → {trip.endDate}

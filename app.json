@@ -3,7 +3,7 @@
     "name": "Wanderer's Ledger",
     "slug": "wander-ledger",
     "scheme": "wanderledger",
-    "version": "0.6.7",
+    "version": "0.6.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wanderledger.app",
-      "buildNumber": "15",
+      "buildNumber": "16",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.wanderledger.app",
-      "versionCode": 15,
+      "versionCode": 16,
       "adaptiveIcon": {
         "backgroundColor": "#FFF9F2",
         "foregroundImage": "./assets/android-icon-foreground.png",

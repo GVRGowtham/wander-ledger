@@ -157,6 +157,7 @@ interface AppContextValue {
   addTripStop: (stop: TripStop) => void;
   removeTripStop: (stopId: string) => Promise<void>;
   addStay: (stay: Stay) => void;
+  editStay: (stay: Stay) => void;
   removeStay: (stayId: string) => Promise<void>;
   addExpense: (expense: Expense) => void;
   removeExpense: (expenseId: string) => Promise<void>;
@@ -700,6 +701,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const editStay = useCallback(
+    (stay: Stay) => {
+      insertStay(stay);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
   const removeStay = useCallback(
     async (stayId: string) => {
       deleteStay(stayId);
@@ -830,6 +839,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addTripStop,
         removeTripStop,
         addStay,
+        editStay,
         removeStay,
         addExpense,
         removeExpense,

@@ -2095,3 +2095,108 @@ describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
     }
   });
 });
+
+import {
+  buildGoogleMapsSearchUrl,
+  formatTripTitleWithFlags,
+} from '../services/placeLookupService';
+
+describe('v0.6.8 Hotel Name/Address OCR Hardening & Maps / Flag Helpers', () => {
+  it('extracts exact hotel name, clean PIN address & Coorg cityHint from 2-page Djubo confirmation while ignoring greeting & phishing disclaimers', () => {
+    const djuboVoucher = `Reservation ID
+SEV0004277
+Check in
+27 Nov, 2026 13:00
+Check out
+29 Nov, 2026 11:00
+CONFIRMED
+Dear Venkat Raman,
+Thanks for booking with us. Your room confirmation details are mentioned below. For any follow on queries please contact the Hotel at
++91 8951339867 or suvarnaecovillage@gmail.com .
+Guest Name : Venkat Raman
+Guest Email : gowthamvenkat2605@gmail.com
+Guest Contact No. : 91-9489291310
+S.No. Room Nights Adults Children Infants Meal Plan Currency Total Net Price
+1 Standard Deluxe With Lake view 2 2 0 0 Breakfast INR 8,571.43
+Room Rent INR 8,571.43
+Total INR 8,571.43
+Sub Total INR 8,571.43
+Total Taxes INR 428.57
+Total outstanding amount INR 9,000.00
+INCLUSIONS
+Free Wi-Fi
+Free Parking
+Plantation Walk
+TERMS & CONDITIONS
+Check-In Policy: 1:00 PM
+Check-Out Policy: 11:00 AM
+CANCELLATION POLICY
+Cancellation Charges of 100% will be applicable if cancelled/No Show on or after 25-November-2026 and before 27-November-2026
+Suvarna Eco Village
+Makkanduru Village & Post Madikeri Taluk,Kodagu District
+Madikeri 571201 India
+Email: suvarnaecovillage@gmail.com
+Modified By: Neel Suvarna
+Website: https://suvarnaecovillage.in/
+IMPORTANT NOTICE: BEWARE OF FAKE BOOKING MESSAGES
+Fraudsters may contact you by WhatsApp, SMS or email quoting your real booking details and asking you to pay, or to 'validate' your booking with your card details, often claiming that no money will be charged. Suvarna Eco Village will never ask you to pay or share your card details, OTP, CVV or PIN through a link. If you receive such a message, do not click the link or make any payment, and call us on 8951339867, the number on our official website, to check. If you have already entered your card details, contact your bank immediately to block your card.
+Powered by Djubo.com`;
+
+    const parsed = parseDocumentOcrText(djuboVoucher, 'INR');
+    expect(parsed.kind).toBe('hotel');
+    if (parsed.kind === 'hotel') {
+      expect(parsed.hotelName).toBe('Suvarna Eco Village');
+      expect(parsed.address).toBe(
+        'Makkanduru Village & Post Madikeri Taluk, Kodagu District, Madikeri 571201 India'
+      );
+      expect(parsed.address).not.toContain('block your card');
+      expect(parsed.cityHint).toBe('Coorg');
+      expect(parsed.confirmationCode).toBe('SEV0004277');
+      expect(parsed.checkIn).toBe('2026-11-27');
+      expect(parsed.checkOut).toBe('2026-11-29');
+      expect(parsed.nights).toBe(2);
+      expect(parsed.totalAmount).toBe(9000);
+      expect(parsed.currency).toBe('INR');
+    }
+  });
+
+  it('leaves hotel address blank rather than grabbing phishing disclaimers containing "have" ("ave")', () => {
+    const voucherWithoutAddress = `Reservation Confirmed
+Reservation ID: BK99410
+Check-in: 2026-12-05
+Check-out: 2026-12-07
+Dear Guest,
+Thanks for booking with us. For any follow on queries please contact the Hotel at reception.
+Evolve Back Coorg Resort
+Total Paid: INR 24,500.00
+If you have already entered your card details, contact your bank immediately to block your card.`;
+
+    const parsed = parseDocumentOcrText(voucherWithoutAddress, 'INR');
+    expect(parsed.kind).toBe('hotel');
+    if (parsed.kind === 'hotel') {
+      expect(parsed.hotelName).toBe('Evolve Back Coorg Resort');
+      expect(parsed.address).toBeUndefined();
+    }
+  });
+
+  it('builds clean Google Maps search URLs and prevents duplicate flag emojis in trip titles', () => {
+    const urlWithAddr = buildGoogleMapsSearchUrl(
+      'Suvarna Eco Village',
+      'Madikeri 571201 India',
+      'Coorg'
+    );
+    expect(urlWithAddr).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Suvarna%20Eco%20Village%2C%20Madikeri%20571201%20India'
+    );
+
+    const urlFallback = buildGoogleMapsSearchUrl('Suvarna Eco Village', '', 'Coorg');
+    expect(urlFallback).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Suvarna%20Eco%20Village%2C%20Coorg'
+    );
+
+    expect(formatTripTitleWithFlags('Coorg Trip 🇮🇳', '🇮🇳')).toBe('Coorg Trip 🇮🇳');
+    expect(formatTripTitleWithFlags('Europe Autumn', '🇨🇭 🇩🇪')).toBe('Europe Autumn 🇨🇭 🇩🇪');
+    expect(formatTripTitleWithFlags('Swiss Trip 🇨🇭', '🇨🇭 🇩🇪')).toBe('Swiss Trip 🇨🇭 🇩🇪');
+  });
+});
+
