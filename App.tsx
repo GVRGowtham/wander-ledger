@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Notifications from 'expo-notifications';
 import { useIncomingShare } from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -40,6 +41,34 @@ const MainShell: React.FC = () => {
   const [overlay, setOverlay] = useState<OverlayRoute>({ name: 'none' });
   const { resolvedSharedPayloads, clearSharedPayloads } = useIncomingShare();
   const lastShareSigRef = useRef<string | null>(null);
+
+  // Open the matching trip directly when the user taps a local Travel Reminder notification
+  useEffect(() => {
+    if (!ready || !profile) return;
+    let active = true;
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((res) => {
+        if (!active || !res) return;
+        const tripId = res.notification.request.content.data?.tripId;
+        if (typeof tripId === 'string' && tripId) {
+          setOverlay({ name: 'trip', tripId });
+        }
+      })
+      .catch(() => {});
+
+    const sub = Notifications.addNotificationResponseReceivedListener((res) => {
+      const tripId = res.notification.request.content.data?.tripId;
+      if (typeof tripId === 'string' && tripId) {
+        setOverlay({ name: 'trip', tripId });
+      }
+    });
+
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, [ready, profile]);
 
   // Route incoming Android Share -> Wanderer's Ledger payloads (PDF, screenshots, confirmation text)
   // straight into Smart Scan for 1-tap zero-typing extraction!

@@ -67,6 +67,8 @@ import {
   buildReturnFlight,
 } from '../services/manualFlightBuilder';
 import { pickAndOptimizeMemoryPhoto } from '../services/mediaService';
+import { enrichFlightDetails } from '../services/flightEnricher';
+import { exportTripKeepsakePdf } from '../services/keepsakePdfService';
 import { shareImageWithCaption } from '../services/shareMediaService';
 import {
   getCoTravelerRole,
@@ -262,6 +264,8 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<CoTravelerRole>('editor');
   const [sharingPostcard, setSharingPostcard] = useState(false);
+  const [exportingKeepsakePdf, setExportingKeepsakePdf] = useState(false);
+  const [refreshingFlightId, setRefreshingFlightId] = useState<string | null>(null);
   const [postcardRenderJob, setPostcardRenderJob] = useState<{
     jobKey: string;
     memories: Memory[];
@@ -1129,6 +1133,102 @@ export const TripDetailScreen: React.FC<Props> = ({
     }
   };
 
+  const handleExportKeepsakePdf = async () => {
+    if (exportingKeepsakePdf) return;
+    setExportingKeepsakePdf(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      await exportTripKeepsakePdf({
+        trip,
+        flights,
+        transports,
+        stops,
+        stays,
+        memories,
+        distanceUnit,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to generate keepsake PDF.';
+      Alert.alert('Keepsake PDF Error', msg);
+    } finally {
+      setExportingKeepsakePdf(false);
+    }
+  };
+
+  const handleRefreshFlightInfo = async (f: Flight) => {
+    if (refreshingFlightId) return;
+    setRefreshingFlightId(f.id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      const flightDate = f.departureTime.slice(0, 10) || trip.startDate;
+      const result = await enrichFlightDetails({
+        kind: 'boarding_pass',
+        passengerName: profile?.displayName || 'Traveler',
+        pnr: f.pnr || '',
+        originIata: f.originIata,
+        destIata: f.destIata,
+        airlineCode: f.airlineCode,
+        airlineName: f.airlineName,
+        flightNumber: f.flightNumber,
+        flightDate,
+        cabinClass: f.cabinClass || 'Economy',
+        seat: f.seat || '',
+        distanceMiles: f.distanceMiles,
+        estimatedDurationMin: f.durationMinutes || 120,
+        loyaltyProgram: f.loyaltyProgram || '',
+        rawBarcode: f.rawBarcode || '',
+      });
+
+      if (result.enrichedOnline) {
+        editFlight(f.id, {
+          airlineCode: f.airlineCode,
+          airlineName: f.airlineName,
+          flightNumber: f.flightNumber,
+          pnr: f.pnr,
+          originIata: f.originIata,
+          originCity: f.originCity,
+          destIata: f.destIata,
+          destCity: f.destCity,
+          departureTime: result.departureTime || f.departureTime,
+          arrivalTime: result.arrivalTime || f.arrivalTime,
+          durationMinutes: result.durationMinutes || f.durationMinutes,
+          distanceMiles: f.distanceMiles,
+          milesEarned: f.milesEarned,
+          loyaltyProgram: f.loyaltyProgram,
+          seat: f.seat,
+          cabinClass: f.cabinClass,
+          terminal: result.terminal,
+          gate: result.gate,
+          aircraft: result.aircraft,
+          status: result.status,
+          enrichedOnline: true,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert(
+          `${f.flightNumber} Updated ✈️`,
+          [
+            result.terminal ? `Terminal ${result.terminal}` : '',
+            result.gate ? `Gate ${result.gate}` : '',
+            result.aircraft ? `Aircraft: ${result.aircraft}` : '',
+            `Status: ${result.status}`,
+          ]
+            .filter(Boolean)
+            .join(' • ')
+        );
+      } else {
+        Alert.alert(
+          'Offline Schedule Active ✈️',
+          `Live terminal/gate lookup will activate automatically once Cloud Sync (enrich-flight) is connected. Your offline schedule for ${f.flightNumber} is saved and ready.`
+        );
+      }
+    } catch {
+      Alert.alert('Flight Refresh', 'Could not fetch live flight details right now.');
+    } finally {
+      setRefreshingFlightId(null);
+    }
+  };
+
   const postcardExportCanvasWidth = computeNativeExportCanvasWidth(PixelRatio.get());
 
   return (
@@ -1354,6 +1454,35 @@ export const TripDetailScreen: React.FC<Props> = ({
                   </View>
                   <Text style={styles.igBannerArrow}>→</Text>
                 </LinearGradient>
+              </TouchableOpacity>
+            )}
+
+            {/* Printable Trip Keepsake PDF (100% offline, strictly excludes expenses & receipts) */}
+            {(memories.length > 0 || timelineItems.length > 0) && (
+              <TouchableOpacity
+                onPress={handleExportKeepsakePdf}
+                disabled={exportingKeepsakePdf}
+                style={[styles.keepsakeBannerBtn, exportingKeepsakePdf && { opacity: 0.72 }]}
+                activeOpacity={0.88}
+              >
+                <View style={styles.keepsakeIconCircle}>
+                  {exportingKeepsakePdf ? (
+                    <ActivityIndicator size="small" color={COLORS.coralDark} />
+                  ) : (
+                    <Text style={{ fontSize: 18 }}>📖</Text>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.keepsakeBannerTitle}>
+                    {exportingKeepsakePdf
+                      ? 'Crafting Keepsake PDF…'
+                      : 'Export Printable Keepsake PDF'}
+                  </Text>
+                  <Text style={styles.keepsakeBannerSub} numberOfLines={1}>
+                    A4 travelogue with route, itinerary & Polaroids • Zero spend shown
+                  </Text>
+                </View>
+                <Text style={styles.keepsakeBannerArrow}>↗</Text>
               </TouchableOpacity>
             )}
 
@@ -1605,22 +1734,38 @@ export const TripDetailScreen: React.FC<Props> = ({
                         </Text>
                       </View>
                       <BoardingPassCard flight={f} distanceUnit={distanceUnit} />
-                      <View style={styles.flightCardActionsRow}>
-                        <TouchableOpacity
-                          onPress={() => openEditFlightModal(f)}
-                          style={styles.flightEditPill}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.flightEditPillText}>✏️ Edit date &amp; time</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
-                          style={styles.subtleRemoveRow}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={styles.subtleRemoveText}>🗑️ Remove flight</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {!isViewer && (
+                        <View style={styles.flightCardActionsRow}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => openEditFlightModal(f)}
+                              style={styles.flightEditPill}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.flightEditPillText}>✏️ Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleRefreshFlightInfo(f)}
+                              disabled={refreshingFlightId === f.id}
+                              style={styles.flightRefreshPill}
+                              activeOpacity={0.8}
+                            >
+                              {refreshingFlightId === f.id ? (
+                                <ActivityIndicator size="small" color="#15803D" />
+                              ) : (
+                                <Text style={styles.flightRefreshPillText}>↻ Gate / Status</Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteFlight(f.id, f.flightNumber)}
+                            style={styles.subtleRemoveRow}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={styles.subtleRemoveText}>🗑️ Remove</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   );
                 }
@@ -3587,5 +3732,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.inkSoft,
     fontStyle: 'italic',
+  },
+  keepsakeBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#FDBA74',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...SHADOWS.card,
+  },
+  keepsakeIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keepsakeBannerTitle: {
+    fontSize: 13.5,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  keepsakeBannerSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.inkMuted,
+    marginTop: 1,
+  },
+  keepsakeBannerArrow: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.coralDark,
+  },
+  flightRefreshPill: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 99,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    minWidth: 96,
+    alignItems: 'center',
+  },
+  flightRefreshPillText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#15803D',
   },
 });

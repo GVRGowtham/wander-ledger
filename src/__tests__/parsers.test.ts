@@ -28,6 +28,12 @@ import {
   getTripAccessRole,
   isCollaborativeTrip,
 } from '../services/sharingHelpers';
+import { buildTripKeepsakeHtml } from '../services/keepsakePdfBuilder';
+import {
+  extractTripYears,
+  filterTripsBySearchAndYear,
+} from '../services/tripSearchHelpers';
+import { buildTravelReminders } from '../services/reminderPlanner';
 
 describe('IATA BCBP Boarding Pass Parser (100% Offline)', () => {
   it('decodes ANA LAX -> HND boarding pass with PNR, seat, miles & loyalty number', () => {
@@ -1541,5 +1547,193 @@ describe('v0.5.0 Bidirectional Cloud Sync Engine (Offline-Safe + Supabase/R2 Map
     expect(restoredShared.isShared).toBe(true);
     expect(restoredShared.authorName).toBe('Gowtham');
     expect(restoredShared.receiptUri).toBe('file:///local/exp_s1.webp');
+  });
+});
+
+describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
+  const sampleTrip: Trip = {
+    id: 'trip_v06_1',
+    ownerId: 'local_wanderer',
+    title: 'Swiss Alpine Adventure <2026>',
+    destinationCity: 'Zurich',
+    destinationCountry: 'Switzerland',
+    countryCode: 'CH',
+    flagEmoji: '🇨🇭',
+    startDate: '2026-12-20',
+    endDate: '2026-12-28',
+    homeCurrency: 'INR',
+    budget: 275000,
+    vibe: 'alpine',
+    isShared: true,
+    coTravelers: ['Priya'],
+    lat: 47.37,
+    lng: 8.54,
+    createdAt: '2026-11-01T10:00:00Z',
+    updatedAt: '2026-11-01T10:00:00Z',
+  };
+
+  const sampleFlight: Flight = {
+    id: 'flt_v06_1',
+    tripId: 'trip_v06_1',
+    airlineCode: 'LX',
+    airlineName: 'SWISS',
+    flightNumber: 'LX 147',
+    pnr: 'ABC123',
+    originIata: 'BLR',
+    originCity: 'Bengaluru',
+    destIata: 'ZRH',
+    destCity: 'Zurich',
+    departureTime: '2026-12-20T02:15:00',
+    arrivalTime: '2026-12-20T07:45:00',
+    durationMinutes: 600,
+    seat: '18A',
+    terminal: 'T2',
+    gate: 'B14',
+    status: 'scheduled',
+    distanceMiles: 4580,
+    milesEarned: 4580,
+    enrichedOnline: true,
+    createdAt: '2026-11-01T10:00:00Z',
+  };
+
+  const sampleStay: Stay = {
+    id: 'stay_v06_1',
+    tripId: 'trip_v06_1',
+    name: 'Hotel Adler Zurich',
+    stayType: 'hotel',
+    address: 'Rosengasse 10, Zurich',
+    confirmationCode: 'ADL998',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-24',
+    nights: 4,
+    costCash: 840,
+    currency: 'CHF',
+    homeCost: 79800,
+    pointsRedeemed: 0,
+    createdAt: '2026-11-01T10:00:00Z',
+  };
+
+  const sampleMemory: Memory = {
+    id: 'mem_v06_1',
+    tripId: 'trip_v06_1',
+    title: 'Golden Fondue Night',
+    note: 'Melted Gruyere by the snowy Limmat river!',
+    capturedAt: '2026-12-21T20:00:00Z',
+    placeName: 'Old Town Zurich',
+    moodSticker: '🧀 Cozy Eats',
+    isHighlight: true,
+    authorName: 'Gowtham',
+    createdAt: '2026-12-21T20:05:00Z',
+  };
+
+  it('builds a privacy-safe Keepsake PDF HTML with escaped text, inlined photos, and zero spend/prices', () => {
+    const html = buildTripKeepsakeHtml({
+      trip: sampleTrip,
+      flights: [sampleFlight],
+      transports: [],
+      stops: [
+        {
+          id: 'stp_1',
+          tripId: 'trip_v06_1',
+          cityName: 'Lucerne',
+          sortOrder: 0,
+          createdAt: '2026-11-01T10:00:00Z',
+        },
+      ],
+      stays: [sampleStay],
+      memories: [sampleMemory],
+      distanceUnit: 'km',
+      photoDataUriMap: {
+        mem_v06_1: 'data:image/webp;base64,AAAA',
+      },
+    });
+
+    expect(html).toContain('Swiss Alpine Adventure &lt;2026&gt;');
+    expect(html).toContain('LX 147');
+    expect(html).toContain('Hotel Adler Zurich');
+    expect(html).toContain('Golden Fondue Night');
+    expect(html).toContain('data:image/webp;base64,AAAA');
+    expect(html).toContain('Lucerne');
+    // Strict privacy: budget, cash price, home cost must NEVER leak into Keepsake PDF
+    expect(html).not.toContain('275000');
+    expect(html).not.toContain('79800');
+    expect(html).not.toContain('840');
+  });
+
+  it('filters trips by year and searches across title, airline, hotel, stop, and memory story text', () => {
+    const olderTrip: Trip = {
+      ...sampleTrip,
+      id: 'trip_v06_2',
+      title: 'Kyoto Sakura Spring',
+      destinationCity: 'Kyoto',
+      destinationCountry: 'Japan',
+      countryCode: 'JP',
+      flagEmoji: '🇯🇵',
+      startDate: '2025-04-02',
+      endDate: '2025-04-10',
+      coTravelers: [],
+    };
+    const allTrips = [sampleTrip, olderTrip];
+    const index = {
+      flights: [sampleFlight],
+      transports: [],
+      stops: [
+        {
+          id: 'stp_1',
+          tripId: 'trip_v06_1',
+          cityName: 'Interlaken',
+          sortOrder: 0,
+          createdAt: '2026-11-01T10:00:00Z',
+        },
+      ],
+      stays: [sampleStay],
+      memories: [sampleMemory],
+    };
+
+    expect(extractTripYears(allTrips)).toEqual(['2026', '2025']);
+    expect(filterTripsBySearchAndYear(allTrips, '', '2025', index).map((t) => t.id)).toEqual([
+      'trip_v06_2',
+    ]);
+    // Search matches memory note ("fondue"), flight airline ("SWISS"), stop ("Interlaken"), stay ("Adler")
+    expect(filterTripsBySearchAndYear(allTrips, 'fondue', 'all', index).map((t) => t.id)).toEqual([
+      'trip_v06_1',
+    ]);
+    expect(filterTripsBySearchAndYear(allTrips, 'Interlaken', 'all', index).map((t) => t.id)).toEqual([
+      'trip_v06_1',
+    ]);
+    expect(filterTripsBySearchAndYear(allTrips, 'LX 147', 'all', index).map((t) => t.id)).toEqual([
+      'trip_v06_1',
+    ]);
+    expect(filterTripsBySearchAndYear(allTrips, 'Adler', 'all', index).map((t) => t.id)).toEqual([
+      'trip_v06_1',
+    ]);
+  });
+
+  it('plans chronological future travel reminders and skips past bookings', () => {
+    const now = new Date(2026, 11, 18, 12, 0, 0); // Dec 18, 2026 12:00 local
+    const pastFlight: Flight = {
+      ...sampleFlight,
+      id: 'flt_past',
+      departureTime: '2026-11-01T10:00:00',
+    };
+    const reminders = buildTravelReminders({
+      trips: [sampleTrip],
+      flights: [sampleFlight, pastFlight],
+      stays: [sampleStay],
+      transports: [],
+      now,
+    });
+
+    // Expect 3 upcoming reminders: 24h flight check-in, 3h flight departure, 9 AM hotel check-in
+    expect(reminders.map((r) => r.kind)).toEqual([
+      'flight_checkin',
+      'flight_departure',
+      'stay_checkin',
+    ]);
+    expect(reminders[0].title).toContain('LX 147');
+    expect(reminders[0].body).toContain('PNR ABC123');
+    expect(reminders[1].body).toContain('Gate B14');
+    expect(reminders[2].title).toContain('Hotel Adler Zurich');
+    expect(reminders[2].body).toContain('Conf #ADL998');
   });
 });

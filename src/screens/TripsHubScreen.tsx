@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -12,6 +13,10 @@ import { useApp } from '../context/AppContext';
 import { getTripDayProgress, getTripStatus } from '../db/database';
 import { formatDistance, milesToKm } from '../services/distanceUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
+import {
+  extractTripYears,
+  filterTripsBySearchAndYear,
+} from '../services/tripSearchHelpers';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
 
@@ -28,7 +33,36 @@ export const TripsHubScreen: React.FC<Props> = ({
   onOpenScanner,
   onOpenPassport,
 }) => {
-  const { profile, trips, allFlights, allTransports, allStops, getSummaryForTrip } = useApp();
+  const {
+    profile,
+    trips,
+    allFlights,
+    allTransports,
+    allStops,
+    allStays,
+    allMemories,
+    getSummaryForTrip,
+  } = useApp();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+
+  const tripYears = useMemo(() => extractTripYears(trips), [trips]);
+  const activeYear =
+    selectedYear !== 'all' && tripYears.includes(selectedYear) ? selectedYear : 'all';
+  const isFiltering = searchQuery.trim().length > 0 || activeYear !== 'all';
+
+  const filteredTrips = useMemo(
+    () =>
+      filterTripsBySearchAndYear(trips, searchQuery, activeYear, {
+        flights: allFlights,
+        transports: allTransports,
+        stops: allStops,
+        stays: allStays,
+        memories: allMemories,
+      }),
+    [trips, searchQuery, activeYear, allFlights, allTransports, allStops, allStays, allMemories]
+  );
 
   const activeTrips = trips.filter((t) => getTripStatus(t) === 'active');
   const upcomingTrips = trips
@@ -75,53 +109,189 @@ export const TripsHubScreen: React.FC<Props> = ({
         </TouchableOpacity>
       </View>
 
-      {/* HERO SECTION: Active Trip OR Countdown OR Brand-New Welcome */}
-      {heroTrip ? (
-        <ActiveHeroCard
-          trip={heroTrip}
-          flagsLabel={geography.byTripId[heroTrip.id]?.flagsLabel || heroTrip.flagEmoji}
-          countriesLabel={geography.byTripId[heroTrip.id]?.countriesLabel || ''}
-          summary={getSummaryForTrip(heroTrip.id)}
-          distanceUnit={distanceUnit}
-          onOpen={() => onOpenTrip(heroTrip.id)}
-          onScan={onOpenScanner}
-        />
-      ) : nextUpcoming ? (
-        <CountdownHeroCard
-          trip={nextUpcoming}
-          flagsLabel={geography.byTripId[nextUpcoming.id]?.flagsLabel || nextUpcoming.flagEmoji}
-          countriesLabel={geography.byTripId[nextUpcoming.id]?.countriesLabel || ''}
-          onOpen={() => onOpenTrip(nextUpcoming.id)}
-          onScan={onOpenScanner}
-          onNewTrip={onNewTrip}
-        />
-      ) : (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyEmoji}>🌴✈️🚆🚗</Text>
-          <Text style={styles.emptyTitle}>Where to first, {firstName}?</Text>
-          <Text style={styles.emptySub}>
-            Scan a flight, train ticket, hotel PDF or receipt — or plan a road trip manually!
-          </Text>
-          <TouchableOpacity onPress={onOpenScanner} style={styles.emptyPrimaryBtn} activeOpacity={0.88}>
-            <Text style={styles.emptyPrimaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
-              📷 Smart Scan a Ticket or PDF
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onNewTrip} style={styles.emptySecondaryBtn} activeOpacity={0.85}>
-            <Text style={styles.emptySecondaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
-              ✨ Create My First Trip
-            </Text>
-          </TouchableOpacity>
+      {/* Search & Year Filter Strip (shown once user has at least 1 trip) */}
+      {trips.length > 0 && (
+        <View style={styles.searchSection}>
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search trips, cities, flights, memories..."
+              placeholderTextColor={COLORS.inkSoft}
+              style={styles.searchInput}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.searchClearBtn}
+              >
+                <Text style={styles.searchClearText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {tripYears.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.yearChipsRow}
+            >
+              {['all', ...tripYears].map((yr) => {
+                const active = activeYear === yr;
+                return (
+                  <TouchableOpacity
+                    key={yr}
+                    onPress={() => setSelectedYear(yr)}
+                    style={[styles.yearChip, active && styles.yearChipActive]}
+                    activeOpacity={0.82}
+                  >
+                    <Text style={[styles.yearChipText, active && styles.yearChipTextActive]}>
+                      {yr === 'all' ? `All (${trips.length})` : yr}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
         </View>
       )}
 
-      {/* UPCOMING ADVENTURES CAROUSEL */}
-      {trips.length > 0 && (
+      {/* FILTERED RESULTS VIEW (when search or year filter is active) */}
+      {isFiltering ? (
         <View style={styles.section}>
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>🎟️ Upcoming Adventures</Text>
-            <Text style={styles.sectionMeta}>{upcomingTrips.length} planned</Text>
+            <Text style={styles.sectionTitle}>
+              🔎 Matching Trips ({filteredTrips.length})
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery('');
+                setSelectedYear('all');
+              }}
+            >
+              <Text style={styles.clearFilterLink}>Clear filters</Text>
+            </TouchableOpacity>
           </View>
+
+          {filteredTrips.length === 0 ? (
+            <View style={styles.filterEmptyBox}>
+              <Text style={{ fontSize: 28 }}>🗺️</Text>
+              <Text style={styles.filterEmptyTitle}>No matching trips found</Text>
+              <Text style={styles.filterEmptySub}>
+                Try searching by city, country, airline, hotel, or a word from your memory notes.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.pastGrid}>
+              {filteredTrips.map((trip, idx) => {
+                const stats = getSummaryForTrip(trip.id);
+                const status = getTripStatus(trip);
+                const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                const bgTint =
+                  status === 'active'
+                    ? '#FFF7ED'
+                    : status === 'upcoming'
+                      ? '#EEF2FF'
+                      : idx % 2 === 0
+                        ? '#F0F9FF'
+                        : '#ECFDF5';
+                const borderTint =
+                  status === 'active'
+                    ? '#FDBA74'
+                    : status === 'upcoming'
+                      ? '#C7D2FE'
+                      : idx % 2 === 0
+                        ? '#BAE6FD'
+                        : '#A7F3D0';
+                return (
+                  <TouchableOpacity
+                    key={trip.id}
+                    onPress={() => onOpenTrip(trip.id)}
+                    style={[
+                      styles.pastCard,
+                      { backgroundColor: bgTint, borderColor: borderTint },
+                    ]}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.pastTopRow}>
+                      <Text style={styles.flagLg}>{flags}</Text>
+                      <View style={styles.photoCountBadge}>
+                        <Text style={styles.photoCountText}>
+                          {status === 'active'
+                            ? '☀️ Live'
+                            : status === 'upcoming'
+                              ? '🎟️ Soon'
+                              : `${stats.memoriesCount} 📸`}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.pastTitle} numberOfLines={1}>
+                      {trip.title}
+                    </Text>
+                    <Text style={styles.pastSub} numberOfLines={1}>
+                      {trip.startDate} • {formatMoney(stats.totalSpentHome, trip.homeCurrency)}
+                    </Text>
+                    <Text style={styles.pastMiles}>
+                      🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      ) : (
+        <>
+          {/* HERO SECTION: Active Trip OR Countdown OR Brand-New Welcome */}
+          {heroTrip ? (
+            <ActiveHeroCard
+              trip={heroTrip}
+              flagsLabel={geography.byTripId[heroTrip.id]?.flagsLabel || heroTrip.flagEmoji}
+              countriesLabel={geography.byTripId[heroTrip.id]?.countriesLabel || ''}
+              summary={getSummaryForTrip(heroTrip.id)}
+              distanceUnit={distanceUnit}
+              onOpen={() => onOpenTrip(heroTrip.id)}
+              onScan={onOpenScanner}
+            />
+          ) : nextUpcoming ? (
+            <CountdownHeroCard
+              trip={nextUpcoming}
+              flagsLabel={geography.byTripId[nextUpcoming.id]?.flagsLabel || nextUpcoming.flagEmoji}
+              countriesLabel={geography.byTripId[nextUpcoming.id]?.countriesLabel || ''}
+              onOpen={() => onOpenTrip(nextUpcoming.id)}
+              onScan={onOpenScanner}
+              onNewTrip={onNewTrip}
+            />
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyEmoji}>🌴✈️🚆🚗</Text>
+              <Text style={styles.emptyTitle}>Where to first, {firstName}?</Text>
+              <Text style={styles.emptySub}>
+                Scan a flight, train ticket, hotel PDF or receipt — or plan a road trip manually!
+              </Text>
+              <TouchableOpacity onPress={onOpenScanner} style={styles.emptyPrimaryBtn} activeOpacity={0.88}>
+                <Text style={styles.emptyPrimaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                  📷 Smart Scan a Ticket or PDF
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onNewTrip} style={styles.emptySecondaryBtn} activeOpacity={0.85}>
+                <Text style={styles.emptySecondaryText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                  ✨ Create My First Trip
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* UPCOMING ADVENTURES CAROUSEL */}
+          {trips.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>🎟️ Upcoming Adventures</Text>
+                <Text style={styles.sectionMeta}>{upcomingTrips.length} planned</Text>
+              </View>
 
           <ScrollView
             horizontal
@@ -212,6 +382,8 @@ export const TripsHubScreen: React.FC<Props> = ({
             })}
           </View>
         </View>
+      )}
+        </>
       )}
     </ScrollView>
   );
@@ -620,4 +792,66 @@ const styles = StyleSheet.create({
   pastTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
   pastSub: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
   pastMiles: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
+  searchSection: { gap: 8 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchIcon: { fontSize: 14 },
+  searchInput: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: COLORS.ink,
+    paddingVertical: 2,
+  },
+  searchClearBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchClearText: { fontSize: 11, fontWeight: '900', color: COLORS.inkMuted },
+  yearChipsRow: { gap: 8, paddingVertical: 2 },
+  yearChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 99,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  yearChipActive: {
+    backgroundColor: COLORS.ink,
+    borderColor: COLORS.ink,
+  },
+  yearChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+  yearChipTextActive: { color: '#FFFFFF' },
+  clearFilterLink: { fontSize: 12, fontWeight: '800', color: COLORS.coral },
+  filterEmptyBox: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.border,
+    padding: 22,
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterEmptyTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+  filterEmptySub: {
+    fontSize: 12,
+    color: COLORS.inkMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 });

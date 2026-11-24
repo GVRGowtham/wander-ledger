@@ -646,6 +646,11 @@ export interface FlightEditablePatch {
   loyaltyProgram?: string;
   seat?: string;
   cabinClass?: string;
+  terminal?: string;
+  gate?: string;
+  aircraft?: string;
+  status?: Flight['status'];
+  enrichedOnline?: boolean;
 }
 
 export function updateFlight(flightId: string, patch: FlightEditablePatch): void {
@@ -667,7 +672,12 @@ export function updateFlight(flightId: string, patch: FlightEditablePatch): void
          miles_earned = ?,
          loyalty_program = ?,
          seat = ?,
-         cabin_class = ?
+         cabin_class = ?,
+         terminal = COALESCE(?, terminal),
+         gate = COALESCE(?, gate),
+         aircraft = COALESCE(?, aircraft),
+         status = COALESCE(?, status),
+         enriched_online = COALESCE(?, enriched_online)
      WHERE id = ?`,
     [
       patch.airlineCode,
@@ -686,6 +696,11 @@ export function updateFlight(flightId: string, patch: FlightEditablePatch): void
       patch.loyaltyProgram ?? null,
       patch.seat ?? null,
       patch.cabinClass ?? null,
+      patch.terminal ?? null,
+      patch.gate ?? null,
+      patch.aircraft ?? null,
+      patch.status ?? null,
+      patch.enrichedOnline !== undefined ? (patch.enrichedOnline ? 1 : 0) : null,
       flightId,
     ]
   );

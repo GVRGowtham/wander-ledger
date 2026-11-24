@@ -11,11 +11,16 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
-import { buildLocalBackupSnapshot } from '../services/cloudSyncService';
+import {
+  buildLocalBackupSnapshot,
+  restoreFromBackupSnapshot,
+  validateBackupSnapshot,
+} from '../services/cloudSyncService';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
@@ -51,6 +56,10 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     allMemories,
     loyaltyAccounts,
     fxSource,
+    remindersEnabled,
+    scheduledRemindersCount,
+    toggleTravelReminders,
+    refreshAll,
     syncNow,
     connectGoogleCloud,
     disconnectCloud,
@@ -61,6 +70,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const [renameModal, setRenameModal] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [connectingCloud, setConnectingCloud] = useState(false);
+  const [togglingReminders, setTogglingReminders] = useState(false);
 
   // Multi-country geography: counts visited countries across trips, stops & open-jaw legs,
   // while keeping <24h airside airport layovers separate as Transit Hubs.
@@ -151,6 +161,76 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       }
     } catch {
       Alert.alert('Backup Error', 'Unable to export local backup file on this device.');
+    }
+  };
+
+  const handleImportLocalBackup = async () => {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/plain', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]?.uri) return;
+
+      const rawText = await FileSystem.readAsStringAsync(picked.assets[0].uri);
+      const parsed = JSON.parse(rawText);
+      const snapshot = validateBackupSnapshot(parsed);
+      if (!snapshot) {
+        Alert.alert(
+          'Invalid Backup File',
+          "Please select a valid Wanderer's Ledger (.json) backup exported from this app."
+        );
+        return;
+      }
+
+      const itemCount =
+        snapshot.flights.length +
+        snapshot.transports.length +
+        snapshot.stops.length +
+        snapshot.stays.length +
+        snapshot.expenses.length +
+        snapshot.memories.length +
+        snapshot.loyaltyAccounts.length;
+
+      Alert.alert(
+        'Restore Local Backup? 📥',
+        `Found ${snapshot.trips.length} ${snapshot.trips.length === 1 ? 'trip' : 'trips'} and ${itemCount} bookings, memories & loyalty entries.\n\nExisting trips on this device will be kept and merged cleanly.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore',
+            onPress: () => {
+              const res = restoreFromBackupSnapshot(snapshot);
+              refreshAll();
+              Alert.alert(
+                'Backup Restored ✨',
+                `Restored ${res.tripsRestored} ${res.tripsRestored === 1 ? 'trip' : 'trips'} and ${res.itemsRestored} entries onto this device.`
+              );
+            },
+          },
+        ]
+      );
+    } catch {
+      Alert.alert(
+        'Import Failed',
+        "Could not read that file. Make sure you pick a Wanderer's Ledger .json backup file."
+      );
+    }
+  };
+
+  const handleToggleReminders = async (val: boolean) => {
+    if (togglingReminders) return;
+    setTogglingReminders(true);
+    try {
+      const enabled = await toggleTravelReminders(val);
+      if (val && !enabled) {
+        Alert.alert(
+          'Notifications Disabled',
+          'Allow notifications for Wanderer’s Ledger in your phone Settings to receive offline flight check-in and hotel reminders.'
+        );
+      }
+    } finally {
+      setTogglingReminders(false);
     }
   };
 
@@ -404,13 +484,26 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               memories). Cloud Sync (Supabase + Cloudflare R2) is pre-wired and ready as soon as
               you connect your backend keys.
             </Text>
-            <TouchableOpacity
-              onPress={handleExportLocalBackup}
-              style={styles.backupBtn}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
-            </TouchableOpacity>
+            <View style={styles.footerSubRow}>
+              <TouchableOpacity
+                onPress={handleExportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📦 Export (.json)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleImportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📥 Import (.json)
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         ) : profile?.authMode !== 'google' ? (
           <>
@@ -431,13 +524,26 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 <Text style={styles.cloudPrimaryBtnText}>🔐 Sign in with Google to Sync</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleExportLocalBackup}
-              style={styles.backupBtn}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
-            </TouchableOpacity>
+            <View style={styles.footerSubRow}>
+              <TouchableOpacity
+                onPress={handleExportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📦 Export (.json)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleImportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📥 Import (.json)
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         ) : (
           <>
@@ -476,13 +582,26 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              onPress={handleExportLocalBackup}
-              style={styles.backupBtn}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.backupBtnText}>📦 Export Local Backup (.json)</Text>
-            </TouchableOpacity>
+            <View style={styles.footerSubRow}>
+              <TouchableOpacity
+                onPress={handleExportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📦 Export (.json)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleImportLocalBackup}
+                style={[styles.backupBtn, { flex: 1 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  📥 Import (.json)
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </View>
@@ -526,6 +645,24 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={styles.switchTitle}>🔔 Offline Travel Reminders</Text>
+            <Text style={styles.switchSub}>
+              {remindersEnabled
+                ? `${scheduledRemindersCount} upcoming ${scheduledRemindersCount === 1 ? 'alert' : 'alerts'} scheduled (24h check-in, 3h flight & hotel morning)`
+                : 'Local alerts for flight check-in, departures & hotel check-in (100% offline)'}
+            </Text>
+          </View>
+          <Switch
+            value={remindersEnabled}
+            disabled={togglingReminders}
+            onValueChange={handleToggleReminders}
+            trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
+            thumbColor={remindersEnabled ? COLORS.coral : '#FFFFFF'}
+          />
         </View>
 
         <View style={styles.switchRow}>

@@ -70,6 +70,13 @@ import {
   FxRatesMap,
 } from '../services/fxService';
 import {
+  cancelAllTravelReminders,
+  getTravelRemindersEnabled,
+  requestReminderPermissions,
+  setTravelRemindersEnabledMeta,
+  syncTravelReminders,
+} from '../services/reminderService';
+import {
   CoTravelerRole,
   DistanceUnit,
   Expense,
@@ -97,11 +104,15 @@ interface AppContextValue {
   allFlights: Flight[];
   allTransports: TransportLeg[];
   allStops: TripStop[];
+  allStays: Stay[];
   allExpenses: Expense[];
   allMemories: Memory[];
   loyaltyAccounts: LoyaltyAccount[];
   fxRates: FxRatesMap;
   fxSource: 'live' | 'fallback';
+  remindersEnabled: boolean;
+  scheduledRemindersCount: number;
+  toggleTravelReminders: (enable: boolean) => Promise<boolean>;
   refreshAll: () => void;
   clearAllData: () => void;
   syncNow: () => Promise<CloudSyncResult>;
@@ -164,11 +175,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [allFlights, setAllFlights] = useState<Flight[]>([]);
   const [allTransports, setAllTransports] = useState<TransportLeg[]>([]);
   const [allStops, setAllStops] = useState<TripStop[]>([]);
+  const [allStays, setAllStays] = useState<Stay[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [allMemories, setAllMemories] = useState<Memory[]>([]);
   const [loyaltyAccounts, setLoyaltyAccounts] = useState<LoyaltyAccount[]>([]);
   const [fxRates, setFxRates] = useState<FxRatesMap>(DEFAULT_USD_RATES);
   const [fxSource, setFxSource] = useState<'live' | 'fallback'>('fallback');
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [scheduledRemindersCount, setScheduledRemindersCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>(
     cloudReady ? 'signed_out' : 'offline_only'
   );
@@ -183,14 +197,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   profileRef.current = profile;
 
   const loadLocalSnapshotIntoState = useCallback(() => {
-    setTrips(listTrips());
-    setAllFlights(listFlights());
-    setAllTransports(listTransports());
+    const nextTrips = listTrips();
+    const nextFlights = listFlights();
+    const nextTransports = listTransports();
+    const nextStays = listStays();
+    setTrips(nextTrips);
+    setAllFlights(nextFlights);
+    setAllTransports(nextTransports);
     setAllStops(listTripStops());
+    setAllStays(nextStays);
     setAllExpenses(listExpenses());
     setAllMemories(listMemories());
     setLoyaltyAccounts(listLoyaltyAccounts());
     setPendingSyncCount(getPendingSyncCount());
+    const remEnabled = getTravelRemindersEnabled();
+    setRemindersEnabled(remEnabled);
+    if (remEnabled) {
+      syncTravelReminders({
+        trips: nextTrips,
+        flights: nextFlights,
+        stays: nextStays,
+        transports: nextTransports,
+      })
+        .then((r) => setScheduledRemindersCount(r.scheduledCount))
+        .catch(() => {});
+    }
+  }, []);
+
+  const toggleTravelReminders = useCallback(async (enable: boolean): Promise<boolean> => {
+    if (!enable) {
+      setTravelRemindersEnabledMeta(false);
+      setRemindersEnabled(false);
+      setScheduledRemindersCount(0);
+      await cancelAllTravelReminders();
+      return false;
+    }
+    const granted = await requestReminderPermissions();
+    if (!granted) {
+      setTravelRemindersEnabledMeta(false);
+      setRemindersEnabled(false);
+      setScheduledRemindersCount(0);
+      return false;
+    }
+    setTravelRemindersEnabledMeta(true);
+    setRemindersEnabled(true);
+    const res = await syncTravelReminders({
+      trips: listTrips(),
+      flights: listFlights(),
+      stays: listStays(),
+      transports: listTransports(),
+    });
+    setScheduledRemindersCount(res.scheduledCount);
+    return true;
   }, []);
 
   const syncNowWithProfile = useCallback(
@@ -653,11 +711,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         allFlights,
         allTransports,
         allStops,
+        allStays,
         allExpenses,
         allMemories,
         loyaltyAccounts,
         fxRates,
         fxSource,
+        remindersEnabled,
+        scheduledRemindersCount,
+        toggleTravelReminders,
         refreshAll,
         clearAllData,
         syncNow,

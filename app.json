@@ -101,6 +101,12 @@
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": []
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F43F5E"
+        }
       ]
     ],
     "web": {

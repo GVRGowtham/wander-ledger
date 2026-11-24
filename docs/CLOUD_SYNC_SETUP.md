@@ -34,6 +34,12 @@ Whenever you are ready to enable **automatic cloud backup & multi-device sync**,
    npx supabase functions deploy r2-presign
    ```
 
+4. *(Optional)* Deploy the shared cached **`enrich-flight`** Edge Function for live terminals, gates & aircraft types (AirLabs free tier = 1,000 req/mo, cached in `public.flight_cache` so duplicate lookups cost \$0):
+   ```bash
+   npx supabase secrets set AIRLABS_API_KEY=<YOUR_AIRLABS_KEY>
+   npx supabase functions deploy enrich-flight
+   ```
+
 ---
 
 ## 3. Add Your Keys to `.env` & Rebuild (~1 min)
