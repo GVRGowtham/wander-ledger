@@ -754,7 +754,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getStaysForTrip: (id) => listStays(id),
         getExpensesForTrip: (id) => listExpenses(id),
         getMemoriesForTrip: (id) => listMemories(id),
-        getSummaryForTrip: (id) => getTripSummary(id),
+        getSummaryForTrip: (id) => getTripSummary(id, profile?.homeCurrency, fxRates),
       }}
     >
       {children}

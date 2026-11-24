@@ -159,7 +159,10 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
               {selectedSummary.memoriesCount} memories
             </Text>
             <Text style={styles.footerSpend}>
-              {formatMoney(selectedSummary.totalSpentHome, selectedTrip.homeCurrency)}
+              {formatMoney(
+                selectedSummary.totalSpentHome,
+                profile?.homeCurrency || selectedTrip.homeCurrency
+              )}
             </Text>
           </View>
         </View>

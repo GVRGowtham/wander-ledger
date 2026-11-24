@@ -14,6 +14,7 @@ import {
 } from '../types/models';
 import { DEFAULT_USD_RATES, FxRatesMap } from '../services/fxService';
 import { milesToKm } from '../services/distanceUtils';
+import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
@@ -1296,17 +1297,29 @@ export function loadCachedFxRates(): FxRatesMap {
 
 // --- AGGREGATES ---
 
-export function getTripSummary(tripId: string): TripSummaryStats {
+export function getTripSummary(
+  tripId: string,
+  preferredCurrency?: string,
+  fxRates: FxRatesMap = DEFAULT_USD_RATES
+): TripSummaryStats {
+  const trip = getTripById(tripId);
   const expenses = listExpenses(tripId);
   const flights = listFlights(tripId);
   const transports = listTransports(tripId);
   const stays = listStays(tripId);
   const memories = listMemories(tripId);
 
-  const totalSpentHome =
-    expenses.reduce((acc, e) => acc + e.homeAmount, 0) +
-    stays.reduce((acc, s) => acc + s.homeCost, 0) +
-    transports.reduce((acc, t) => acc + (t.homeCost ?? 0), 0);
+  const targetCurrency = (preferredCurrency || trip?.homeCurrency || 'USD').toUpperCase();
+  const ledger = buildTripSpendLedger({
+    expenses,
+    transports,
+    stays,
+    preferredCurrency: targetCurrency,
+    fallbackCurrency: trip?.homeCurrency || targetCurrency,
+    fxRates,
+  });
+
+  const totalSpentHome = ledger.totalSpentPreferred;
   const totalMilesFlown = flights.reduce((acc, f) => acc + f.distanceMiles, 0);
   const totalDistanceKm =
     milesToKm(totalMilesFlown) +
@@ -1317,7 +1330,7 @@ export function getTripSummary(tripId: string): TripSummaryStats {
   const receiptsCount = expenses.filter((e) => Boolean(e.receiptUri || e.receiptRawText)).length;
 
   return {
-    totalSpentHome: Math.round(totalSpentHome * 100) / 100,
+    totalSpentHome,
     totalMilesFlown,
     totalDistanceKm,
     totalPointsEarned,

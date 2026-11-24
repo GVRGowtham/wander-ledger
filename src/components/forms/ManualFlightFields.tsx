@@ -18,6 +18,7 @@ import {
   resolveAirportOrCity,
   searchAirports,
 } from '../../services/manualFlightBuilder';
+import { formatTimeHmInput } from '../../services/timeInputUtils';
 import { COLORS } from '../../theme/tokens';
 import { DatePickerField } from './DatePickerField';
 
@@ -295,9 +296,13 @@ export const ManualFlightFields: React.FC<Props> = ({
           <Text style={styles.label}>Dep Time</Text>
           <TextInput
             value={draft.departureTimeHm}
-            onChangeText={(v) => patch({ departureTimeHm: v })}
+            onChangeText={(v) =>
+              patch({ departureTimeHm: formatTimeHmInput(v, draft.departureTimeHm) })
+            }
             placeholder="14:30"
             placeholderTextColor={COLORS.inkSoft}
+            keyboardType="number-pad"
+            maxLength={5}
             style={styles.input}
           />
         </View>
@@ -305,9 +310,13 @@ export const ManualFlightFields: React.FC<Props> = ({
           <Text style={styles.label}>Arr Time</Text>
           <TextInput
             value={draft.arrivalTimeHm}
-            onChangeText={(v) => patch({ arrivalTimeHm: v })}
+            onChangeText={(v) =>
+              patch({ arrivalTimeHm: formatTimeHmInput(v, draft.arrivalTimeHm) })
+            }
             placeholder="17:45"
             placeholderTextColor={COLORS.inkSoft}
+            keyboardType="number-pad"
+            maxLength={5}
             style={styles.input}
           />
         </View>

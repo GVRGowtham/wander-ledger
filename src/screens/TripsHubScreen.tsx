@@ -17,6 +17,7 @@ import {
   extractTripYears,
   filterTripsBySearchAndYear,
 } from '../services/tripSearchHelpers';
+import { convertAmountToPreferred } from '../services/spendCurrencyUtils';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
 
@@ -41,8 +42,11 @@ export const TripsHubScreen: React.FC<Props> = ({
     allStops,
     allStays,
     allMemories,
+    fxRates,
     getSummaryForTrip,
   } = useApp();
+
+  const preferredCurrency = (profile?.homeCurrency || 'USD').toUpperCase();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -232,7 +236,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                       {trip.title}
                     </Text>
                     <Text style={styles.pastSub} numberOfLines={1}>
-                      {trip.startDate} • {formatMoney(stats.totalSpentHome, trip.homeCurrency)}
+                      {trip.startDate} • {formatMoney(stats.totalSpentHome, preferredCurrency)}
                     </Text>
                     <Text style={styles.pastMiles}>
                       🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
@@ -252,6 +256,17 @@ export const TripsHubScreen: React.FC<Props> = ({
               flagsLabel={geography.byTripId[heroTrip.id]?.flagsLabel || heroTrip.flagEmoji}
               countriesLabel={geography.byTripId[heroTrip.id]?.countriesLabel || ''}
               summary={getSummaryForTrip(heroTrip.id)}
+              preferredCurrency={preferredCurrency}
+              convertedBudget={
+                heroTrip.budget > 0
+                  ? convertAmountToPreferred(
+                      heroTrip.budget,
+                      heroTrip.homeCurrency,
+                      preferredCurrency,
+                      fxRates
+                    ).amount
+                  : 0
+              }
               distanceUnit={distanceUnit}
               onOpen={() => onOpenTrip(heroTrip.id)}
               onScan={onOpenScanner}
@@ -372,7 +387,7 @@ export const TripsHubScreen: React.FC<Props> = ({
                     {trip.title}
                   </Text>
                   <Text style={styles.pastSub}>
-                    {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, trip.homeCurrency)}
+                    {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, preferredCurrency)}
                   </Text>
                   <Text style={styles.pastMiles}>
                     🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
@@ -394,12 +409,27 @@ const ActiveHeroCard: React.FC<{
   flagsLabel: string;
   countriesLabel: string;
   summary: ReturnType<ReturnType<typeof useApp>['getSummaryForTrip']>;
+  preferredCurrency: string;
+  convertedBudget: number;
   distanceUnit: DistanceUnit;
   onOpen: () => void;
   onScan: () => void;
-}> = ({ trip, flagsLabel, countriesLabel, summary, distanceUnit, onOpen, onScan }) => {
+}> = ({
+  trip,
+  flagsLabel,
+  countriesLabel,
+  summary,
+  preferredCurrency,
+  convertedBudget,
+  distanceUnit,
+  onOpen,
+  onScan,
+}) => {
   const { currentDay, totalDays } = getTripDayProgress(trip);
-  const pct = trip.budget > 0 ? Math.min(100, Math.round((summary.totalSpentHome / trip.budget) * 100)) : 0;
+  const pct =
+    convertedBudget > 0
+      ? Math.min(100, Math.round((summary.totalSpentHome / convertedBudget) * 100))
+      : 0;
 
   return (
     <TouchableOpacity onPress={onOpen} activeOpacity={0.92} style={styles.heroCard}>
@@ -438,12 +468,12 @@ const ActiveHeroCard: React.FC<{
           <View style={[styles.metricBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
             <Text style={styles.metricLabel}>Trip Spend</Text>
             <Text style={styles.metricValue}>
-              {formatMoney(summary.totalSpentHome, trip.homeCurrency)}
-              {trip.budget > 0 ? (
-                <Text style={styles.metricMuted}> / {formatMoney(trip.budget, trip.homeCurrency)}</Text>
+              {formatMoney(summary.totalSpentHome, preferredCurrency)}
+              {convertedBudget > 0 ? (
+                <Text style={styles.metricMuted}> / {formatMoney(convertedBudget, preferredCurrency)}</Text>
               ) : null}
             </Text>
-            {trip.budget > 0 && (
+            {convertedBudget > 0 && (
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${pct}%` }]} />
               </View>

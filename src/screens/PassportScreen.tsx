@@ -22,6 +22,7 @@ import {
   validateBackupSnapshot,
 } from '../services/cloudSyncService';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
+import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
 import { DistanceUnit } from '../types/models';
@@ -52,9 +53,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     allFlights,
     allTransports,
     allStops,
+    allStays,
     allExpenses,
     allMemories,
     loyaltyAccounts,
+    fxRates,
     fxSource,
     remindersEnabled,
     scheduledRemindersCount,
@@ -247,11 +250,19 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
 
   const handleExportCsv = async () => {
     try {
-      const header = 'Date,Merchant,Category,LocalAmount,LocalCurrency,HomeAmount,HomeCurrency\n';
-      const rows = allExpenses
+      const preferredCurrency = (profile?.homeCurrency || 'USD').toUpperCase();
+      const ledger = buildTripSpendLedger({
+        expenses: allExpenses,
+        transports: allTransports,
+        stays: allStays,
+        preferredCurrency,
+        fxRates,
+      });
+      const header = 'Date,Merchant,Category,Source,LocalAmount,LocalCurrency,ConvertedAmount,PreferredCurrency\n';
+      const rows = ledger.items
         .map(
-          (e) =>
-            `${e.expenseDate},"${e.merchant.replace(/"/g, '""')}",${e.category},${e.localAmount},${e.localCurrency},${e.homeAmount},${e.homeCurrency}`
+          (i) =>
+            `${i.date},"${i.title.replace(/"/g, '""')}",${i.category},${i.source},${i.originalAmount},${i.originalCurrency},${i.convertedAmount},${i.preferredCurrency}`
         )
         .join('\n');
       const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
@@ -260,7 +271,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Export Travel Spend CSV' });
       } else {
-        Alert.alert('Export Ready', `Saved ${allExpenses.length} expenses to CSV.`);
+        Alert.alert('Export Ready', `Saved ${ledger.items.length} spend items to CSV.`);
       }
     } catch {
       Alert.alert('Export Error', 'Unable to export CSV on this device.');

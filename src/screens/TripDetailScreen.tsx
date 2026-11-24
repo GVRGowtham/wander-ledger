@@ -71,6 +71,11 @@ import { enrichFlightDetails } from '../services/flightEnricher';
 import { exportTripKeepsakePdf } from '../services/keepsakePdfService';
 import { shareImageWithCaption } from '../services/shareMediaService';
 import {
+  buildTripSpendLedger,
+  convertAmountToPreferred,
+} from '../services/spendCurrencyUtils';
+import { formatTimeHmInput } from '../services/timeInputUtils';
+import {
   getCoTravelerRole,
   getEditorCount,
   getTripAccessRole,
@@ -316,44 +321,52 @@ export const TripDetailScreen: React.FC<Props> = ({
     ? memories.filter((m) => m.stopId === activeStopFilter)
     : memories;
 
-  const fuelExpenses = expenses.filter((e) => e.category === 'fuel');
-  const fuelSpentHome = fuelExpenses.reduce((sum, e) => sum + e.homeAmount, 0);
+  const preferredCurrency = (profile?.homeCurrency || trip.homeCurrency || 'USD').toUpperCase();
+  const convertedTripBudget =
+    trip.budget > 0
+      ? convertAmountToPreferred(trip.budget, trip.homeCurrency, preferredCurrency, fxRates).amount
+      : 0;
+
+  const fullSpendLedger = buildTripSpendLedger({
+    expenses,
+    transports,
+    stays,
+    preferredCurrency,
+    fallbackCurrency: trip.homeCurrency,
+    fxRates,
+  });
+
+  const fuelExpenses = fullSpendLedger.items.filter((i) => i.category === 'fuel');
+  const fuelSpentHome = fuelExpenses.reduce((sum, i) => sum + i.convertedAmount, 0);
   const timelineItems = buildJourneyTimeline(flights, transports, stays);
   const routeTrail = buildJourneyRouteTrail(flights, transports, stops);
   const suggestedStops = suggestStopsFromBookings(flights, transports, stays, stops);
   const tripGeo = deriveTripGeography(trip, flights, transports, stops);
 
   // Personal vs Shared expense filtering (Option A: full bill amounts + subtle per-person reference on Shared)
-  const personalExpenses = expenses.filter((e) => !e.isShared);
-  const sharedExpenses = expenses.filter((e) => Boolean(e.isShared));
-  const showExpenseFilter = isCollab || sharedExpenses.length > 0;
+  const personalSpendItems = fullSpendLedger.items.filter(
+    (i) => i.source === 'expense' && !i.isShared
+  );
+  const sharedSpendItems = fullSpendLedger.items.filter(
+    (i) => i.source === 'expense' && i.isShared
+  );
+  const showExpenseFilter = isCollab || sharedSpendItems.length > 0;
   const activeExpenseFilter = showExpenseFilter ? expenseFilter : 'all';
-  const visibleExpenses =
+  const visibleSpendItems =
     activeExpenseFilter === 'personal'
-      ? personalExpenses
+      ? personalSpendItems
       : activeExpenseFilter === 'shared'
-        ? sharedExpenses
-        : expenses;
+        ? sharedSpendItems
+        : fullSpendLedger.items;
 
-  // Spend breakdown by category (follows active All / Personal / Shared filter)
+  // Spend breakdown by category (follows active All / Personal / Shared filter, all converted to preferredCurrency)
   const catTotals: Record<string, number> = {};
-  for (const e of visibleExpenses) {
-    catTotals[e.category] = (catTotals[e.category] ?? 0) + e.homeAmount;
-  }
-  if (activeExpenseFilter === 'all') {
-    for (const s of stays) {
-      catTotals.lodging = (catTotals.lodging ?? 0) + s.homeCost;
-    }
-    for (const t of transports) {
-      if (t.homeCost && t.homeCost > 0) {
-        catTotals.transit = (catTotals.transit ?? 0) + t.homeCost;
-      }
-    }
+  for (const item of visibleSpendItems) {
+    catTotals[item.category] =
+      Math.round(((catTotals[item.category] ?? 0) + item.convertedAmount) * 100) / 100;
   }
   const filteredTotalHome =
-    activeExpenseFilter === 'all'
-      ? summary.totalSpentHome
-      : visibleExpenses.reduce((sum, e) => sum + e.homeAmount, 0);
+    Math.round(visibleSpendItems.reduce((sum, i) => sum + i.convertedAmount, 0) * 100) / 100;
   const grandTotal = Math.max(1, filteredTotalHome);
 
   // --- EDIT TRIP ---
@@ -362,8 +375,8 @@ export const TripDetailScreen: React.FC<Props> = ({
     setEditDestination(trip.destinationCity);
     setEditStartDate(trip.startDate);
     setEditEndDate(trip.endDate);
-    setEditBudget(trip.budget > 0 ? String(trip.budget) : '');
-    setEditCurrency(trip.homeCurrency || 'USD');
+    setEditBudget(convertedTripBudget > 0 ? String(convertedTripBudget) : '');
+    setEditCurrency(preferredCurrency);
     setEditVibe(trip.vibe);
     setEditModal(true);
   };
@@ -606,7 +619,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const openExpenseModal = (presetCategory: ExpenseCategory = 'dining') => {
     setExpMerchant('');
     setExpAmount('');
-    setExpCurrency(trip.homeCurrency || 'USD');
+    setExpCurrency(preferredCurrency);
     setExpDate(new Date().toISOString().slice(0, 10));
     setExpCategory(presetCategory);
     setExpIsShared(false);
@@ -619,7 +632,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       Alert.alert('Check expense', 'Enter a merchant name and valid amount.');
       return;
     }
-    const { converted, rate } = convertCurrency(amt, expCurrency, trip.homeCurrency, fxRates);
+    const { converted, rate } = convertCurrency(amt, expCurrency, preferredCurrency, fxRates);
     addExpense({
       id: generateId('exp'),
       tripId: trip.id,
@@ -628,7 +641,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       localAmount: amt,
       localCurrency: expCurrency.toUpperCase(),
       homeAmount: converted,
-      homeCurrency: trip.homeCurrency,
+      homeCurrency: preferredCurrency,
       fxRateUsed: rate,
       expenseDate: expDate.trim() || new Date().toISOString().slice(0, 10),
       isShared: isCollab ? expIsShared : false,
@@ -664,7 +677,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const openManualFlightModal = (initialMode: 'flight' | 'transport' = 'flight') => {
     setTravelModalMode(initialMode);
     setFlightDraft(
-      createEmptyFlightDraft(trip.startDate, trip.endDate, trip.homeCurrency, trip.destinationCity)
+      createEmptyFlightDraft(trip.startDate, trip.endDate, preferredCurrency, trip.destinationCity)
     );
     setTransportDraft({
       mode: 'train',
@@ -678,7 +691,7 @@ export const TripDetailScreen: React.FC<Props> = ({
       seatOrVehicle: '',
       distanceInput: '',
       costAmount: '',
-      currency: trip.homeCurrency,
+      currency: preferredCurrency,
       notes: '',
     });
     setFlightModal(true);
@@ -698,10 +711,10 @@ export const TripDetailScreen: React.FC<Props> = ({
     }
     const modeMeta = TRANSPORT_MODE_META[transportDraft.mode];
     const costNum = parseFloat(transportDraft.costAmount) || 0;
-    const tCurr = (transportDraft.currency || trip.homeCurrency).toUpperCase();
+    const tCurr = (transportDraft.currency || preferredCurrency).toUpperCase();
     const { converted: homeCost } =
       costNum > 0
-        ? convertCurrency(costNum, tCurr, trip.homeCurrency, fxRates)
+        ? convertCurrency(costNum, tCurr, preferredCurrency, fxRates)
         : { converted: 0 };
     const distVal = parseFloat(transportDraft.distanceInput);
     const distanceKm =
@@ -781,8 +794,8 @@ export const TripDetailScreen: React.FC<Props> = ({
 
     const priceNum = parseFloat(flightDraft.ticketPrice);
     if (!Number.isNaN(priceNum) && priceNum > 0) {
-      const curr = (flightDraft.ticketCurrency || trip.homeCurrency).toUpperCase();
-      const { converted, rate } = convertCurrency(priceNum, curr, trip.homeCurrency, fxRates);
+      const curr = (flightDraft.ticketCurrency || preferredCurrency).toUpperCase();
+      const { converted, rate } = convertCurrency(priceNum, curr, preferredCurrency, fxRates);
       addExpense({
         id: generateId('exp'),
         tripId: trip.id,
@@ -791,7 +804,7 @@ export const TripDetailScreen: React.FC<Props> = ({
         localAmount: priceNum,
         localCurrency: curr,
         homeAmount: converted,
-        homeCurrency: trip.homeCurrency,
+        homeCurrency: preferredCurrency,
         fxRateUsed: rate,
         expenseDate: outbound.departureTime.slice(0, 10),
         createdAt: new Date().toISOString(),
@@ -899,7 +912,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     setStayConf('');
     setStayAddress('');
     setStayCost('');
-    setStayCurrency(trip.homeCurrency);
+    setStayCurrency(preferredCurrency);
     setStayPoints('');
     setStayPointsProg('');
     setStayNotes('');
@@ -920,8 +933,8 @@ export const TripDetailScreen: React.FC<Props> = ({
         ? Math.max(1, Math.round((d2 - d1) / 86400000))
         : 1;
     const cash = parseFloat(stayCost) || 0;
-    const curr = (stayCurrency || trip.homeCurrency).toUpperCase();
-    const { converted } = convertCurrency(cash, curr, trip.homeCurrency, fxRates);
+    const curr = (stayCurrency || preferredCurrency).toUpperCase();
+    const { converted } = convertCurrency(cash, curr, preferredCurrency, fxRates);
     const pts = parseInt(stayPoints.replace(/[^0-9]/g, ''), 10) || 0;
 
     addStay({
@@ -1331,7 +1344,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           <Text style={styles.tripDates} numberOfLines={1}>
             {tripGeo.visitedCountries.length > 0 ? `${tripGeo.countriesLabel} • ` : ''}
             {trip.startDate} → {trip.endDate}
-            {!isViewer ? ` • ${formatMoney(summary.totalSpentHome, trip.homeCurrency)}` : ''} •{' '}
+            {!isViewer ? ` • ${formatMoney(fullSpendLedger.totalSpentPreferred, preferredCurrency)}` : ''} •{' '}
             {formatDistance(summary.totalDistanceKm, distanceUnit)}
           </Text>
         </View>
@@ -1352,7 +1365,7 @@ export const TripDetailScreen: React.FC<Props> = ({
         {!isViewer && (
           <TabPill
             active={tab === 'spend'}
-            label={`🧾 Spend (${expenses.length})`}
+            label={`🧾 Spend (${fullSpendLedger.items.length})`}
             onPress={() => setTab('spend')}
           />
         )}
@@ -1784,7 +1797,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                       <TransportCard
                         transport={t}
                         distanceUnit={distanceUnit}
-                        homeCurrency={trip.homeCurrency}
+                        homeCurrency={preferredCurrency}
                         fuelSpentHome={fuelSpentHome}
                         fuelCount={fuelExpenses.length}
                         onLogFuel={() => openExpenseModal('fuel')}
@@ -1851,16 +1864,16 @@ export const TripDetailScreen: React.FC<Props> = ({
           </View>
         )}
 
-        {/* TAB 3: SPEND LEDGER WITH PERSONAL / SHARED FILTER & TUCKED RECEIPTS */}
+        {/* TAB 3: UNIFIED MULTI-CURRENCY SPEND LEDGER (EXPENSES + PRICED BOOKINGS) */}
         {tab === 'spend' && !isViewer && (
           <View style={styles.sectionGap}>
             {showExpenseFilter && (
               <View style={styles.expenseFilterRow}>
                 {(
                   [
-                    { id: 'all', label: `All (${expenses.length})` },
-                    { id: 'personal', label: `🔒 Personal (${personalExpenses.length})` },
-                    { id: 'shared', label: `🤝 Shared (${sharedExpenses.length})` },
+                    { id: 'all', label: `All (${fullSpendLedger.items.length})` },
+                    { id: 'personal', label: `🔒 Personal (${personalSpendItems.length})` },
+                    { id: 'shared', label: `🤝 Shared (${sharedSpendItems.length})` },
                   ] as const
                 ).map((opt) => {
                   const active = activeExpenseFilter === opt.id;
@@ -1895,19 +1908,19 @@ export const TripDetailScreen: React.FC<Props> = ({
                     ? '🔒 Personal Spend'
                     : activeExpenseFilter === 'shared'
                       ? '🤝 Shared Group Spend'
-                      : '💰 Spend Overview'}
+                      : `💰 Spend Overview (${preferredCurrency})`}
                 </Text>
                 <Text style={styles.spendTotal}>
-                  {formatMoney(filteredTotalHome, trip.homeCurrency)}
-                  {activeExpenseFilter === 'all' && trip.budget > 0
-                    ? ` / ${formatMoney(trip.budget, trip.homeCurrency)}`
+                  {formatMoney(filteredTotalHome, preferredCurrency)}
+                  {activeExpenseFilter === 'all' && convertedTripBudget > 0
+                    ? ` / ${formatMoney(convertedTripBudget, preferredCurrency)}`
                     : ''}
                 </Text>
               </View>
 
               {activeExpenseFilter === 'shared' && editorCount >= 2 && filteredTotalHome > 0 && (
                 <Text style={styles.perPersonHint}>
-                  ≈ {formatMoney(filteredTotalHome / editorCount, trip.homeCurrency)} / person ({editorCount} editors)
+                  ≈ {formatMoney(filteredTotalHome / editorCount, preferredCurrency)} / person ({editorCount} editors)
                 </Text>
               )}
 
@@ -1932,7 +1945,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                     <View key={cat} style={styles.legendChip}>
                       <View style={[styles.legendDot, { backgroundColor: meta.color }]} />
                       <Text style={styles.legendText}>
-                        {meta.label}: {formatMoney(amt, trip.homeCurrency)}
+                        {meta.label}: {formatMoney(amt, preferredCurrency)}
                       </Text>
                     </View>
                   );
@@ -1942,7 +1955,7 @@ export const TripDetailScreen: React.FC<Props> = ({
 
             <View style={styles.sectionHeaderRow}>
               <View style={styles.sectionHeaderLeft}>
-                <Text style={styles.subHeading}>🧾 Bills & Receipts</Text>
+                <Text style={styles.subHeading}>🧾 Bills, Bookings &amp; Receipts</Text>
               </View>
               <View style={styles.actionGroup}>
                 <TouchableOpacity
@@ -1958,7 +1971,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
             </View>
 
-            {visibleExpenses.length === 0 ? (
+            {visibleSpendItems.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={{ fontSize: 28 }}>🧾</Text>
                 <Text style={styles.emptyTitle}>
@@ -1971,19 +1984,21 @@ export const TripDetailScreen: React.FC<Props> = ({
                 <Text style={styles.emptySub}>
                   {activeExpenseFilter === 'shared'
                     ? 'Toggle “🤝 Shared” when adding an expense to share group bills & receipts with your Editor co-travelers.'
-                    : 'Scan restaurant bills in any currency — we convert them offline and keep receipts tucked neatly here!'}
+                    : 'Scan restaurant bills or add priced trains, flights & stays in any currency — everything converts automatically to ' + preferredCurrency + '!'}
                 </Text>
               </View>
             ) : (
-              visibleExpenses.map((e) => {
-                const meta = CATEGORY_META[e.category] ?? CATEGORY_META.other;
-                const hasReceipt = Boolean(e.receiptUri || e.receiptRawText);
-                const isOpen = expandedReceiptId === e.id;
+              visibleSpendItems.map((item) => {
+                const meta = CATEGORY_META[item.category] ?? CATEGORY_META.other;
+                const hasReceipt = Boolean(item.receiptUri || item.receiptRawText);
+                const drawerKey = `${item.source}_${item.id}`;
+                const isOpen = expandedReceiptId === drawerKey;
+                const isFxConverted = item.originalCurrency !== preferredCurrency;
                 return (
                   <TouchableOpacity
-                    key={e.id}
+                    key={drawerKey}
                     onPress={() =>
-                      hasReceipt && setExpandedReceiptId(isOpen ? null : e.id)
+                      hasReceipt && setExpandedReceiptId(isOpen ? null : drawerKey)
                     }
                     activeOpacity={hasReceipt ? 0.8 : 1}
                     style={styles.expenseCard}
@@ -1995,41 +2010,61 @@ export const TripDetailScreen: React.FC<Props> = ({
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.expMerchant} numberOfLines={1}>
-                            {e.merchant}
+                            {item.title}
                           </Text>
                           <Text style={styles.expSub} numberOfLines={1}>
-                            {e.expenseDate} • {formatMoney(e.localAmount, e.localCurrency)}
+                            {item.date}
+                            {isFxConverted
+                              ? ` • Paid ${formatMoney(item.originalAmount, item.originalCurrency)}`
+                              : ` • ${formatMoney(item.originalAmount, item.originalCurrency)}`}
+                            {item.subtitle ? ` • ${item.subtitle}` : ''}
                             {hasReceipt ? ' • 🧾' : ''}
                           </Text>
-                          {showExpenseFilter && (
+                          {(showExpenseFilter || item.source !== 'expense') && (
                             <View style={styles.expBadgeRow}>
-                              <View
-                                style={[
-                                  styles.expVisBadge,
-                                  e.isShared && styles.expVisBadgeShared,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.expVisBadgeText,
-                                    e.isShared && styles.expVisBadgeTextShared,
-                                  ]}
-                                >
-                                  {e.isShared ? '🤝 Shared' : '🔒 Personal'}
-                                </Text>
-                              </View>
-                              {e.isShared && e.authorName ? (
-                                <Text style={styles.expAuthorText} numberOfLines={1}>
-                                  by {e.authorName}
-                                </Text>
-                              ) : null}
+                              {item.source === 'transport' ? (
+                                <View style={[styles.expVisBadge, { backgroundColor: '#EDE9FE' }]}>
+                                  <Text style={[styles.expVisBadgeText, { color: '#5B21B6' }]}>
+                                    🚆 From Bookings
+                                  </Text>
+                                </View>
+                              ) : item.source === 'stay' ? (
+                                <View style={[styles.expVisBadge, { backgroundColor: '#FEF3C7' }]}>
+                                  <Text style={[styles.expVisBadgeText, { color: '#B45309' }]}>
+                                    🏨 From Bookings
+                                  </Text>
+                                </View>
+                              ) : (
+                                <>
+                                  <View
+                                    style={[
+                                      styles.expVisBadge,
+                                      item.isShared && styles.expVisBadgeShared,
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.expVisBadgeText,
+                                        item.isShared && styles.expVisBadgeTextShared,
+                                      ]}
+                                    >
+                                      {item.isShared ? '🤝 Shared' : '🔒 Personal'}
+                                    </Text>
+                                  </View>
+                                  {item.isShared && item.authorName ? (
+                                    <Text style={styles.expAuthorText} numberOfLines={1}>
+                                      by {item.authorName}
+                                    </Text>
+                                  ) : null}
+                                </>
+                              )}
                             </View>
                           )}
                         </View>
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
                         <Text style={styles.expHome}>
-                          {formatMoney(e.homeAmount, e.homeCurrency)}
+                          {formatMoney(item.convertedAmount, preferredCurrency)}
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           {hasReceipt && (
@@ -2038,7 +2073,15 @@ export const TripDetailScreen: React.FC<Props> = ({
                             </Text>
                           )}
                           <TouchableOpacity
-                            onPress={() => handleDeleteExpense(e.id, e.merchant)}
+                            onPress={() => {
+                              if (item.source === 'transport') {
+                                handleDeleteTransport(item.id, item.title);
+                              } else if (item.source === 'stay') {
+                                handleDeleteStay(item.id, item.title);
+                              } else {
+                                handleDeleteExpense(item.id, item.title);
+                              }
+                            }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
                             <Text style={styles.deleteAction}>🗑️</Text>
@@ -2050,19 +2093,19 @@ export const TripDetailScreen: React.FC<Props> = ({
                     {isOpen && (
                       <View style={styles.receiptDrawer}>
                         <Text style={styles.receiptPrivateBadge}>
-                          {e.isShared
+                          {item.isShared
                             ? '🤝 Shared Receipt (Visible to trip Editors • Hidden from Viewers & Postcards)'
                             : '🔒 Personal Receipt (Visible only to you)'}
                         </Text>
-                        {e.receiptUri && (
+                        {item.receiptUri && (
                           <Image
-                            source={{ uri: e.receiptUri }}
+                            source={{ uri: item.receiptUri }}
                             style={styles.receiptImg}
                             resizeMode="contain"
                           />
                         )}
-                        {e.receiptRawText && (
-                          <Text style={styles.receiptMono}>{e.receiptRawText}</Text>
+                        {item.receiptRawText && (
+                          <Text style={styles.receiptMono}>{item.receiptRawText}</Text>
                         )}
                       </View>
                     )}
@@ -2743,10 +2786,11 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.fieldMiniLabel}>TIME (24H)</Text>
             <TextInput
               value={editFltTime}
-              onChangeText={(v) => setEditFltTime(v.replace(/[^0-9:]/g, '').slice(0, 5))}
+              onChangeText={(v) => setEditFltTime(formatTimeHmInput(v, editFltTime))}
               placeholder="e.g. 22:00"
               placeholderTextColor={COLORS.inkSoft}
-              keyboardType="numbers-and-punctuation"
+              keyboardType="number-pad"
+              maxLength={5}
               style={styles.input}
             />
           </View>

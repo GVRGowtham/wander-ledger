@@ -56,6 +56,7 @@ import {
   Trip,
 } from '../types/models';
 import { isCollaborativeTrip } from '../services/sharingHelpers';
+import { formatTimeHmInput } from '../services/timeInputUtils';
 
 interface Props {
   onClose: () => void;
@@ -1330,9 +1331,13 @@ export const ScannerScreen: React.FC<Props> = ({
                             label="Time (24h)"
                             value={scanResult.departureTimeHm ?? ''}
                             placeholder="HH:MM"
+                            keyboardType="number-pad"
                             onChangeText={(v) =>
                               updateFlightField({
-                                departureTimeHm: v.replace(/[^0-9:]/g, '').slice(0, 5),
+                                departureTimeHm: formatTimeHmInput(
+                                  v,
+                                  scanResult.departureTimeHm ?? ''
+                                ),
                               })
                             }
                           />
@@ -1403,9 +1408,13 @@ export const ScannerScreen: React.FC<Props> = ({
                                 label="Time (24h)"
                                 value={leg.departureTimeHm ?? ''}
                                 placeholder="HH:MM"
+                                keyboardType="number-pad"
                                 onChangeText={(v) =>
                                   updateFlightLeg(idx, {
-                                    departureTimeHm: v.replace(/[^0-9:]/g, '').slice(0, 5),
+                                    departureTimeHm: formatTimeHmInput(
+                                      v,
+                                      leg.departureTimeHm ?? ''
+                                    ),
                                   })
                                 }
                               />
@@ -1998,7 +2007,7 @@ const EditableField = ({
   label: string;
   value: string;
   placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad';
+  keyboardType?: 'default' | 'decimal-pad' | 'number-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   onChangeText: (val: string) => void;
 }) => (

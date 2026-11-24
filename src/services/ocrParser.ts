@@ -977,8 +977,8 @@ const DURATION_ONLY_LINE_RX =
  */
 export function parseClockTimeHm(line: string): string | null {
   if (!line || ISSUE_METADATA_DATE_RX.test(line)) return null;
-  // 12-hour format: e.g. 10:15 PM or 2:25 AM
-  const m12 = line.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*(AM|PM)\b/i);
+  // 12-hour format: e.g. 10:15 PM, 2:25AM, 10.15 PM
+  const m12 = line.match(/\b(1[0-2]|0?[1-9])[:.]([0-5]\d)\s*(AM|PM)\b/i);
   if (m12) {
     let h = parseInt(m12[1], 10);
     const min = m12[2];
@@ -988,16 +988,30 @@ export function parseClockTimeHm(line: string): string | null {
     return `${String(h).padStart(2, '0')}:${min}`;
   }
 
-  // Skip lines that are purely flight duration (e.g. "Duration: 04:20")
+  // Skip lines that are purely flight duration (e.g. "Duration: 04:20", "Flying time 02:15 hrs")
   if (DURATION_ONLY_LINE_RX.test(line) && !/\b(?:depart|dep\b|arrive|arr\b|[A-Z]{3})\b/.test(line)) {
     return null;
   }
 
-  // 24-hour format: e.g. 22:00, 02:25, 06:40 (not followed by :SS seconds or hrs/min)
-  const m24 = line.match(/(?<!\d:)(\b[01]?\d|2[0-3]):([0-5]\d)(?!:\d{2})(?!\s*(?:hrs?|hours?|mins?))/i);
+  // 24-hour format: e.g. 22:00, 02:25, 06:45 hrs, 14:30HRS, 22:00 IST
+  // (Rejects seconds like 10:20:30 and explicit duration words like "02:30 hours" or "02:30 mins")
+  const m24 = line.match(/(?<!\d:)(\b[01]?\d|2[0-3]):([0-5]\d)(?!:\d{2})(?!\s*(?:hours?|mins?))/i);
   if (m24) {
     const h = parseInt(m24[1], 10);
     return `${String(h).padStart(2, '0')}:${m24[2]}`;
+  }
+
+  // Dot-separated 24-hour format with time marker: e.g. "06.45 hrs", "22.15 IST"
+  const mDot = line.match(/\b([01]?\d|2[0-3])\.([0-5]\d)\s*(?:hrs?|IST|UTC|GMT|CET|CEST|EST|PST|GST|SGT)\b/i);
+  if (mDot) {
+    const h = parseInt(mDot[1], 10);
+    return `${String(h).padStart(2, '0')}:${mDot[2]}`;
+  }
+
+  // Compact 4-digit airline time with explicit hrs/timezone suffix: e.g. "0645 hrs", "2215 HRS"
+  const mCompact = line.match(/\b([01]\d|2[0-3])([0-5]\d)\s*(?:hrs?|IST|UTC|GMT|CET|CEST|GST)\b/i);
+  if (mCompact) {
+    return `${mCompact[1]}:${mCompact[2]}`;
   }
 
   return null;
@@ -1006,13 +1020,20 @@ export function parseClockTimeHm(line: string): string | null {
 function extractDepartureTimeHm(zoneLines: string[], originIata?: string): string | undefined {
   const originRx =
     originIata && originIata !== 'TBD' ? new RegExp(`\\b${originIata}\\b`) : null;
+  const depHintRx = /\b(?:depart(?:ure|ing)?|dep\b|take-?off|boarding)\b/i;
 
-  // 1. Prefer clock time on a line mentioning departure or the origin airport
-  for (const line of zoneLines) {
+  // 1. Prefer clock time on (or immediately below) a line mentioning departure or origin IATA
+  for (let i = 0; i < zoneLines.length; i++) {
+    const line = zoneLines[i];
     if (ISSUE_METADATA_DATE_RX.test(line)) continue;
-    if (/\bdepart(?:ure|ing)?\b/i.test(line) || (originRx && originRx.test(line))) {
-      const t = parseClockTimeHm(line);
-      if (t) return t;
+    if (depHintRx.test(line) || (originRx && originRx.test(line))) {
+      const sameLine = parseClockTimeHm(line);
+      if (sameLine) return sameLine;
+      const nextLine = zoneLines[i + 1];
+      if (nextLine && !ISSUE_METADATA_DATE_RX.test(nextLine)) {
+        const below = parseClockTimeHm(nextLine);
+        if (below) return below;
+      }
     }
   }
 

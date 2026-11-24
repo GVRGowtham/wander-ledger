@@ -11,6 +11,7 @@ import {
 } from '../services/bcbpParser';
 import { convertCurrency, DEFAULT_USD_RATES } from '../services/fxService';
 import {
+  parseClockTimeHm,
   parseDocumentOcrText,
   SAMPLE_OCR_TEXTS,
 } from '../services/ocrParser';
@@ -34,6 +35,9 @@ import {
   filterTripsBySearchAndYear,
 } from '../services/tripSearchHelpers';
 import { buildTravelReminders } from '../services/reminderPlanner';
+import { formatTimeHmInput } from '../services/timeInputUtils';
+import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
+import { Expense } from '../types/models';
 
 describe('IATA BCBP Boarding Pass Parser (100% Offline)', () => {
   it('decodes ANA LAX -> HND boarding pass with PNR, seat, miles & loyalty number', () => {
@@ -1735,5 +1739,112 @@ describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
     expect(reminders[1].body).toContain('Gate B14');
     expect(reminders[2].title).toContain('Hotel Adler Zurich');
     expect(reminders[2].body).toContain('Conf #ADL998');
+  });
+
+  it('auto-inserts ":" in HH:MM time inputs while allowing clean backspace', () => {
+    expect(formatTimeHmInput('2', '')).toBe('2');
+    expect(formatTimeHmInput('22', '2')).toBe('22:');
+    expect(formatTimeHmInput('223', '22:')).toBe('22:3');
+    expect(formatTimeHmInput('22:30', '22:3')).toBe('22:30');
+    expect(formatTimeHmInput('0945', '')).toBe('09:45');
+    // Backspacing the colon should NOT immediately re-append ":"
+    expect(formatTimeHmInput('22', '22:')).toBe('22');
+    expect(formatTimeHmInput('2', '22')).toBe('2');
+  });
+
+  it('extracts flight departure times formatted with hrs / HRS / dots / compact 4-digit or on the line below origin IATA', () => {
+    expect(parseClockTimeHm('Dep 22:00 hrs')).toBe('22:00');
+    expect(parseClockTimeHm('06:45 HRS IST')).toBe('06:45');
+    expect(parseClockTimeHm('14.30 hrs')).toBe('14:30');
+    expect(parseClockTimeHm('0645 hrs')).toBe('06:45');
+    expect(parseClockTimeHm('2:25PM')).toBe('14:25');
+    // Still ignores pure duration lines
+    expect(parseClockTimeHm('Duration: 04:20')).toBeNull();
+
+    const stackedTicket = [
+      'IndiGo Confirmation PNR: 9AB12C',
+      'Flight 6E 412',
+      '14 Oct 2026',
+      'BLR',
+      '06:45 hrs',
+      'GOI',
+      '08:05 hrs',
+    ].join('\n');
+    const parsed = parseDocumentOcrText(stackedTicket, 'INR');
+    expect(parsed.kind).toBe('boarding_pass');
+    if (parsed.kind === 'boarding_pass') {
+      expect(parsed.departureTimeHm).toBe('06:45');
+    }
+  });
+
+  it('includes priced trains and stays in Spend ledger and dynamically converts multi-currency items when preferred currency changes', () => {
+    const flightExpense: Expense = {
+      id: 'exp_flt',
+      tripId: 'trip_v06_1',
+      merchant: 'SWISS (LX 147)',
+      category: 'flights',
+      localAmount: 84000,
+      localCurrency: 'INR',
+      homeAmount: 84000,
+      homeCurrency: 'INR',
+      fxRateUsed: 1,
+      expenseDate: '2026-12-20',
+      createdAt: '2026-11-01T10:00:00Z',
+    };
+    const localDinner: Expense = {
+      id: 'exp_eur',
+      tripId: 'trip_v06_1',
+      merchant: 'Zurich Fondue',
+      category: 'dining',
+      localAmount: 100,
+      localCurrency: 'EUR',
+      homeAmount: 100,
+      homeCurrency: 'EUR',
+      fxRateUsed: 1,
+      expenseDate: '2026-12-21',
+      createdAt: '2026-12-21T20:00:00Z',
+    };
+    const manualTrain: TransportLeg = {
+      id: 'trn_sbb',
+      tripId: 'trip_v06_1',
+      mode: 'train',
+      title: 'SBB InterCity Zurich -> Lucerne',
+      origin: 'Zurich HB',
+      destination: 'Lucerne',
+      startDate: '2026-12-22',
+      costAmount: 50,
+      currency: 'CHF',
+      homeCost: 50,
+      createdAt: '2026-12-22T09:00:00Z',
+    };
+
+    // 1. View in INR: all 4 items (flight INR + dinner EUR + train CHF + stay CHF) appear & convert to INR
+    const ledgerInr = buildTripSpendLedger({
+      expenses: [flightExpense, localDinner],
+      transports: [manualTrain],
+      stays: [sampleStay],
+      preferredCurrency: 'INR',
+      fxRates: DEFAULT_USD_RATES,
+    });
+    expect(ledgerInr.items.length).toBe(4);
+    expect(ledgerInr.items.some((i) => i.source === 'transport' && i.id === 'trn_sbb')).toBe(true);
+    expect(ledgerInr.items.some((i) => i.source === 'stay' && i.id === 'stay_v06_1')).toBe(true);
+    expect(ledgerInr.preferredCurrency).toBe('INR');
+    expect(ledgerInr.categoryTotals.flights).toBe(84000);
+    expect(ledgerInr.categoryTotals.transit).toBeGreaterThan(4000); // 50 CHF in INR
+    expect(ledgerInr.categoryTotals.dining).toBeGreaterThan(8000); // 100 EUR in INR
+
+    // 2. Switch preferred currency to USD: EVERY item converts cleanly into USD with zero stale INR totals
+    const ledgerUsd = buildTripSpendLedger({
+      expenses: [flightExpense, localDinner],
+      transports: [manualTrain],
+      stays: [sampleStay],
+      preferredCurrency: 'USD',
+      fxRates: DEFAULT_USD_RATES,
+    });
+    expect(ledgerUsd.preferredCurrency).toBe('USD');
+    expect(ledgerUsd.categoryTotals.flights).toBeGreaterThan(900);
+    expect(ledgerUsd.categoryTotals.flights).toBeLessThan(1200);
+    expect(ledgerUsd.totalSpentPreferred).toBeLessThan(3000);
   });
 });
