@@ -2080,11 +2080,16 @@ describe('v0.6 Keepsake PDF, Trip Search & Offline Travel Reminders', () => {
         photoDataUriMap: { mem_v06_1: 'data:image/jpeg;base64,MEMDATA' },
       });
       expect(html).toContain(`cover-${templateId}`);
+      expect(html).toContain(`theme-${templateId}`);
+      expect(html).toContain('width: 210mm;');
       expect(html).toContain('data:image/jpeg;base64,COVERDATA');
-      expect(html).toContain('position:absolute; left:'); // WYSIWYG crop math applied!
+      expect(html).toContain('position:absolute; left:'); // Percentage WYSIWYG crop math applied!
       expect(html).toContain('via AUH'); // Grouped boarding pass!
       expect(html).toContain('EY 239 · EY 143');
       expect(html).toContain('ADMITTED • CH'); // Country passport stamp!
+      if (templateId === 'magazine') expect(html).toContain('mag-spread-header');
+      if (templateId === 'artbook') expect(html).toContain('art-spread-header');
+      if (templateId === 'passport') expect(html).toContain('pass-inner-banner');
       expect(html).not.toContain('4500'); // Budget strictly excluded
       expect(html).not.toContain('1850'); // Stay cash cost strictly excluded
     }
