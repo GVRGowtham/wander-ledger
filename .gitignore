@@ -41,4 +41,7 @@ yarn-error.*
 /android
 /releases
 *.apk
+*.aab
+keystore.properties
+KEYSTORE-CREDENTIALS.txt
 modules/*/android/build/
