@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Dimensions,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,7 +26,7 @@ interface Props {
  * Android edge-to-edge & keyboard-safe bottom sheet modal:
  * - Always sits cleanly ABOVE the Android system navigation bar (back/home/recents) via safe-area insets.
  * - Dynamically lifts above the soft keyboard when any TextInput is focused so typed text
- *   is always visible and scrollable, without double-offsetting on ROMs that resize dialogs.
+ *   and the sticky Save button remain 100% visible without clipping or double-offsetting.
  */
 export const BottomSheetModal: React.FC<Props> = ({
   visible,
@@ -36,25 +37,35 @@ export const BottomSheetModal: React.FC<Props> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
-  const screenHeight = Dimensions.get('screen').height;
-  const [backdropHeight, setBackdropHeight] = useState<number>(screenHeight);
+  const [backdropHeight, setBackdropHeight] = useState<number>(
+    () => Dimensions.get('window').height
+  );
+  const [closedBackdropHeight, setClosedBackdropHeight] = useState<number>(0);
 
-  const topSafe = Math.max(insets.top, 24) + 12;
+  const topSafe = Math.max(insets.top, 24) + (keyboardHeight > 0 ? 6 : 12);
   const navBarSafe = Math.max(insets.bottom, 16);
 
-  // Detect whether Android already shrank the Modal window for the keyboard
-  const osAlreadyShrank = Math.max(0, screenHeight - backdropHeight);
+  // Measure only actual OS keyboard shrink relative to the modal's own closed-keyboard height
+  // (never compare against screen.height, which includes system bars and falsely clips the footer).
+  const baselineHeight = closedBackdropHeight > 0 ? closedBackdropHeight : backdropHeight;
+  const osKeyboardShrink =
+    keyboardHeight > 0 ? Math.max(0, baselineHeight - backdropHeight) : 0;
+
+  const keyboardCushion = Platform.OS === 'android' ? 10 : 6;
   const effectiveKeyboardPad =
-    keyboardHeight > 0 ? Math.max(0, keyboardHeight - osAlreadyShrank) : 0;
+    keyboardHeight > 0
+      ? Math.max(0, keyboardHeight - osKeyboardShrink) + keyboardCushion
+      : 0;
 
   // When keyboard is closed, push the entire sheet above Android's Back/Home/Recents bar.
-  // When keyboard is open, push the entire sheet cleanly above the keyboard.
+  // When keyboard is open, lift the entire sheet (including sticky footer) cleanly above the keyboard.
   const backdropBottomPad =
     keyboardHeight > 0 ? effectiveKeyboardPad : navBarSafe;
 
+  const dismissMin = keyboardHeight > 0 ? 8 : 20;
   const availableHeight = Math.max(
-    240,
-    backdropHeight - topSafe - backdropBottomPad - 8
+    200,
+    backdropHeight - topSafe - backdropBottomPad - dismissMin
   );
 
   return (
@@ -67,7 +78,15 @@ export const BottomSheetModal: React.FC<Props> = ({
       onRequestClose={onClose}
     >
       <View
-        onLayout={(e) => setBackdropHeight(e.nativeEvent.layout.height)}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) {
+            setBackdropHeight(h);
+            if (keyboardHeight === 0) {
+              setClosedBackdropHeight(h);
+            }
+          }
+        }}
         style={[
           styles.backdrop,
           {
@@ -78,7 +97,7 @@ export const BottomSheetModal: React.FC<Props> = ({
       >
         {/* Tap dimmed area above the sheet to dismiss */}
         <TouchableWithoutFeedback onPress={onClose}>
-          <View style={styles.dismissArea} />
+          <View style={[styles.dismissArea, { minHeight: dismissMin }]} />
         </TouchableWithoutFeedback>
 
         <View
@@ -86,6 +105,7 @@ export const BottomSheetModal: React.FC<Props> = ({
             styles.sheet,
             {
               maxHeight: availableHeight,
+              paddingBottom: keyboardHeight > 0 ? 12 : 18,
             },
           ]}
         >
@@ -108,6 +128,7 @@ export const BottomSheetModal: React.FC<Props> = ({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
+            style={styles.scrollArea}
             contentContainerStyle={styles.scrollContent}
           >
             {children}
@@ -128,9 +149,9 @@ const styles = StyleSheet.create({
   },
   dismissArea: {
     flex: 1,
-    minHeight: 24,
   },
   sheet: {
+    flexShrink: 1,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -139,8 +160,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 18,
     gap: 10,
+  },
+  scrollArea: {
+    flexShrink: 1,
   },
   handleBar: {
     width: 40,
