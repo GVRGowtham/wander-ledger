@@ -13,7 +13,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
 import {
@@ -22,6 +21,7 @@ import {
   validateBackupSnapshot,
 } from '../services/cloudSyncService';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
+import { shareLocalFileSafely } from '../services/shareMediaService';
 import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
@@ -152,12 +152,13 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
       const uri = `${baseDir}wanderers_ledger_backup_${dateTag}.json`;
       await FileSystem.writeAsStringAsync(uri, JSON.stringify(snapshot, null, 2));
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/json',
-          dialogTitle: "Export Wanderer's Ledger Backup (.json)",
-        });
-      } else {
+      const shared = await shareLocalFileSafely({
+        fileUri: uri,
+        mimeType: 'application/json',
+        uti: 'public.json',
+        title: "Export Wanderer's Ledger Backup (.json)",
+      });
+      if (!shared) {
         Alert.alert(
           'Backup Ready 📦',
           `Saved ${snapshot.trips.length} trips and ${snapshot.flights.length + snapshot.transports.length} travel legs.`
@@ -270,9 +271,13 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
       const uri = `${baseDir}wanderers_ledger_expenses.csv`;
       await FileSystem.writeAsStringAsync(uri, header + rows);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Export Travel Spend CSV' });
-      } else {
+      const shared = await shareLocalFileSafely({
+        fileUri: uri,
+        mimeType: 'text/csv',
+        uti: 'public.comma-separated-values-text',
+        title: 'Export Travel Spend CSV',
+      });
+      if (!shared) {
         Alert.alert('Export Ready', `Saved ${ledger.items.length} spend items to CSV.`);
       }
     } catch {

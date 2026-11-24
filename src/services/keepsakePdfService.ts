@@ -1,7 +1,6 @@
 import { Image } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import {
   DistanceUnit,
   Flight,
@@ -18,6 +17,7 @@ import {
   KEEPSAKE_A4_WIDTH,
   KeepsakeTemplateId,
 } from './keepsakePdfBuilder';
+import { shareLocalFileSafely } from './shareMediaService';
 
 export interface ExportKeepsakePdfOptions {
   trip: Trip;
@@ -153,13 +153,12 @@ export async function exportTripKeepsakePdf(
     }
   }
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(finalUri, {
-      mimeType: 'application/pdf',
-      UTI: 'com.adobe.pdf',
-      dialogTitle: `${trip.title} — Keepsake PDF`,
-    });
-  }
+  await shareLocalFileSafely({
+    fileUri: finalUri,
+    mimeType: 'application/pdf',
+    uti: 'com.adobe.pdf',
+    title: `${trip.title} — Keepsake PDF`,
+  });
 
   return { uri: finalUri, fileName };
 }
