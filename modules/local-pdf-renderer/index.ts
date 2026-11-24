@@ -16,7 +16,7 @@ const NativePdfRenderer =
 
 export async function pickDocumentNative(): Promise<PickedNativeDocument | null> {
   if (!NativePdfRenderer) {
-    throw new Error('Native file picker is only available in Android development/release builds.');
+    throw new Error('Native file picker is only available in iOS/Android development or release builds.');
   }
   return NativePdfRenderer.pickDocumentAsync();
 }
@@ -27,7 +27,7 @@ export async function renderPdfPagesNative(
   maxWidth = 1600
 ): Promise<string[]> {
   if (!NativePdfRenderer) {
-    throw new Error('Native PDF renderer is only available in Android development/release builds.');
+    throw new Error('Native PDF renderer is only available in iOS/Android development or release builds.');
   }
   return NativePdfRenderer.renderPagesAsync(uri, maxPages, maxWidth);
 }

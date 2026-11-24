@@ -14,7 +14,16 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wanderledger.app"
+      "bundleIdentifier": "com.wanderledger.app",
+      "buildNumber": "4",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "instagram",
+          "instagram-stories",
+          "whatsapp"
+        ]
+      }
     },
     "android": {
       "package": "com.wanderledger.app",
@@ -37,6 +46,15 @@
       [
         "expo-sharing",
         {
+          "ios": {
+            "enabled": true,
+            "appGroupId": "group.com.wanderledger.app",
+            "activationRule": {
+              "supportsText": true,
+              "supportsImageWithMaxCount": 5,
+              "supportsFileWithMaxCount": 1
+            }
+          },
           "android": {
             "enabled": true,
             "singleShareMimeTypes": ["image/*", "application/pdf", "text/plain"],
@@ -46,9 +64,20 @@
       ],
       "expo-web-browser",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Wanderer's Ledger to tag your travel memories with your current city.",
+          "locationAlwaysPermission": false,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "motionUsagePermission": false
+        }
+      ],
+      [
         "expo-camera",
         {
-          "cameraPermission": "Allow Wanderer's Ledger to scan boarding passes, hotel confirmations, receipts, and capture travel memories."
+          "cameraPermission": "Allow Wanderer's Ledger to scan boarding passes, hotel confirmations, receipts, and capture travel memories.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [

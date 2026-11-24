@@ -1,6 +1,10 @@
 {
   "name": "local-pdf-renderer",
   "version": "1.0.0",
+  "description": "Offline PDF renderer and native document picker for iOS (PDFKit) and Android (PdfRenderer)",
+  "license": "MIT",
+  "author": "Wanderer's Ledger",
+  "homepage": "https://github.com/GVRGowtham/wander-ledger",
   "main": "index.ts",
   "private": true
 }
