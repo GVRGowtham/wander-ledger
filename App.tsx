@@ -211,9 +211,12 @@ const MainShell: React.FC = () => {
       );
     }
     if (overlay.name === 'trip') {
+      const backLabel =
+        activeTab === 'map' ? 'Map' : activeTab === 'shared' ? 'Shared' : 'Trips';
       return (
         <TripDetailScreen
           tripId={overlay.tripId}
+          backLabel={backLabel}
           onBack={() => setOverlay({ name: 'none' })}
           onOpenScanner={openScanner}
           onOpenIgStudio={openIgStudio}
@@ -246,6 +249,9 @@ const MainShell: React.FC = () => {
     overlay.name !== 'ig_studio' &&
     overlay.name !== 'welcome';
 
+  const isTabHighlighted = (tab: MainTab) =>
+    activeTab === tab && (overlay.name === 'none' || overlay.name === 'trip');
+
   return (
     <View style={styles.shell}>
       <View style={{ flex: 1 }}>{renderContent()}</View>
@@ -255,7 +261,7 @@ const MainShell: React.FC = () => {
           <NavButton
             emoji="🧳"
             label="Trips"
-            active={overlay.name === 'none' && activeTab === 'trips'}
+            active={isTabHighlighted('trips')}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('trips');
@@ -264,7 +270,7 @@ const MainShell: React.FC = () => {
           <NavButton
             emoji="🗺️"
             label="Map"
-            active={overlay.name === 'none' && activeTab === 'map'}
+            active={isTabHighlighted('map')}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('map');
@@ -288,7 +294,7 @@ const MainShell: React.FC = () => {
           <NavButton
             emoji="💌"
             label="Shared"
-            active={overlay.name === 'none' && activeTab === 'shared'}
+            active={isTabHighlighted('shared')}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('shared');
@@ -297,7 +303,7 @@ const MainShell: React.FC = () => {
           <NavButton
             emoji="🛂"
             label="Passport"
-            active={overlay.name === 'none' && activeTab === 'passport'}
+            active={isTabHighlighted('passport')}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('passport');
@@ -320,7 +326,13 @@ const NavButton = ({
   active: boolean;
   onPress: () => void;
 }) => (
-  <TouchableOpacity onPress={onPress} style={styles.navBtn} activeOpacity={0.75}>
+  <TouchableOpacity
+    onPress={onPress}
+    style={[styles.navBtn, active && styles.navBtnActive]}
+    activeOpacity={0.75}
+    accessibilityRole="tab"
+    accessibilityState={{ selected: active }}
+  >
     <Text style={styles.navEmoji}>{emoji}</Text>
     <Text
       style={[styles.navLabel, active && styles.navLabelActive]}
@@ -330,6 +342,7 @@ const NavButton = ({
     >
       {label}
     </Text>
+    {active && <View style={styles.navActiveDot} />}
   </TouchableOpacity>
 );
 
@@ -372,8 +385,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#FDE68A',
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingTop: 6,
+    paddingBottom: 8,
     paddingHorizontal: 8,
     shadowColor: '#EA580C',
     shadowOffset: { width: 0, height: -4 },
@@ -385,13 +398,25 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
-    paddingHorizontal: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    marginHorizontal: 2,
+    borderRadius: 14,
     gap: 2,
   },
-  navEmoji: { fontSize: 20 },
-  navLabel: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft },
+  navBtnActive: {
+    backgroundColor: COLORS.coralSoft,
+  },
+  navEmoji: { fontSize: 20, includeFontPadding: false },
+  navLabel: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft, includeFontPadding: false },
   navLabelActive: { color: COLORS.coralDark, fontWeight: '900' },
+  navActiveDot: {
+    width: 16,
+    height: 3,
+    borderRadius: 99,
+    backgroundColor: COLORS.coral,
+    marginTop: 1,
+  },
   fabSlot: {
     flex: 1,
     alignItems: 'center',

@@ -114,6 +114,7 @@ import {
 
 interface Props {
   tripId: string;
+  backLabel?: string;
   onBack: () => void;
   onOpenScanner: () => void;
   onOpenIgStudio: (tripId: string) => void;
@@ -140,6 +141,7 @@ const VIBES: Array<{ id: TripVibe; label: string; emoji: string }> = [
 
 export const TripDetailScreen: React.FC<Props> = ({
   tripId,
+  backLabel = 'Trips',
   onBack,
   onOpenScanner,
   onOpenIgStudio,
@@ -1394,7 +1396,7 @@ export const TripDetailScreen: React.FC<Props> = ({
         />
         <View style={styles.headerNavRow}>
           <TouchableOpacity onPress={onBack} style={styles.glassBtn} activeOpacity={0.85}>
-            <Text style={styles.glassBtnText}>← Trips</Text>
+            <Text style={styles.glassBtnText}>{`← ${backLabel}`}</Text>
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
             <TouchableOpacity
