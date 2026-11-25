@@ -153,6 +153,7 @@ interface AppContextValue {
   editFlight: (flightId: string, patch: FlightEditablePatch) => void;
   removeFlight: (flightId: string) => Promise<void>;
   addTransport: (transport: TransportLeg) => void;
+  editTransport: (transport: TransportLeg) => void;
   removeTransport: (transportId: string) => Promise<void>;
   addTripStop: (stop: TripStop) => void;
   removeTripStop: (stopId: string) => Promise<void>;
@@ -665,6 +666,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [refreshAll]
   );
 
+  const editTransport = useCallback(
+    (transport: TransportLeg) => {
+      insertTransport(transport);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
   const removeTransport = useCallback(
     async (transportId: string) => {
       deleteTransport(transportId);
@@ -835,6 +844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         editFlight,
         removeFlight,
         addTransport,
+        editTransport,
         removeTransport,
         addTripStop,
         removeTripStop,

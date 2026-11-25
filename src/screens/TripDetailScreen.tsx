@@ -50,6 +50,7 @@ import {
   buildJourneyTimeline,
   convertToKm,
   formatDistance,
+  formatDistanceValue,
   matchStopForDate,
   suggestStopsFromBookings,
 } from '../services/distanceUtils';
@@ -109,6 +110,7 @@ import {
   Flight,
   Memory,
   Stay,
+  TransportLeg,
   TripVibe,
 } from '../types/models';
 
@@ -163,6 +165,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     editFlight,
     removeFlight,
     addTransport,
+    editTransport,
     removeTransport,
     addTripStop,
     removeTripStop,
@@ -213,9 +216,10 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [memPhotoUri, setMemPhotoUri] = useState<string | undefined>(undefined);
   const [memThumbUri, setMemThumbUri] = useState<string | undefined>(undefined);
 
-  // Unified Add Travel Modal (Flight OR Train / Bus / Ferry / Rental Car / Own Car)
+  // Unified Add / Edit Travel Modal (Flight OR Train / Bus / Ferry / Rental Car / Own Car)
   const [flightModal, setFlightModal] = useState(false);
   const [travelModalMode, setTravelModalMode] = useState<'flight' | 'transport'>('flight');
+  const [editingTransport, setEditingTransport] = useState<TransportLeg | null>(null);
   const [flightDraft, setFlightDraft] = useState<ManualFlightDraft>(() =>
     createEmptyFlightDraft(
       trip?.startDate || new Date().toISOString().slice(0, 10),
@@ -722,6 +726,7 @@ export const TripDetailScreen: React.FC<Props> = ({
 
   // --- FLIGHTS, TRANSPORTS & STAYS ---
   const openManualFlightModal = (initialMode: 'flight' | 'transport' = 'flight') => {
+    setEditingTransport(null);
     setTravelModalMode(initialMode);
     setFlightDraft(
       createEmptyFlightDraft(trip.startDate, trip.endDate, preferredCurrency, trip.destinationCity)
@@ -741,6 +746,32 @@ export const TripDetailScreen: React.FC<Props> = ({
       currency: preferredCurrency,
       payLater: false,
       notes: '',
+    });
+    setFlightModal(true);
+  };
+
+  const openEditTransportModal = (t: TransportLeg) => {
+    setEditingTransport(t);
+    setTravelModalMode('transport');
+    const distInUnit =
+      t.distanceKm && t.distanceKm > 0
+        ? String(formatDistanceValue(t.distanceKm, distanceUnit))
+        : '';
+    setTransportDraft({
+      mode: t.mode,
+      title: t.title || '',
+      operatorName: t.operatorName || '',
+      origin: t.origin || '',
+      destination: t.destination || '',
+      startDate: t.startDate || trip.startDate,
+      endDate: t.endDate || '',
+      referenceCode: t.referenceCode || '',
+      seatOrVehicle: t.seatOrVehicle || '',
+      distanceInput: distInUnit,
+      costAmount: t.costAmount && t.costAmount > 0 ? String(t.costAmount) : '',
+      currency: t.currency || preferredCurrency,
+      payLater: Boolean(t.payLater),
+      notes: t.notes || '',
     });
     setFlightModal(true);
   };
@@ -770,9 +801,13 @@ export const TripDetailScreen: React.FC<Props> = ({
         ? convertToKm(distVal, distanceUnit)
         : undefined;
     const trnStartDate = transportDraft.startDate.trim() || trip.startDate;
+    const preservedFxDate =
+      costNum > 0 && !transportDraft.payLater
+        ? editingTransport?.fxDate || resolveDefaultFxDate(trnStartDate)
+        : undefined;
 
-    addTransport({
-      id: generateId('trn'),
+    const payload: TransportLeg = {
+      id: editingTransport ? editingTransport.id : generateId('trn'),
       tripId: trip.id,
       mode: transportDraft.mode,
       title:
@@ -789,15 +824,19 @@ export const TripDetailScreen: React.FC<Props> = ({
       costAmount: costNum > 0 ? costNum : undefined,
       currency: costNum > 0 ? tCurr : undefined,
       homeCost: costNum > 0 ? homeCost : undefined,
-      fxDate:
-        costNum > 0 && !transportDraft.payLater
-          ? resolveDefaultFxDate(trnStartDate)
-          : undefined,
+      fxDate: preservedFxDate,
       payLater: costNum > 0 ? Boolean(transportDraft.payLater) : false,
       notes: transportDraft.notes.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    });
+      createdAt: editingTransport ? editingTransport.createdAt : new Date().toISOString(),
+    };
+
+    if (editingTransport) {
+      editTransport(payload);
+    } else {
+      addTransport(payload);
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEditingTransport(null);
     setFlightModal(false);
   };
 
@@ -1917,13 +1956,34 @@ export const TripDetailScreen: React.FC<Props> = ({
                         fuelCount={fuelExpenses.length}
                         onLogFuel={() => openExpenseModal('fuel')}
                       />
-                      <TouchableOpacity
-                        onPress={() => handleDeleteTransport(t.id, t.title)}
-                        style={styles.subtleRemoveRow}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.subtleRemoveText}>🗑️ Remove travel leg</Text>
-                      </TouchableOpacity>
+                      {!isViewer && (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            justifyContent: 'flex-end',
+                            alignItems: 'center',
+                            gap: 14,
+                            paddingRight: 4,
+                          }}
+                        >
+                          <TouchableOpacity
+                            onPress={() => openEditTransportModal(t)}
+                            style={styles.subtleRemoveRow}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[styles.subtleRemoveText, { color: COLORS.indigo }]}>
+                              ✏️ Edit booking
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteTransport(t.id, t.title)}
+                            style={styles.subtleRemoveRow}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={styles.subtleRemoveText}>🗑️ Remove</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   );
                 }
@@ -2255,6 +2315,23 @@ export const TripDetailScreen: React.FC<Props> = ({
                             <Text style={styles.peekLink}>
                               {isOpen ? 'Hide ▲' : 'Peek 🧾'}
                             </Text>
+                          )}
+                          {!isViewer && (item.source === 'transport' || item.source === 'stay') && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (item.source === 'transport') {
+                                  const found = transports.find((tr) => tr.id === item.id);
+                                  if (found) openEditTransportModal(found);
+                                } else if (item.source === 'stay') {
+                                  const found = stays.find((st) => st.id === item.id);
+                                  if (found) openEditStayModal(found);
+                                }
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityLabel={`Edit ${item.title}`}
+                            >
+                              <Text style={styles.coverAction}>✏️</Text>
+                            </TouchableOpacity>
                           )}
                           <TouchableOpacity
                             onPress={() => {
@@ -2835,11 +2912,20 @@ export const TripDetailScreen: React.FC<Props> = ({
         </View>
       </BottomSheetModal>
 
-      {/* UNIFIED ADD TRAVEL MODAL (FLIGHT OR TRAIN / BUS / FERRY / RENTAL / OWN CAR) */}
+      {/* UNIFIED ADD / EDIT TRAVEL MODAL (FLIGHT OR TRAIN / BUS / FERRY / RENTAL / OWN CAR) */}
       <BottomSheetModal
         visible={flightModal}
-        title={travelModalMode === 'flight' ? '✈️ Add Flight' : '🚆 Add Train / Car / Road Trip'}
-        onClose={() => setFlightModal(false)}
+        title={
+          editingTransport
+            ? `✏️ Edit ${TRANSPORT_MODE_META[transportDraft.mode].label}`
+            : travelModalMode === 'flight'
+              ? '✈️ Add Flight'
+              : '🚆 Add Train / Car / Road Trip'
+        }
+        onClose={() => {
+          setEditingTransport(null);
+          setFlightModal(false);
+        }}
         footer={
           <TouchableOpacity
             onPress={travelModalMode === 'flight' ? handleSaveManualFlight : handleSaveTransport}
@@ -2847,49 +2933,55 @@ export const TripDetailScreen: React.FC<Props> = ({
             activeOpacity={0.9}
           >
             <Text style={styles.modalPrimaryText}>
-              {travelModalMode === 'flight' ? 'Save Flight to Trip ✈️' : 'Save Travel Leg 🧭'}
+              {editingTransport
+                ? 'Save Booking Changes ✨'
+                : travelModalMode === 'flight'
+                  ? 'Save Flight to Trip ✈️'
+                  : 'Save Travel Leg 🧭'}
             </Text>
           </TouchableOpacity>
         }
       >
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
-          <TouchableOpacity
-            onPress={() => setTravelModalMode('flight')}
-            style={[
-              styles.moodChip,
-              { flex: 1, alignItems: 'center' },
-              travelModalMode === 'flight' && styles.moodChipActive,
-            ]}
-          >
-            <Text
+        {!editingTransport && (
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+            <TouchableOpacity
+              onPress={() => setTravelModalMode('flight')}
               style={[
-                styles.moodChipText,
-                travelModalMode === 'flight' && { color: '#FFFFFF' },
+                styles.moodChip,
+                { flex: 1, alignItems: 'center' },
+                travelModalMode === 'flight' && styles.moodChipActive,
               ]}
             >
-              ✈️ Flight
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setTravelModalMode('transport')}
-            style={[
-              styles.moodChip,
-              { flex: 1, alignItems: 'center' },
-              travelModalMode === 'transport' && styles.moodChipActive,
-            ]}
-          >
-            <Text
+              <Text
+                style={[
+                  styles.moodChipText,
+                  travelModalMode === 'flight' && { color: '#FFFFFF' },
+                ]}
+              >
+                ✈️ Flight
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setTravelModalMode('transport')}
               style={[
-                styles.moodChipText,
-                travelModalMode === 'transport' && { color: '#FFFFFF' },
+                styles.moodChip,
+                { flex: 1, alignItems: 'center' },
+                travelModalMode === 'transport' && styles.moodChipActive,
               ]}
             >
-              🚆 Train / Bus / 🚗 Car
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Text
+                style={[
+                  styles.moodChipText,
+                  travelModalMode === 'transport' && { color: '#FFFFFF' },
+                ]}
+              >
+                🚆 Train / Bus / 🚗 Car
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {travelModalMode === 'flight' ? (
+        {travelModalMode === 'flight' && !editingTransport ? (
           <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
         ) : (
           <TransportFormFields
