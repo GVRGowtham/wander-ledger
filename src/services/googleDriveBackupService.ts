@@ -18,6 +18,7 @@ import {
   DriveBackupMetadata,
   DriveMediaEntry,
   DriveRemoteFile,
+  evaluateBackupNetworkPolicy,
   extractPortableSnapshotAndMedia,
   fromRelativeMediaPath,
   hasLocalChangesSinceBackup,
@@ -34,6 +35,8 @@ const META_LAST_BACKUP_AT = 'drive_last_backup_at_v1';
 const META_LAST_BACKUP_SUMMARY = 'drive_last_backup_summary_v1';
 const META_LAST_LOCAL_CHANGE_AT = 'drive_last_local_change_at_v1';
 const META_AUTO_BACKUP_ENABLED = 'drive_auto_backup_enabled_v1';
+const META_WIFI_ONLY_BACKUP = 'drive_wifi_only_v1';
+const META_PENDING_WIFI_BACKUP = 'drive_pending_wifi_backup_v1';
 
 export interface DriveProgress {
   phase: 'checking' | 'uploading_media' | 'saving_manifest' | 'cleaning' | 'downloading_manifest' | 'downloading_media' | 'restoring_db' | 'deleting';
@@ -75,7 +78,7 @@ export type GoogleDriveSignInResult =
     };
 
 export interface DriveBackupRunResult {
-  status: 'success' | 'up_to_date' | 'signed_out' | 'error';
+  status: 'success' | 'up_to_date' | 'signed_out' | 'offline' | 'wifi_required' | 'error';
   updatedAt?: string;
   tripsCount?: number;
   memoriesCount?: number;
@@ -112,6 +115,16 @@ function getGoogleSigninModule(): typeof import('@react-native-google-signin/goo
     // Lazy require so Node-only Jest unit tests never fail loading native modules
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('@react-native-google-signin/google-signin');
+  } catch {
+    return null;
+  }
+}
+
+function getExpoNetworkModule(): typeof import('expo-network') | null {
+  try {
+    // Lazy require so Node-only Jest tests never fail loading native Expo modules
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-network');
   } catch {
     return null;
   }
@@ -176,6 +189,64 @@ export function setStoredAutoBackupEnabled(enabled: boolean): void {
     setAppMeta(META_AUTO_BACKUP_ENABLED, enabled ? '1' : '0');
   } catch {
     // Non-fatal
+  }
+}
+
+export function getStoredWifiOnlyBackup(): boolean {
+  try {
+    const val = getAppMeta(META_WIFI_ONLY_BACKUP);
+    // Default to true (protect roaming mobile data unless explicitly disabled)
+    return val === null ? true : val === '1';
+  } catch {
+    return true;
+  }
+}
+
+export function setStoredWifiOnlyBackup(wifiOnly: boolean): void {
+  try {
+    setAppMeta(META_WIFI_ONLY_BACKUP, wifiOnly ? '1' : '0');
+  } catch {
+    // Non-fatal
+  }
+}
+
+export function isPendingWifiDriveBackup(): boolean {
+  try {
+    return getAppMeta(META_PENDING_WIFI_BACKUP) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setPendingWifiDriveBackup(pending: boolean): void {
+  try {
+    setAppMeta(META_PENDING_WIFI_BACKUP, pending ? '1' : '0');
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function checkCurrentNetworkForBackup(options?: {
+  wifiOnly?: boolean;
+  allowCellularOverride?: boolean;
+}) {
+  const wifiOnly = options?.wifiOnly ?? getStoredWifiOnlyBackup();
+  const net = getExpoNetworkModule();
+  if (!net?.getNetworkStateAsync) {
+    return { allowed: true as const };
+  }
+  try {
+    const state = await net.getNetworkStateAsync();
+    return evaluateBackupNetworkPolicy({
+      isConnected: state.isConnected,
+      isInternetReachable: state.isInternetReachable,
+      type: state.type,
+      wifiOnly,
+      allowCellularOverride: options?.allowCellularOverride,
+    });
+  } catch {
+    // If native network query fails unexpectedly, allow attempt and let fetch handle errors
+    return { allowed: true as const };
   }
 }
 
@@ -602,6 +673,8 @@ export async function checkDriveBackupMetadata(
 export async function runGoogleDriveBackup(options?: {
   accessToken?: string;
   skipIfUnchanged?: boolean;
+  wifiOnly?: boolean;
+  allowCellularOverride?: boolean;
   onProgress?: (progress: DriveProgress) => void;
 }): Promise<DriveBackupRunResult> {
   const onProgress = options?.onProgress;
@@ -610,11 +683,29 @@ export async function runGoogleDriveBackup(options?: {
     const lastBackupAt = getLastDriveBackupAt();
     const lastChangeAt = getLastLocalDataModifiedAt();
     if (lastBackupAt && !hasLocalChangesSinceBackup(lastChangeAt, lastBackupAt)) {
+      setPendingWifiDriveBackup(false);
       return {
         status: 'up_to_date',
         updatedAt: lastBackupAt,
       };
     }
+  }
+
+  const netPolicy = await checkCurrentNetworkForBackup({
+    wifiOnly: options?.wifiOnly,
+    allowCellularOverride: options?.allowCellularOverride,
+  });
+  if (!netPolicy.allowed) {
+    if (netPolicy.reason === 'offline') {
+      return {
+        status: 'offline',
+        error: 'You are currently offline. Connect to the internet to back up to Google Drive.',
+      };
+    }
+    return {
+      status: 'wifi_required',
+      error: 'Wi-Fi only backup is enabled — waiting for Wi-Fi to protect your mobile data.',
+    };
   }
 
   try {
@@ -741,6 +832,7 @@ export async function runGoogleDriveBackup(options?: {
       };
       setAppMeta(META_LAST_BACKUP_AT, updatedAt);
       setAppMeta(META_LAST_BACKUP_SUMMARY, JSON.stringify(localSummary));
+      setPendingWifiDriveBackup(false);
 
       return {
         status: 'success',

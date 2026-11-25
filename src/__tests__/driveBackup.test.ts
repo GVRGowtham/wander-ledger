@@ -1,6 +1,7 @@
 import {
   computeIncrementalMediaPlan,
   encodeDriveMediaFileName,
+  evaluateBackupNetworkPolicy,
   extractPortableSnapshotAndMedia,
   formatBytes,
   formatDriveFirstName,
@@ -291,5 +292,58 @@ describe('Google Drive Backup & Restore Helpers', () => {
     expect(hasLocalChangesSinceBackup('2026-11-25T12:00:00Z', null)).toBe(true);
     expect(hasLocalChangesSinceBackup('2026-11-25T10:00:00Z', '2026-11-25T12:00:00Z')).toBe(false);
     expect(hasLocalChangesSinceBackup('2026-11-25T14:00:00Z', '2026-11-25T12:00:00Z')).toBe(true);
+  });
+
+  it('enforces Wi-Fi-only backup policy, supports explicit mobile data override, and blocks offline uploads', () => {
+    // Offline / airplane mode always blocked
+    expect(
+      evaluateBackupNetworkPolicy({
+        isConnected: false,
+        isInternetReachable: false,
+        type: 'NONE',
+        wifiOnly: false,
+      })
+    ).toEqual({ allowed: false, reason: 'offline' });
+
+    // On cellular with Wi-Fi-only ON -> requires confirmation / waits for Wi-Fi
+    expect(
+      evaluateBackupNetworkPolicy({
+        isConnected: true,
+        isInternetReachable: true,
+        type: 'CELLULAR',
+        wifiOnly: true,
+      })
+    ).toEqual({ allowed: false, reason: 'wifi_required' });
+
+    // On cellular with Wi-Fi-only ON + explicit user override -> allowed
+    expect(
+      evaluateBackupNetworkPolicy({
+        isConnected: true,
+        isInternetReachable: true,
+        type: 'CELLULAR',
+        wifiOnly: true,
+        allowCellularOverride: true,
+      })
+    ).toEqual({ allowed: true });
+
+    // On Wi-Fi with Wi-Fi-only ON -> allowed automatically
+    expect(
+      evaluateBackupNetworkPolicy({
+        isConnected: true,
+        isInternetReachable: true,
+        type: 'WIFI',
+        wifiOnly: true,
+      })
+    ).toEqual({ allowed: true });
+
+    // On cellular with Wi-Fi-only OFF -> allowed automatically
+    expect(
+      evaluateBackupNetworkPolicy({
+        isConnected: true,
+        isInternetReachable: true,
+        type: 'CELLULAR',
+        wifiOnly: false,
+      })
+    ).toEqual({ allowed: true });
   });
 });

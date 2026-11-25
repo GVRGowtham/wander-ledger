@@ -447,3 +447,33 @@ export function hasLocalChangesSinceBackup(
   if (Number.isNaN(changeMs) || Number.isNaN(backupMs)) return true;
   return changeMs > backupMs;
 }
+
+export type BackupNetworkPolicyResult =
+  | { allowed: true }
+  | { allowed: false; reason: 'offline' | 'wifi_required' };
+
+/**
+ * Evaluates whether a Google Drive backup may proceed given the current network state
+ * and the user's Wi-Fi-only preference.
+ */
+export function evaluateBackupNetworkPolicy(input: {
+  isConnected?: boolean;
+  isInternetReachable?: boolean;
+  type?: string;
+  wifiOnly: boolean;
+  allowCellularOverride?: boolean;
+}): BackupNetworkPolicyResult {
+  const { isConnected, isInternetReachable, type, wifiOnly, allowCellularOverride } = input;
+  const upperType = (type || '').toUpperCase();
+
+  if (isConnected === false || isInternetReachable === false || upperType === 'NONE') {
+    return { allowed: false, reason: 'offline' };
+  }
+
+  const isUnmetered = upperType === 'WIFI' || upperType === 'ETHERNET';
+  if (wifiOnly && !isUnmetered && !allowCellularOverride) {
+    return { allowed: false, reason: 'wifi_required' };
+  }
+
+  return { allowed: true };
+}

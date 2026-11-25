@@ -1,4 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import * as Network from 'expo-network';
 import {
   clearProfile,
   getSupabaseClient,
@@ -96,9 +98,12 @@ import {
   DriveRestoreRunResult,
   getLastDriveBackupAt,
   getLastDriveBackupSummary,
+  isPendingWifiDriveBackup,
   markLocalDataModified,
   runGoogleDriveBackup,
   runGoogleDriveRestore,
+  setPendingWifiDriveBackup,
+  setStoredWifiOnlyBackup,
   signInWithGoogleDrive,
   signOutGoogleDrive,
 } from '../services/googleDriveBackupService';
@@ -159,6 +164,7 @@ interface AppContextValue {
   lastDriveBackupSummary: DriveBackupLocalSummary | null;
   driveRemoteBackup: DriveBackupMetadata | null;
   driveAutoBackupEnabled: boolean;
+  drivePendingWifiBackup: boolean;
   signInWithGoogleAccount: (options?: {
     homeCurrency?: string;
     distanceUnit?: DistanceUnit;
@@ -166,7 +172,10 @@ interface AppContextValue {
   }) => Promise<GoogleAccountSignInOutcome>;
   commitGoogleProfile: (nextProfile: UserProfile) => Promise<void>;
   signOutGoogleAccount: () => Promise<void>;
-  backUpToGoogleDrive: () => Promise<DriveBackupRunResult>;
+  backUpToGoogleDrive: (options?: {
+    allowCellularOverride?: boolean;
+  }) => Promise<DriveBackupRunResult>;
+  queueDriveBackupForWifi: () => void;
   restoreFromGoogleDrive: (
     mode: 'merge' | 'replace',
     accessToken?: string
@@ -298,8 +307,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useState<DriveBackupLocalSummary | null>(null);
   const [driveRemoteBackup, setDriveRemoteBackup] = useState<DriveBackupMetadata | null>(null);
   const [driveAutoBackupEnabled, setDriveAutoBackupEnabled] = useState(false);
+  const [drivePendingWifiBackup, setDrivePendingWifiBackup] = useState(false);
 
   const syncInFlightRef = useRef(false);
+  const catchUpInFlightRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
   const fxSnapshotsRef = useRef<FxRateSnapshotsMap>({});
@@ -514,10 +525,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLastDriveBackupAt(savedAt && savedAt.trim() ? savedAt : null);
     setLastDriveBackupSummary(getLastDriveBackupSummary());
     setDriveAutoBackupEnabled(isDailyDriveBackupEnabled());
+    setDrivePendingWifiBackup(isPendingWifiDriveBackup());
   }, []);
 
   const commitGoogleProfile = useCallback(
     async (nextProfile: UserProfile) => {
+      setStoredWifiOnlyBackup(Boolean(nextProfile.wifiOnlyPhotoSync));
       await saveProfile(nextProfile);
       setProfile(nextProfile);
       profileRef.current = nextProfile;
@@ -629,45 +642,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profileRef.current = localOnly;
     }
     setDriveAutoBackupEnabled(false);
+    setDrivePendingWifiBackup(false);
     setDriveRemoteBackup(null);
     setDriveError(null);
     setDriveProgress(null);
   }, []);
 
-  const backUpToGoogleDrive = useCallback(async (): Promise<DriveBackupRunResult> => {
-    setDriveBusyMode('backing_up');
+  const queueDriveBackupForWifi = useCallback(() => {
+    setPendingWifiDriveBackup(true);
+    setDrivePendingWifiBackup(true);
     setDriveError(null);
-    setDriveProgress({
-      phase: 'checking',
-      completed: 0,
-      total: 1,
-      label: 'Preparing backup…',
-    });
-    try {
-      const res = await runGoogleDriveBackup({
-        onProgress: (p) => setDriveProgress(p),
+  }, []);
+
+  const backUpToGoogleDrive = useCallback(
+    async (options?: { allowCellularOverride?: boolean }): Promise<DriveBackupRunResult> => {
+      const wifiOnly = Boolean(profileRef.current?.wifiOnlyPhotoSync ?? true);
+      setStoredWifiOnlyBackup(wifiOnly);
+      setDriveBusyMode('backing_up');
+      setDriveError(null);
+      setDriveProgress({
+        phase: 'checking',
+        completed: 0,
+        total: 1,
+        label: 'Preparing backup…',
       });
-      refreshDriveMetaFromDb();
-      if (res.status === 'success') {
-        setDriveRemoteBackup({
-          exists: true,
-          updatedAt: res.updatedAt,
-          appVersion: '0.7.0',
-          tripsCount: res.tripsCount ?? 0,
-          flightsCount: allFlights.length,
-          memoriesCount: res.memoriesCount ?? 0,
-          mediaCount: (res.mediaUploaded ?? 0) + (res.mediaSkipped ?? 0),
-          totalMediaBytes: res.totalBytes ?? 0,
+      try {
+        const res = await runGoogleDriveBackup({
+          wifiOnly,
+          allowCellularOverride: options?.allowCellularOverride,
+          onProgress: (p) => setDriveProgress(p),
         });
-      } else if (res.status === 'error' || res.status === 'signed_out') {
-        setDriveError(res.error || 'Backup could not complete right now.');
+        refreshDriveMetaFromDb();
+        if (res.status === 'success') {
+          setDriveRemoteBackup({
+            exists: true,
+            updatedAt: res.updatedAt,
+            appVersion: '0.7.0',
+            tripsCount: res.tripsCount ?? 0,
+            flightsCount: allFlights.length,
+            memoriesCount: res.memoriesCount ?? 0,
+            mediaCount: (res.mediaUploaded ?? 0) + (res.mediaSkipped ?? 0),
+            totalMediaBytes: res.totalBytes ?? 0,
+          });
+        } else if (res.status === 'error' || res.status === 'signed_out') {
+          setDriveError(res.error || 'Backup could not complete right now.');
+        }
+        return res;
+      } finally {
+        setDriveBusyMode('idle');
+        setDriveProgress(null);
       }
-      return res;
-    } finally {
-      setDriveBusyMode('idle');
-      setDriveProgress(null);
-    }
-  }, [allFlights.length, refreshDriveMetaFromDb]);
+    },
+    [allFlights.length, refreshDriveMetaFromDb]
+  );
 
   const restoreFromGoogleDrive = useCallback(
     async (mode: 'merge' | 'replace', accessToken?: string): Promise<DriveRestoreRunResult> => {
@@ -809,6 +836,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const savedDriveAt = getLastDriveBackupAt();
         const savedDriveSummary = getLastDriveBackupSummary();
         const savedAutoBackup = isDailyDriveBackupEnabled();
+        const savedPendingWifi = isPendingWifiDriveBackup();
+        if (saved) {
+          setStoredWifiOnlyBackup(Boolean(saved.wifiOnlyPhotoSync));
+        }
         if (mounted) {
           setFxRates(cachedFx);
           setFxSnapshots(storedSnapshots);
@@ -817,6 +848,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setLastDriveBackupAt(savedDriveAt && savedDriveAt.trim() ? savedDriveAt : null);
           setLastDriveBackupSummary(savedDriveSummary);
           setDriveAutoBackupEnabled(savedAutoBackup);
+          setDrivePendingWifiBackup(savedPendingWifi);
           if (saved) {
             setProfile(saved);
             profileRef.current = saved;
@@ -832,11 +864,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setReady(true);
         }
 
-        // Silent foreground catch-up for Daily Google Drive Auto-Backup (>24h & changed)
-        if (mounted && saved?.authMode === 'google' && savedAutoBackup) {
+        // Silent foreground catch-up for Daily Google Drive Auto-Backup or deferred Wi-Fi backup
+        if (mounted && saved?.authMode === 'google' && (savedAutoBackup || savedPendingWifi)) {
           maybeRunForegroundCatchUpBackup()
-            .then((ran) => {
-              if (ran && mounted) {
+            .then((status) => {
+              if ((status === 'ran' || status === 'waiting_wifi') && mounted) {
                 refreshDriveMetaFromDb();
               }
             })
@@ -873,6 +905,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [cloudReady, loadLocalSnapshotIntoState, refreshDriveMetaFromDb, syncNowWithProfile]);
+
+  // Live Wi-Fi & Foreground Resume Listener: automatically resumes any skipped daily backup
+  // the instant Wi-Fi becomes available (or when returning to the app on Wi-Fi).
+  useEffect(() => {
+    const runCatchUp = () => {
+      const p = profileRef.current;
+      if (!p || p.authMode !== 'google') return;
+      if (catchUpInFlightRef.current) return;
+      if (!isPendingWifiDriveBackup() && !isDailyDriveBackupEnabled()) return;
+
+      catchUpInFlightRef.current = true;
+      maybeRunForegroundCatchUpBackup()
+        .then((status) => {
+          if (status === 'ran' || status === 'waiting_wifi') {
+            refreshDriveMetaFromDb();
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          catchUpInFlightRef.current = false;
+        });
+    };
+
+    const netSub = Network.addNetworkStateListener((event) => {
+      const isWifiOrEth =
+        event.type === Network.NetworkStateType.WIFI ||
+        event.type === Network.NetworkStateType.ETHERNET;
+      if (event.isConnected && event.isInternetReachable !== false && isWifiOrEth) {
+        runCatchUp();
+      }
+    });
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        runCatchUp();
+      }
+    });
+
+    return () => {
+      netSub.remove();
+      appStateSub.remove();
+    };
+  }, [refreshDriveMetaFromDb]);
 
   const startLocalTravelogue = useCallback(
     async (homeCurrency = 'USD', firstName?: string, distanceUnit: DistanceUnit = 'km') => {
@@ -922,12 +997,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async (patch: Partial<UserProfile>) => {
       if (!profile) return;
       const updated: UserProfile = { ...profile, ...patch };
+      if (typeof patch.wifiOnlyPhotoSync === 'boolean') {
+        setStoredWifiOnlyBackup(patch.wifiOnlyPhotoSync);
+        // If user turns OFF Wi-Fi-only while a backup was waiting for Wi-Fi, resume right away
+        if (!patch.wifiOnlyPhotoSync && updated.authMode === 'google' && isPendingWifiDriveBackup()) {
+          maybeRunForegroundCatchUpBackup()
+            .then((status) => {
+              if (status === 'ran') refreshDriveMetaFromDb();
+            })
+            .catch(() => {});
+        }
+      }
       await saveProfile(updated);
       setProfile(updated);
       profileRef.current = updated;
       scheduleBackgroundSync();
     },
-    [profile, scheduleBackgroundSync]
+    [profile, refreshDriveMetaFromDb, scheduleBackgroundSync]
   );
 
   const addTrip = useCallback(
@@ -1169,10 +1255,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         lastDriveBackupSummary,
         driveRemoteBackup,
         driveAutoBackupEnabled,
+        drivePendingWifiBackup,
         signInWithGoogleAccount,
         commitGoogleProfile,
         signOutGoogleAccount,
         backUpToGoogleDrive,
+        queueDriveBackupForWifi,
         restoreFromGoogleDrive,
         deleteGoogleDriveCloudBackup,
         toggleDailyDriveBackup,

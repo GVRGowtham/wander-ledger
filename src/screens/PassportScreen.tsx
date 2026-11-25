@@ -54,9 +54,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     lastDriveBackupSummary,
     driveRemoteBackup,
     driveAutoBackupEnabled,
+    drivePendingWifiBackup,
     signInWithGoogleAccount,
     signOutGoogleAccount,
     backUpToGoogleDrive,
+    queueDriveBackupForWifi,
     restoreFromGoogleDrive,
     deleteGoogleDriveCloudBackup,
     toggleDailyDriveBackup,
@@ -200,8 +202,8 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     }
   };
 
-  const handleBackUpNow = async () => {
-    const res = await backUpToGoogleDrive();
+  const handleBackUpNow = async (allowCellularOverride = false) => {
+    const res = await backUpToGoogleDrive({ allowCellularOverride });
     if (res.status === 'success') {
       const sizeStr = res.totalBytes ? ` (${formatBytes(res.totalBytes)})` : '';
       const photoNote =
@@ -211,6 +213,31 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       Alert.alert(
         'Backed Up to Google Drive ☁️',
         `Saved ${res.tripsCount ?? trips.length} ${(res.tripsCount ?? trips.length) === 1 ? 'trip' : 'trips'} and ${photoNote}${sizeStr}.`
+      );
+    } else if (res.status === 'wifi_required') {
+      Alert.alert(
+        'Wi-Fi Only Backup is On 📶',
+        'You are currently on mobile data. Would you like to back up to Google Drive over mobile data anyway, or wait for Wi-Fi?',
+        [
+          {
+            text: 'Wait for Wi-Fi',
+            style: 'cancel',
+            onPress: () => {
+              queueDriveBackupForWifi();
+            },
+          },
+          {
+            text: 'Use Mobile Data',
+            onPress: () => {
+              handleBackUpNow(true).catch(() => {});
+            },
+          },
+        ]
+      );
+    } else if (res.status === 'offline') {
+      Alert.alert(
+        'You’re Offline ✈️',
+        'Connect to Wi-Fi or mobile data to back up to Google Drive. Your local travelogue is completely safe on this device.'
       );
     } else if (res.status === 'signed_out') {
       Alert.alert('Sign-In Needed', res.error || 'Please sign in with Google again to back up.');
@@ -722,6 +749,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                   Stored privately in your hidden Drive app folder — Wanderer&apos;s Ledger cannot see any other Drive files.
                 </Text>
               )}
+              {drivePendingWifiBackup && !isDriveBusy ? (
+                <Text style={styles.syncPendingWifiText}>
+                  ⏳ Waiting for Wi-Fi — backup will resume automatically once connected
+                </Text>
+              ) : null}
               {driveProgress ? (
                 <View style={styles.driveProgressRow}>
                   <ActivityIndicator color={COLORS.coral} size="small" />
@@ -750,10 +782,27 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               />
             </View>
 
+            {/* Wi-Fi Only Backup Guard */}
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.switchTitle}>📶 Back Up Over Wi-Fi Only</Text>
+                <Text style={styles.switchSub}>
+                  Saves mobile &amp; roaming data — skipped daily backups resume automatically on Wi-Fi
+                </Text>
+              </View>
+              <Switch
+                value={Boolean(profile?.wifiOnlyPhotoSync ?? true)}
+                disabled={isDriveBusy}
+                onValueChange={(val) => updateProfileSettings({ wifiOnlyPhotoSync: val })}
+                trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
+                thumbColor={profile?.wifiOnlyPhotoSync ? COLORS.coral : '#FFFFFF'}
+              />
+            </View>
+
             {/* Primary Manual Actions: Back Up Now + Restore */}
             <View style={styles.footerSubRow}>
               <TouchableOpacity
-                onPress={handleBackUpNow}
+                onPress={() => handleBackUpNow(false)}
                 disabled={isDriveBusy}
                 style={[styles.cloudPrimaryBtn, { flex: 1.25 }]}
                 activeOpacity={0.9}
@@ -883,19 +932,6 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             onValueChange={handleToggleReminders}
             trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
             thumbColor={remindersEnabled ? COLORS.coral : '#FFFFFF'}
-          />
-        </View>
-
-        <View style={styles.switchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.switchTitle}>Upload Full Photos on Wi-Fi Only</Text>
-            <Text style={styles.switchSub}>Saves roaming data while traveling abroad</Text>
-          </View>
-          <Switch
-            value={Boolean(profile?.wifiOnlyPhotoSync)}
-            onValueChange={(val) => updateProfileSettings({ wifiOnlyPhotoSync: val })}
-            trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-            thumbColor={profile?.wifiOnlyPhotoSync ? COLORS.coral : '#FFFFFF'}
           />
         </View>
 
@@ -1190,6 +1226,7 @@ const styles = StyleSheet.create({
   syncAccountText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
   syncTimeText: { fontSize: 11, color: COLORS.inkMuted },
   syncSummaryText: { fontSize: 11, fontWeight: '700', color: '#047857', marginTop: 2 },
+  syncPendingWifiText: { fontSize: 11, fontWeight: '700', color: '#B45309', marginTop: 3 },
   syncHintText: { fontSize: 11, color: COLORS.inkSoft, lineHeight: 15, marginTop: 2 },
   syncErrorText: { fontSize: 11, fontWeight: '700', color: COLORS.rose, marginTop: 2 },
   driveProgressRow: {
