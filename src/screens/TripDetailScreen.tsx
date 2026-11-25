@@ -1622,6 +1622,17 @@ export const TripDetailScreen: React.FC<Props> = ({
             ) : (
               visibleMemories.map((m, idx) => {
                 const taggedStop = m.stopId ? stopMap.get(m.stopId) : undefined;
+                const stopCity = taggedStop?.cityName?.trim() || '';
+                const rawPlace = m.placeName?.trim() || '';
+                const isSameAsStop =
+                  !!stopCity &&
+                  !!rawPlace &&
+                  rawPlace.toLowerCase() === stopCity.toLowerCase();
+                const displayPlace =
+                  stopCity && rawPlace.toLowerCase().startsWith(`${stopCity.toLowerCase()},`)
+                    ? rawPlace.slice(stopCity.length + 1).trim()
+                    : rawPlace;
+                const showSeparatePlace = !!displayPlace && !isSameAsStop;
                 return (
                   <View
                     key={m.id}
@@ -1641,18 +1652,23 @@ export const TripDetailScreen: React.FC<Props> = ({
                         <Text style={styles.polaroidTitle}>{m.title}</Text>
                         <Text style={styles.polaroidDate}>{m.capturedAt.slice(0, 10)}</Text>
                       </View>
-                      <View style={styles.polaroidMetaRow}>
-                        {taggedStop ? (
-                          <View style={styles.stopTagBadge}>
-                            <Text style={styles.stopTagBadgeText}>📍 {taggedStop.cityName}</Text>
-                          </View>
-                        ) : null}
-                        {m.placeName ? (
-                          <Text style={styles.polaroidPlace} numberOfLines={1}>
-                            {taggedStop ? m.placeName : `📍 ${m.placeName}`}
-                          </Text>
-                        ) : null}
-                      </View>
+                      {stopCity || showSeparatePlace ? (
+                        <View style={styles.polaroidMetaRow}>
+                          {stopCity ? (
+                            <View style={styles.stopTagBadge}>
+                              <Text style={styles.stopTagEmoji}>📍</Text>
+                              <Text style={styles.stopTagBadgeText} numberOfLines={1}>
+                                {stopCity}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {showSeparatePlace ? (
+                            <Text style={styles.polaroidPlace} numberOfLines={1}>
+                              {stopCity ? displayPlace : `📍 ${displayPlace}`}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
                       <Text style={styles.polaroidNote}>{m.note}</Text>
                       <View style={styles.polaroidFooter}>
                         <View style={styles.moodTag}>
@@ -3787,17 +3803,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   stopTagBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#E0F2FE',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 99,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  stopTagEmoji: {
+    fontSize: 11,
+    lineHeight: 15,
+    includeFontPadding: false,
   },
   stopTagBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
     color: '#0369A1',
+    includeFontPadding: false,
   },
   stopsCard: {
     backgroundColor: COLORS.card,
