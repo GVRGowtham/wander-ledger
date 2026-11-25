@@ -17,6 +17,7 @@ export interface CountryStamp {
   country: string;
   flag: string;
   date: string;
+  lastVisitedDate?: string;
   cities: string[];
 }
 
@@ -347,21 +348,26 @@ export function deriveTripGeography(
   // Build deduplicated countries for this trip
   const countryMap = new Map<string, CountryStamp>();
   for (const p of visitedPlaces) {
+    const visitDate = p.date || trip.startDate;
     const existing = countryMap.get(p.countryCode);
     if (!existing) {
       countryMap.set(p.countryCode, {
         code: p.countryCode,
         country: p.country,
         flag: p.flag,
-        date: p.date || trip.startDate,
+        date: visitDate,
+        lastVisitedDate: visitDate,
         cities: [p.city],
       });
     } else {
       if (!existing.cities.some((c) => c.toLowerCase() === p.city.toLowerCase())) {
         existing.cities.push(p.city);
       }
-      if (p.date && p.date < existing.date) {
-        existing.date = p.date;
+      if (visitDate && visitDate < existing.date) {
+        existing.date = visitDate;
+      }
+      if (visitDate && (!existing.lastVisitedDate || visitDate > existing.lastVisitedDate)) {
+        existing.lastVisitedDate = visitDate;
       }
     }
   }
@@ -387,6 +393,25 @@ export function deriveTripGeography(
 }
 
 /**
+ * Formats an ISO date (YYYY-MM-DD or YYYY-MM) as a compact stamp label like "Nov 2025".
+ * Timezone-safe (pure string parsing, zero Date UTC drift).
+ */
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+export function formatPassportStampMonthYear(isoDate?: string): string {
+  if (!isoDate) return '';
+  const m = isoDate.trim().match(/^(\d{4})-(\d{2})/);
+  if (!m) return isoDate.trim();
+  const year = m[1];
+  const monthIdx = parseInt(m[2], 10) - 1;
+  if (monthIdx < 0 || monthIdx > 11) return year;
+  return `${SHORT_MONTHS[monthIdx]} ${year}`;
+}
+
+/**
  * Aggregates visited countries, visited city pins, and airside transit hubs across ALL trips.
  */
 export function deriveGlobalTravelGeography(
@@ -409,9 +434,14 @@ export function deriveGlobalTravelGeography(
     byTripId[trip.id] = geo;
 
     for (const c of geo.visitedCountries) {
+      const latestDate = c.lastVisitedDate || c.date;
       const existing = globalCountries.get(c.code);
       if (!existing) {
-        globalCountries.set(c.code, { ...c, cities: [...c.cities] });
+        globalCountries.set(c.code, {
+          ...c,
+          lastVisitedDate: latestDate,
+          cities: [...c.cities],
+        });
       } else {
         for (const city of c.cities) {
           if (!existing.cities.some((x) => x.toLowerCase() === city.toLowerCase())) {
@@ -420,6 +450,9 @@ export function deriveGlobalTravelGeography(
         }
         if (c.date && c.date < existing.date) {
           existing.date = c.date;
+        }
+        if (latestDate && (!existing.lastVisitedDate || latestDate > existing.lastVisitedDate)) {
+          existing.lastVisitedDate = latestDate;
         }
       }
     }

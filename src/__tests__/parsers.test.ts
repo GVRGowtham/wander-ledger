@@ -2200,3 +2200,68 @@ If you have already entered your card details, contact your bank immediately to 
   });
 });
 
+import { formatPassportStampMonthYear } from '../services/travelGeography';
+
+describe('v0.6.9 Passport Stamp Formatting & Last-Visited Tracking', () => {
+  it('formats stamp month/year cleanly without UTC drift and tracks most recent lastVisitedDate across trips', () => {
+    expect(formatPassportStampMonthYear('2025-11-01')).toBe('Nov 2025');
+    expect(formatPassportStampMonthYear('2026-01-15')).toBe('Jan 2026');
+    expect(formatPassportStampMonthYear('2025-10')).toBe('Oct 2025');
+    expect(formatPassportStampMonthYear('')).toBe('');
+
+    const trip1: Trip = {
+      id: 't_ch_old',
+      ownerId: 'u1',
+      title: 'Swiss 2024',
+      destinationCity: 'Zurich',
+      destinationCountry: 'Switzerland',
+      countryCode: 'CH',
+      flagEmoji: '🇨🇭',
+      startDate: '2024-06-10',
+      endDate: '2024-06-15',
+      homeCurrency: 'INR',
+      budget: 0,
+      vibe: 'alpine',
+      isShared: false,
+      coTravelers: [],
+      lat: 47.3769,
+      lng: 8.5417,
+      createdAt: '2024-06-01T00:00:00Z',
+      updatedAt: '2024-06-01T00:00:00Z',
+    };
+    const trip2: Trip = {
+      ...trip1,
+      id: 't_ch_new',
+      title: 'Europe 2025',
+      startDate: '2025-11-02',
+      endDate: '2025-11-12',
+    };
+    const stops: TripStop[] = [
+      {
+        id: 's1',
+        tripId: 't_ch_old',
+        cityName: 'Zurich',
+        startDate: '2024-06-10',
+        sortOrder: 0,
+        createdAt: '2024-06-01T00:00:00Z',
+      },
+      {
+        id: 's2',
+        tripId: 't_ch_new',
+        cityName: 'Lucerne',
+        startDate: '2025-11-05',
+        sortOrder: 0,
+        createdAt: '2025-11-01T00:00:00Z',
+      },
+    ];
+    const global = deriveGlobalTravelGeography([trip1, trip2], [], [], stops);
+    const ch = global.countryStamps.find((c) => c.code === 'CH');
+    expect(ch).toBeDefined();
+    expect(ch?.cities.length).toBe(2);
+    expect(ch?.date).toBe('2024-06-10');
+    expect(ch?.lastVisitedDate).toBe('2025-11-05');
+    expect(formatPassportStampMonthYear(ch?.lastVisitedDate)).toBe('Nov 2025');
+  });
+});
+
+

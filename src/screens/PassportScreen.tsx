@@ -23,7 +23,10 @@ import {
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { shareLocalFileSafely } from '../services/shareMediaService';
 import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
-import { deriveGlobalTravelGeography } from '../services/travelGeography';
+import {
+  deriveGlobalTravelGeography,
+  formatPassportStampMonthYear,
+} from '../services/travelGeography';
 import { COLORS, SHADOWS } from '../theme/tokens';
 import { DistanceUnit } from '../types/models';
 
@@ -391,8 +394,22 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                   >
                     {s.flag} {s.country.toUpperCase()}
                   </Text>
-                  <Text style={[styles.stampDate, { color: st.text }]} numberOfLines={1}>
-                    {s.cities.length > 0 ? `${s.cities.slice(0, 2).join(', ')} • ${s.date}` : s.date}
+                  <Text
+                    style={[styles.stampDate, { color: st.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
+                    {(() => {
+                      const monthYear = formatPassportStampMonthYear(s.lastVisitedDate || s.date);
+                      const cityLabel =
+                        s.cities.length > 0
+                          ? `${s.cities.length} ${s.cities.length === 1 ? 'city' : 'cities'}`
+                          : '';
+                      return cityLabel && monthYear
+                        ? `${cityLabel} • ${monthYear}`
+                        : cityLabel || monthYear;
+                    })()}
                   </Text>
                 </View>
               );
