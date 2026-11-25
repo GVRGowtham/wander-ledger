@@ -15,13 +15,13 @@
  *    with your assistant to wire it automatically!).
  */
 const EARLY_ACCESS_CONFIG = {
-  // Example: 'https://docs.google.com/forms/d/e/1FAIpQLSc.../formResponse'
-  googleFormActionUrl: '',
+  googleFormActionUrl:
+    'https://docs.google.com/forms/d/e/1FAIpQLSf_QZIpEWylUvMiYgYxoQDLhAvUT3KAf_-ESg9zzr5MLxcyFQ/formResponse',
   fields: {
-    name: 'entry.1000000001',
-    platform: 'entry.1000000002',
-    email: 'entry.1000000003',
-    nextTrip: 'entry.1000000004',
+    name: 'entry.1775615350',
+    platform: 'entry.1531470188',
+    email: 'entry.1111102350',
+    nextTrip: 'entry.1035916571',
   },
   fallbackMailto: 'vg.life.apps@gmail.com',
 };
@@ -310,8 +310,7 @@ const EARLY_ACCESS_CONFIG = {
     const name = (document.getElementById('ea-name')?.value || '').trim();
     const email = (emailInput?.value || '').trim();
     const platform =
-      form.querySelector('input[name="platform"]:checked')?.value ||
-      'Android (Google Play Closed Beta)';
+      form.querySelector('input[name="platform"]:checked')?.value || 'Android';
     const nextTrip = (document.getElementById('ea-trip')?.value || '').trim();
 
     if (name.length < 2) {
