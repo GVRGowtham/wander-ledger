@@ -411,8 +411,8 @@ const EARLY_ACCESS_CONFIG = {
       }
       if (emailHint) {
         emailHint.textContent = isIos
-          ? "We'll email your TestFlight invite as soon as the iOS beta opens."
-          : 'Use the Gmail signed into your Android Play Store so we can whitelist you for Closed Testing.';
+          ? "Watch your inbox — you'll be first to receive a TestFlight invite when iOS takes off."
+          : 'Enter your Google Play Gmail so we can unlock your private Play Store access.';
       }
       if (emailInput) {
         emailInput.placeholder = isIos ? 'you@icloud.com' : 'you@gmail.com';
@@ -478,8 +478,8 @@ const EARLY_ACCESS_CONFIG = {
       if (successMsg) {
         const isIos = platform.toLowerCase().includes('ios');
         successMsg.textContent = isIos
-          ? `Thanks, ${name}! We've reserved your spot on the iOS TestFlight waitlist for ${email}.`
-          : `Thanks, ${name}! We'll whitelist ${email} for the Google Play Closed Beta and send your opt-in link shortly.`;
+          ? `You're on the founding iOS list, ${name}! Watch ${email} — you'll be first to receive a TestFlight invite when iOS takes off.`
+          : `You're in, ${name}! We're unlocking early access for ${email} — watch your inbox for your private Google Play invite and be among the first travelers inside.`;
       }
       successBox.classList.add('is-visible');
     } catch {
