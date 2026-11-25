@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="kSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#312E81"/>
+      <stop offset="42%" stop-color="#9D174D"/>
+      <stop offset="76%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#FDE68A"/>
+    </linearGradient>
+    <linearGradient id="kPath" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#D6C7B2"/>
+      <stop offset="100%" stop-color="#9A8B7A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Twilight Sunset Sky -->
+  <rect width="640" height="360" fill="url(#kSky)"/>
+  <!-- Glowing Harvest Moon -->
+  <circle cx="492" cy="108" r="46" fill="#FEF08A" opacity="0.24"/>
+  <circle cx="492" cy="108" r="30" fill="#FEF9C3"/>
+
+  <!-- Soft Twilight Clouds -->
+  <ellipse cx="145" cy="94" rx="54" ry="12" fill="#FDA4AF" opacity="0.35"/>
+  <ellipse cx="385" cy="134" rx="64" ry="11" fill="#FDBA74" opacity="0.35"/>
+
+  <!-- Distant Kyoto Hills -->
+  <path d="M-10,335 Q140,224 310,295 T650,260 L650,360 L-10,360 Z" fill="#4C1D95" opacity="0.55"/>
+  <path d="M-10,348 Q190,268 380,316 T650,298 L650,375 L-10,375 Z" fill="#3B1D5E" opacity="0.72"/>
+
+  <!-- Five-Story Pagoda Silhouette on Right -->
+  <g transform="translate(455,152)" fill="#1E1B4B">
+    <rect x="46" y="0" width="4" height="24"/>
+    <path d="M18,32 Q48,22 78,32 L72,38 L24,38 Z"/>
+    <rect x="30" y="38" width="36" height="16"/>
+    <path d="M12,60 Q48,48 84,60 L78,66 L18,66 Z"/>
+    <rect x="26" y="66" width="44" height="18"/>
+    <path d="M6,90 Q48,78 90,90 L82,97 L14,97 Z"/>
+    <rect x="22" y="97" width="52" height="20"/>
+    <path d="M0,124 Q48,110 96,124 L88,132 L8,132 Z"/>
+    <rect x="18" y="132" width="60" height="36"/>
+    <!-- Warm Lit Pagoda Windows -->
+    <rect x="42" y="42" width="12" height="8" rx="1" fill="#FDE047"/>
+    <rect x="40" y="72" width="16" height="9" rx="1" fill="#FDE047"/>
+    <rect x="38" y="103" width="20" height="10" rx="1" fill="#FDE047"/>
+  </g>
+
+  <!-- Stone Garden Ground & Winding Path -->
+  <rect x="0" y="330" width="640" height="150" fill="#44403C"/>
+  <path d="M238,330 L342,330 L438,480 L142,480 Z" fill="url(#kPath)"/>
+  <!-- Stepping Stones -->
+  <g fill="#78716C" opacity="0.55">
+    <ellipse cx="290" cy="356" rx="28" ry="6"/>
+    <ellipse cx="290" cy="390" rx="38" ry="8"/>
+    <ellipse cx="290" cy="432" rx="50" ry="10"/>
+  </g>
+
+  <!-- Iconic Vermilion Torii Gate -->
+  <g transform="translate(152,164)">
+    <!-- Pillars -->
+    <rect x="46" y="54" width="24" height="184" rx="4" fill="#DC2626" stroke="#7F1D1D" stroke-width="2"/>
+    <rect x="206" y="54" width="24" height="184" rx="4" fill="#DC2626" stroke="#7F1D1D" stroke-width="2"/>
+    <!-- Stone Bases -->
+    <rect x="41" y="218" width="34" height="24" rx="3" fill="#292524"/>
+    <rect x="201" y="218" width="34" height="24" rx="3" fill="#292524"/>
+    <!-- Lower Crossbeam -->
+    <rect x="24" y="88" width="228" height="20" rx="4" fill="#DC2626" stroke="#7F1D1D" stroke-width="2"/>
+    <!-- Center Plaque -->
+    <rect x="122" y="54" width="32" height="38" rx="3" fill="#1E1B4B" stroke="#F59E0B" stroke-width="2"/>
+    <line x1="138" y1="62" x2="138" y2="84" stroke="#FDE047" stroke-width="2.5"/>
+    <line x1="130" y1="71" x2="146" y2="71" stroke="#FDE047" stroke-width="2.5"/>
+    <!-- Top Curved Kasagi Roof -->
+    <path d="M0,42 Q138,66 276,42 L268,62 Q138,80 8,62 Z" fill="#EF4444" stroke="#7F1D1D" stroke-width="2"/>
+    <path d="M-4,36 Q138,58 280,36 L276,45 Q138,66 0,45 Z" fill="#1E1B4B"/>
+  </g>
+
+  <!-- Glowing Paper Lanterns Lining Path -->
+  <g>
+    <!-- Left Lantern -->
+    <rect x="116" y="346" width="8" height="82" fill="#292524"/>
+    <circle cx="120" cy="342" r="30" fill="#FDE047" opacity="0.28"/>
+    <ellipse cx="120" cy="342" rx="16" ry="20" fill="#FEF08A" stroke="#D97706" stroke-width="2"/>
+    <rect x="111" y="320" width="18" height="5" rx="2" fill="#7F1D1D"/>
+    <rect x="111" y="360" width="18" height="5" rx="2" fill="#7F1D1D"/>
+    <!-- Right Lantern -->
+    <rect x="466" y="352" width="8" height="80" fill="#292524"/>
+    <circle cx="470" cy="348" r="30" fill="#FDE047" opacity="0.28"/>
+    <ellipse cx="470" cy="348" rx="16" ry="20" fill="#FEF08A" stroke="#D97706" stroke-width="2"/>
+    <rect x="461" y="326" width="18" height="5" rx="2" fill="#7F1D1D"/>
+    <rect x="461" y="366" width="18" height="5" rx="2" fill="#7F1D1D"/>
+  </g>
+
+  <!-- Autumn Maple Canopy Framing Corners -->
+  <g>
+    <circle cx="38" cy="118" r="78" fill="#B91C1C"/>
+    <circle cx="108" cy="84" r="56" fill="#EA580C"/>
+    <circle cx="72" cy="166" r="48" fill="#F59E0B"/>
+    <circle cx="605" cy="86" r="70" fill="#B91C1C"/>
+    <circle cx="556" cy="54" r="46" fill="#EA580C"/>
+    <circle cx="614" cy="156" r="44" fill="#F59E0B"/>
+  </g>
+
+  <!-- Drifting Autumn Maple Leaves -->
+  <g fill="#F97316">
+    <ellipse cx="212" cy="118" rx="7" ry="4" transform="rotate(-24 212 118)"/>
+    <ellipse cx="388" cy="176" rx="6" ry="3.5" transform="rotate(30 388 176)" fill="#EF4444"/>
+    <ellipse cx="164" cy="296" rx="7" ry="4" transform="rotate(18 164 296)" fill="#F59E0B"/>
+    <ellipse cx="418" cy="392" rx="7" ry="4" transform="rotate(-15 418 392)" fill="#EF4444"/>
+    <ellipse cx="222" cy="418" rx="6" ry="3.5" transform="rotate(40 222 418)"/>
+  </g>
+</svg>

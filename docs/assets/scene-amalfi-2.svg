@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 280" width="360" height="280">
+  <defs>
+    <linearGradient id="am2sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#FEF3C7"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="280" fill="url(#am2sky)"/>
+  <rect x="0" y="168" width="360" height="54" fill="#0284C7"/>
+  <!-- Stone Terrace Wall -->
+  <rect x="0" y="206" width="360" height="74" fill="#FDE68A"/>
+  <rect x="0" y="200" width="360" height="12" fill="#D6C7B2"/>
+  <!-- Striped Beach Umbrellas -->
+  <g transform="translate(52,132)">
+    <line x1="36" y1="24" x2="36" y2="82" stroke="#78350F" stroke-width="3"/>
+    <path d="M0,32 Q36,-4 72,32 Z" fill="#EA580C"/>
+    <path d="M18,32 Q36,-4 54,32 Z" fill="#FFFFFF"/>
+  </g>
+  <g transform="translate(218,138)">
+    <line x1="36" y1="24" x2="36" y2="76" stroke="#78350F" stroke-width="3"/>
+    <path d="M0,32 Q36,-4 72,32 Z" fill="#0284C7"/>
+    <path d="M18,32 Q36,-4 54,32 Z" fill="#FFFFFF"/>
+  </g>
+  <!-- Cute Retro Coral Scooter Silhouette -->
+  <g transform="translate(124,186)">
+    <circle cx="22" cy="54" r="14" fill="#1E293B"/><circle cx="22" cy="54" r="6" fill="#E2E8F0"/>
+    <circle cx="84" cy="54" r="14" fill="#1E293B"/><circle cx="84" cy="54" r="6" fill="#E2E8F0"/>
+    <path d="M14,48 Q26,24 54,32 L78,32 Q94,32 94,48 Z" fill="#EF4444" stroke="#991B1B" stroke-width="2"/>
+    <rect x="26" y="24" width="26" height="8" rx="4" fill="#78350F"/>
+    <path d="M74,32 L82,6 L92,8" stroke="#991B1B" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <circle cx="92" cy="12" r="5" fill="#FEF08A"/>
+  </g>
+</svg>

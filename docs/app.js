@@ -178,8 +178,29 @@ const EARLY_ACCESS_CONFIG = {
           'Mark shared hotel rooms or group dinners as Shared while keeping flights and shopping strictly Personal.',
         ],
         [
-          'Instagram Postcard & Collage Studio',
-          'Turn trip photos and route stats into crisp 1080p 4:5 Feed collages, 9:16 Stories, and offline spend-free captions.',
+          'One-Tap Family Postcards',
+          'Share clean trip snapshots with parents and friends without ever sending boarding numbers or receipts.',
+        ],
+      ],
+    },
+    keepsake: {
+      img: 'assets/screen-keepsake.webp',
+      alt: "Wanderer's Ledger Keepsake Magazine A4 PDF Studio screen",
+      heading: 'Turn any journey into a printable A4 travel book.',
+      summary:
+        'When the trip wraps up, craft a timeless A4 PDF travelogue right on your phone — with three complete end-to-end themes, 1:1 WYSIWYG drag-and-zoom covers, grouped boarding passes, and Polaroid spreads.',
+      points: [
+        [
+          'Three Complete End-to-End Themes',
+          'Switch between Magazine, Art Book, and Passport folios — styling covers, headers, stamps, and memory pages cohesively.',
+        ],
+        [
+          '1:1 WYSIWYG Cover Framing',
+          'Drag and pinch-zoom your favorite cover photo so the exported A4 PDF matches your preview down to the pixel.',
+        ],
+        [
+          '100% Offline & Spend-Free Forever',
+          'Every fare, hotel bill, budget, and receipt is automatically left out — ready to print or gift to family.',
         ],
       ],
     },
@@ -230,44 +251,141 @@ const EARLY_ACCESS_CONFIG = {
 })();
 
 /* --------------------------------------------------------------------------
-   4. Interactive 3-Theme Keepsake Magazine Switcher
+   4. Interactive Instagram Studio (Format Switcher + Illustrated Scenes)
    -------------------------------------------------------------------------- */
-(function initKeepsakeSwitcher() {
-  const spread = document.getElementById('keepsake-spread');
-  const btns = document.querySelectorAll('.theme-btn');
-  const issueTag = document.getElementById('ks-issue-tag');
-  const spreadKicker = document.getElementById('ks-spread-kicker');
-  if (!spread || !btns.length) return;
+(function initInstagramStudio() {
+  const card = document.getElementById('ig-card');
+  const fmtBtns = document.querySelectorAll('.format-btn');
+  const sceneBtns = document.querySelectorAll('.scene-btn');
+  const heroImg = document.getElementById('ig-hero-img');
+  const subImg = document.getElementById('ig-sub-img');
+  const subCaption = document.getElementById('ig-sub-caption');
+  const stampPill = document.getElementById('ig-stamp-pill');
+  const collageStamp = document.getElementById('ig-collage-stamp');
+  const collageRoute = document.getElementById('ig-collage-route');
+  const routeTag = document.getElementById('ig-route-tag');
+  const titleEl = document.getElementById('ig-title');
+  const statsLeft = document.getElementById('ig-stats-left');
+  const statsRight = document.getElementById('ig-stats-right');
+  const captionText = document.getElementById('studio-caption-text');
+  const specRatio = document.getElementById('studio-spec-ratio');
+  const copyBtn = document.getElementById('copy-caption-btn');
 
-  const META = {
-    magazine: {
-      issue: 'ISSUE 01',
-      kicker: 'PAGE 02 · ROUTE, STAMPS & BOARDING PASSES',
+  if (!card || !fmtBtns.length || !sceneBtns.length) return;
+
+  const FORMAT_SPECS = {
+    story: '1080×1920 · 9:16 Story PNG',
+    collage: '1080×1350 · 4:5 Feed Collage PNG',
+    stamp: '1080×1350 · 4:5 Passport Card PNG',
+  };
+
+  const SCENES = {
+    alps: {
+      heroImg: 'assets/scene-alps.svg',
+      heroAlt: 'Illustrated Swiss Alps red scenic train crossing stone viaduct over turquoise lake',
+      subImg: 'assets/scene-alps-2.svg',
+      subAlt: 'Illustrated Alpine cable car over wildflower meadow',
+      subCaption: 'Mt. Pilatus · Sep 15',
+      stamp: 'ADMITTED · SWITZERLAND',
+      shortRoute: 'BOM → ZRH → LUCERNE',
+      routeTag: 'SEP 12 – SEP 21 · BOM → ZRH → LUCERNE',
+      title: 'Swiss Alps Autumn',
+      statsLeft: '14,680 KM · 2 COUNTRIES',
+      statsRight: '6 MEMORIES',
+      caption:
+        "From boarding gates to alpine train windows — 9 sunlit days winding through Zurich, Lake Lucerne, and the peaks beyond.\n\nRoute: Mumbai → Zurich → Lucerne → Munich\n14,680 km logged · 2 new passport stamps · 6 favorite frames.\n\nLogged offline with Wanderer's Ledger.\n#SwissAlps #TravelJournal #WanderersLedger",
     },
-    artbook: {
-      issue: 'PLATE 01',
-      kicker: 'GALLERY FOLIO · JOURNEY ROUTE & STAMPS',
+    kyoto: {
+      heroImg: 'assets/scene-kyoto.svg',
+      heroAlt: 'Illustrated Kyoto vermilion torii gate, pagoda, paper lanterns, and autumn maple trees',
+      subImg: 'assets/scene-kyoto-2.svg',
+      subAlt: 'Illustrated Shinkansen bullet train passing snow-capped Mount Fuji',
+      subCaption: 'Shinkansen · Nov 06',
+      stamp: 'ADMITTED · JAPAN',
+      shortRoute: 'BLR → HND → KYOTO',
+      routeTag: 'NOV 02 – NOV 11 · BLR → HND → KYOTO',
+      title: 'Kyoto Lanterns',
+      statsLeft: '13,240 KM · 1 COUNTRY',
+      statsRight: '12 MEMORIES',
+      caption:
+        "Quiet stone pathways, glowing paper lanterns, and crimson maples at twilight — nine unhurried days between Tokyo and Kyoto.\n\nRoute: Bengaluru → Tokyo → Kyoto → Osaka\n13,240 km logged · 1 new passport stamp · 12 favorite frames.\n\nLogged offline with Wanderer's Ledger.\n#KyotoAutumn #JapanTravel #WanderersLedger",
     },
-    passport: {
-      issue: 'FOLIO NO. 01',
-      kicker: 'OFFICIAL TRAVEL LOG · VISAS & TRANSIT',
+    amalfi: {
+      heroImg: 'assets/scene-amalfi.svg',
+      heroAlt: 'Illustrated Amalfi Coast pastel cliffside villas, lemon branches, and white sailboat on turquoise sea',
+      subImg: 'assets/scene-amalfi-2.svg',
+      subAlt: 'Illustrated vintage red scooter and striped umbrellas along a sunlit Mediterranean terrace',
+      subCaption: 'Positano · Jun 19',
+      stamp: 'ADMITTED · ITALY',
+      shortRoute: 'DEL → FCO → AMALFI',
+      routeTag: 'JUN 16 – JUN 23 · DEL → FCO → AMALFI',
+      title: 'Amalfi Sunsets',
+      statsLeft: '12,110 KM · 1 COUNTRY',
+      statsRight: '9 MEMORIES',
+      caption:
+        "Lemon groves above the cliffs, coastal ferries, and slow Mediterranean evenings — a week of warm sea breeze along the Amalfi Coast.\n\nRoute: New Delhi → Rome → Naples → Positano\n12,110 km logged · 1 new passport stamp · 9 favorite frames.\n\nLogged offline with Wanderer's Ledger.\n#AmalfiCoast #ItalyDiaries #WanderersLedger",
     },
   };
 
-  btns.forEach((btn) => {
+  fmtBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const theme = btn.getAttribute('data-keepsake-theme') || 'magazine';
-      spread.setAttribute('data-theme', theme);
-      btns.forEach((b) => {
+      const fmt = btn.getAttribute('data-studio-format') || 'story';
+      card.setAttribute('data-format', fmt);
+      fmtBtns.forEach((b) => {
         const active = b === btn;
         b.classList.toggle('is-active', active);
         b.setAttribute('aria-selected', String(active));
       });
-      const m = META[theme] || META.magazine;
-      if (issueTag) issueTag.textContent = m.issue;
-      if (spreadKicker) spreadKicker.textContent = m.kicker;
+      if (specRatio) specRatio.textContent = FORMAT_SPECS[fmt] || FORMAT_SPECS.story;
     });
   });
+
+  sceneBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-studio-scene') || 'alps';
+      const s = SCENES[key] || SCENES.alps;
+
+      sceneBtns.forEach((b) => {
+        const active = b === btn;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-selected', String(active));
+      });
+
+      if (heroImg) {
+        heroImg.src = s.heroImg;
+        heroImg.alt = s.heroAlt;
+      }
+      if (subImg) {
+        subImg.src = s.subImg;
+        subImg.alt = s.subAlt;
+      }
+      if (subCaption) subCaption.textContent = s.subCaption;
+      if (stampPill) stampPill.textContent = s.stamp;
+      if (collageStamp) collageStamp.textContent = s.stamp;
+      if (collageRoute) collageRoute.textContent = s.shortRoute;
+      if (routeTag) routeTag.textContent = s.routeTag;
+      if (titleEl) titleEl.textContent = s.title;
+      if (statsLeft) statsLeft.textContent = s.statsLeft;
+      if (statsRight) statsRight.textContent = s.statsRight;
+      if (captionText) captionText.textContent = s.caption;
+      if (copyBtn) copyBtn.textContent = 'Copy Sample Caption';
+    });
+  });
+
+  if (copyBtn && captionText) {
+    copyBtn.addEventListener('click', async () => {
+      const text = captionText.textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.textContent = 'Copied to Clipboard ✓';
+      } catch {
+        copyBtn.textContent = 'Caption Ready ✓';
+      }
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy Sample Caption';
+      }, 2200);
+    });
+  }
 })();
 
 /* --------------------------------------------------------------------------

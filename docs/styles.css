@@ -45,6 +45,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 74px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -551,19 +552,36 @@ button, input, select {
 }
 
 /* --------------------------------------------------------------------------
-   Interactive 3-Theme Keepsake Magazine Preview
+   Interactive Instagram Studio (Format Switcher + Illustrated Travel Scenes)
    -------------------------------------------------------------------------- */
-.keepsake-controls {
+.studio-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
+}
+
+.studio-control-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.studio-control-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 
 .theme-switcher {
   display: inline-flex;
+  flex-wrap: wrap;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   padding: 5px;
@@ -574,13 +592,17 @@ button, input, select {
 .theme-btn {
   border: none;
   background: transparent;
-  padding: 9px 18px;
+  padding: 8px 16px;
   border-radius: var(--radius-pill);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--ink-muted);
   cursor: pointer;
   transition: all 0.18s ease;
+}
+
+.theme-btn:hover {
+  color: var(--navy);
 }
 
 .theme-btn.is-active {
@@ -588,278 +610,381 @@ button, input, select {
   color: #FFFFFF;
 }
 
-.zero-spend-note {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--sage);
-  background: var(--sage-soft);
-  padding: 8px 16px;
-  border-radius: var(--radius-pill);
+.scene-btn.is-active {
+  background: var(--coral);
+  color: #FFFFFF;
 }
 
-.keepsake-spread {
+.studio-stage {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  padding: 28px;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+  gap: 32px;
+  align-items: center;
+  padding: 36px;
   border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-card);
-  transition: background-color 0.3s ease;
 }
 
-.a4-page {
-  aspect-ratio: 210 / 297;
-  border-radius: 10px;
-  overflow: hidden;
+.studio-preview-mat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 510px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: radial-gradient(circle at 30% 20%, #FFF8EE 0%, #F3ECE1 100%);
+  border: 1px solid var(--line);
+}
+
+/* Live Export Card Shell */
+.ig-card {
   position: relative;
-  box-shadow: 0 12px 30px rgba(27, 35, 64, 0.14);
-  transition: all 0.3s ease;
-}
-
-/* Cover Page Themes */
-.a4-cover {
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 22px 48px rgba(27, 35, 64, 0.18);
+  transition: all 0.28s ease;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
 }
 
-.a4-cover-photo {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-  background: linear-gradient(180deg, #38BDF8 0%, #93C5FD 48%, #1E3A8A 100%);
-}
-
-.a4-cover-photo svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* Theme 1: Magazine */
-.keepsake-spread[data-theme="magazine"] .a4-cover {
-  background: #12182D;
+/* Format 1: 9:16 Story Postcard */
+.ig-card[data-format="story"] {
+  width: min(290px, 100%);
+  aspect-ratio: 9 / 16;
+  background: #141B31;
   color: #FFFFFF;
 }
-.keepsake-spread[data-theme="magazine"] .a4-cover-overlay {
+
+.ig-card[data-format="story"] .ig-hero-wrap {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.55) 0%, transparent 34%, transparent 52%, rgba(15, 23, 42, 0.9) 100%);
-  padding: 24px;
+}
+
+.ig-card[data-format="story"] .ig-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ig-card[data-format="story"] .ig-story-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(16, 22, 42, 0.45) 0%, rgba(16, 22, 42, 0.05) 36%, rgba(16, 22, 42, 0.18) 56%, rgba(16, 22, 42, 0.92) 100%);
+}
+
+.ig-card[data-format="story"] .ig-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  padding: 18px 18px 20px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
-.keepsake-spread[data-theme="magazine"] .a4-inside {
+
+.ig-card[data-format="story"] .ig-collage-row {
+  display: none;
+}
+
+/* Format 2: 4:5 Feed Collage */
+.ig-card[data-format="collage"] {
+  width: min(368px, 100%);
+  aspect-ratio: 4 / 5;
+  background: #FAF5EC;
+  color: #1B2340;
+  padding: 16px;
+  border: 1px solid #E4D9C7;
+  gap: 12px;
+}
+
+.ig-card[data-format="collage"] .ig-story-scrim {
+  display: none;
+}
+
+.ig-card[data-format="collage"] .ig-hero-wrap {
+  flex: 0 0 53%;
+  border-radius: 10px;
+  overflow: hidden;
   background: #FFFFFF;
-  color: #191715;
-  padding: 26px;
-  border: 1px solid #E5E7EB;
-}
-.keepsake-spread[data-theme="magazine"] .inside-kicker {
-  color: #D9532F;
+  padding: 6px;
+  box-shadow: 0 6px 16px rgba(27, 35, 64, 0.1);
 }
 
-/* Theme 2: Art Book */
-.keepsake-spread[data-theme="artbook"] .a4-cover {
-  background: #FAF6EE;
-  color: #0F4C45;
-  padding: 24px;
-  border: 1px solid #DDD5C4;
-}
-.keepsake-spread[data-theme="artbook"] .a4-cover-photo {
-  border-radius: 4px;
-  flex: 0 0 60%;
-  margin: 18px 0;
-  box-shadow: 0 8px 20px rgba(15, 76, 69, 0.14);
-}
-.keepsake-spread[data-theme="artbook"] .a4-cover-overlay {
-  display: contents;
-}
-.keepsake-spread[data-theme="artbook"] .cover-top {
-  order: -1;
-  color: #0F4C45;
-}
-.keepsake-spread[data-theme="artbook"] .cover-bottom {
-  color: #0F4C45;
-}
-.keepsake-spread[data-theme="artbook"] .a4-inside {
-  background: #FAF6EE;
-  color: #153E38;
-  padding: 26px;
-  border: 1px solid #DDD5C4;
-}
-.keepsake-spread[data-theme="artbook"] .inside-kicker {
-  color: #0F766E;
+.ig-card[data-format="collage"] .ig-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
 }
 
-/* Theme 3: Passport */
-.keepsake-spread[data-theme="passport"] .a4-cover {
+.ig-card[data-format="collage"] .ig-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  gap: 10px;
+}
+
+.ig-card[data-format="collage"] .ig-top-bar {
+  display: none;
+}
+
+/* Format 3: Passport Stamp Card */
+.ig-card[data-format="stamp"] {
+  width: min(368px, 100%);
+  aspect-ratio: 4 / 5;
   background: #F7EEDB;
   color: #1B2340;
-  padding: 22px;
+  padding: 18px;
   border: 4px double #B07D2B;
+  gap: 12px;
 }
-.keepsake-spread[data-theme="passport"] .a4-cover-photo {
-  border: 3px solid #B07D2B;
+
+.ig-card[data-format="stamp"] .ig-story-scrim,
+.ig-card[data-format="stamp"] .ig-collage-row {
+  display: none;
+}
+
+.ig-card[data-format="stamp"] .ig-hero-wrap {
   flex: 0 0 54%;
-  margin: 16px 0;
+  border: 2.5px solid #B07D2B;
+  border-radius: 4px;
+  overflow: hidden;
 }
-.keepsake-spread[data-theme="passport"] .a4-cover-overlay {
-  display: contents;
+
+.ig-card[data-format="stamp"] .ig-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
-.keepsake-spread[data-theme="passport"] .cover-top {
+
+.ig-card[data-format="stamp"] .ig-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  gap: 8px;
+}
+
+.ig-card[data-format="stamp"] .ig-top-bar {
   order: -1;
   color: #8A5D19;
 }
-.keepsake-spread[data-theme="passport"] .cover-bottom {
-  color: #1B2340;
-}
-.keepsake-spread[data-theme="passport"] .a4-inside {
-  background: #F7EEDB;
-  color: #1B2340;
-  padding: 24px;
-  border: 4px double #B07D2B;
-}
-.keepsake-spread[data-theme="passport"] .inside-kicker {
-  color: #8A5D19;
-}
 
-.cover-top {
+/* Shared Card Internals */
+.ig-top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.cover-bottom h4 {
-  font-family: var(--font-display);
-  font-size: clamp(24px, 2.8vw, 34px);
-  line-height: 1.05;
-  margin-top: 6px;
-}
-
-.cover-dates {
+.ig-stamp-pill {
+  border: 1.8px dashed currentColor;
+  border-radius: 6px;
+  padding: 4px 8px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 9px;
+  font-weight: 700;
   letter-spacing: 0.08em;
-  opacity: 0.85;
+  transform: rotate(-2deg);
+  display: inline-block;
 }
 
-.cover-stats {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid currentColor;
-  opacity: 0.82;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
+.ig-card[data-format="story"] .ig-stamp-pill {
+  color: #FDE68A;
+  background: rgba(20, 27, 49, 0.45);
 }
 
-.a4-inside {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.ig-card[data-format="stamp"] .ig-stamp-pill {
+  color: #C2410C;
 }
 
-.inside-kicker {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.inside-route {
-  font-size: 12.5px;
-  font-weight: 700;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(27, 35, 64, 0.05);
-}
-
-.inside-stamps {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.mini-stamp {
-  border: 2px dashed currentColor;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
-.mini-stamp.ch { color: #C2410C; transform: rotate(-2deg); }
-.mini-stamp.de { color: #0369A1; transform: rotate(1.5deg); }
-
-.inside-pass {
-  border: 1px solid rgba(27, 35, 64, 0.14);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.inside-pass-top {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  opacity: 0.75;
-}
-
-.inside-pass-route {
-  font-size: 14px;
-  font-weight: 800;
-  margin-top: 3px;
-}
-
-.inside-note {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 12.5px;
-  line-height: 1.5;
-  padding: 10px 12px;
-  border-left: 2.5px solid var(--coral);
-  opacity: 0.88;
-}
-
-.inside-polaroids {
+.ig-collage-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: auto;
+  align-items: stretch;
 }
 
-.mini-polaroid {
+.ig-sub-polaroid {
   background: #FFFFFF;
-  padding: 6px 6px 10px;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(25, 23, 21, 0.1);
-  color: #191715;
+  padding: 5px 5px 7px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(27, 35, 64, 0.09);
 }
 
-.mini-polaroid-img {
-  height: 74px;
+.ig-sub-polaroid img {
+  width: 100%;
+  height: 76px;
+  object-fit: cover;
   border-radius: 4px;
-  overflow: hidden;
 }
 
-.mini-polaroid span {
+.ig-sub-polaroid span {
   display: block;
-  margin-top: 6px;
-  font-size: 10.5px;
+  margin-top: 4px;
+  font-size: 9.5px;
   font-weight: 700;
+  color: #44403C;
+}
+
+.ig-collage-meta {
+  background: #FFFFFF;
+  border: 1px solid #E7DDD0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.ig-collage-stamp {
+  border: 1.8px dashed #C2410C;
+  color: #C2410C;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  transform: rotate(-2deg);
+  text-align: center;
+}
+
+.ig-collage-route {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-top: 6px;
+}
+
+.ig-collage-note {
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.ig-footer-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ig-route-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.ig-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+}
+
+.ig-card[data-format="collage"] .ig-title,
+.ig-card[data-format="stamp"] .ig-title {
+  font-size: 22px;
+}
+
+.ig-stats {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid currentColor;
+  opacity: 0.8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+
+/* Right Column: Live Spend-Free Caption Panel */
+.studio-caption-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.studio-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.studio-panel-kicker {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+
+.zero-spend-note {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sage);
+  background: var(--sage-soft);
+  padding: 6px 13px;
+  border-radius: var(--radius-pill);
+}
+
+.caption-box {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--ink);
+  white-space: pre-line;
+}
+
+.studio-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.studio-spec-pill {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: var(--paper-warm);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+}
+
+.studio-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.studio-hint {
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 
 /* --------------------------------------------------------------------------
@@ -1286,6 +1411,19 @@ button, input, select {
   display: block;
 }
 
+.faq-support-note {
+  margin-top: 28px;
+  font-size: 15px;
+  color: var(--ink-muted);
+}
+
+.faq-support-note a {
+  color: var(--coral);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* --------------------------------------------------------------------------
    Footer
    -------------------------------------------------------------------------- */
@@ -1333,10 +1471,11 @@ button, input, select {
 @media (max-width: 960px) {
   .hero-grid,
   .feature-stage,
+  .studio-stage,
   .access-grid,
   .extras-grid {
     grid-template-columns: 1fr;
-    gap: 36px;
+    gap: 32px;
   }
 
   .hero {
@@ -1351,13 +1490,14 @@ button, input, select {
     padding: 64px 0;
   }
 
-  .feature-stage {
-    padding: 28px 22px;
+  .feature-stage,
+  .studio-stage {
+    padding: 24px 18px;
   }
 
-  .keepsake-spread {
-    grid-template-columns: 1fr;
-    padding: 18px;
+  .studio-preview-mat {
+    min-height: 400px;
+    padding: 18px 12px;
   }
 
   .manifesto-grid {
@@ -1404,5 +1544,19 @@ button, input, select {
   .release-row {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .theme-btn {
+    padding: 7px 12px;
+    font-size: 12.5px;
+  }
+
+  .ig-card[data-format="collage"] {
+    aspect-ratio: auto;
+  }
+
+  .ig-card[data-format="collage"] .ig-hero-wrap {
+    flex: none;
+    aspect-ratio: 4 / 3;
   }
 }

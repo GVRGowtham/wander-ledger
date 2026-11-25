@@ -37,7 +37,7 @@
 
       <nav class="nav-links" id="primary-nav" aria-label="Primary Navigation">
         <a href="#features">Features</a>
-        <a href="#keepsake">Keepsake Studio</a>
+        <a href="#studio">Instagram Studio</a>
         <a href="#manual">User Manual</a>
         <a href="#changelog">What's New</a>
         <a href="#faq">FAQ</a>
@@ -55,14 +55,14 @@
   </header>
 
   <main>
-    <!-- HERO + 66s STORY VIDEO -->
+    <!-- HERO + APP WALKTHROUGH VIDEO -->
     <section class="hero" id="story">
       <div class="container hero-grid">
         <div>
           <p class="hero-eyebrow">Offline-First Pocket Travelogue · v0.6.8</p>
           <h1>Every mile, every stamp, every memory — kept offline.</h1>
           <p class="hero-lead">
-            Flights buried in Gmail, hotel bookings lost in WhatsApp, foreign bills scattered across apps, and your best trip photos buried in your camera roll. Wanderer's Ledger brings every journey together in one calm, private travel journal — built to work even in airplane mode.
+            Trips fade faster than we think — from your first boarding pass to the last sunset photo, Wanderer's Ledger holds your entire journey in one quiet place: private, sunlit, and built to stay with you even at 35,000 feet.
           </p>
 
           <div class="hero-cta-row">
@@ -74,8 +74,8 @@
 
           <div class="hero-facts" aria-label="App Highlights">
             <div class="fact-item">
-              <strong>Android Closed Beta</strong>
-              <span>iOS TestFlight waitlist open</span>
+              <strong>Android Closed Beta Open</strong>
+              <span>Play Store invites open · iOS waitlist open</span>
             </div>
             <div class="fact-item">
               <strong>100% Offline-First</strong>
@@ -101,28 +101,28 @@
                 <source src="https://github.com/GVRGowtham/wander-ledger/releases/download/v0.6.8/Wanderers_Ledger_Story_v0.6.8.mp4" type="video/mp4" />
                 Your browser does not support HTML5 video.
               </video>
-              <button type="button" class="video-play-overlay" id="video-play-btn" aria-label="Play 66-second story walkthrough video">
+              <button type="button" class="video-play-overlay" id="video-play-btn" aria-label="Play app walkthrough video">
                 <span class="play-circle">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.53.85l11.02-6.86a1 1 0 0 0 0-1.7L9.53 4.29A1 1 0 0 0 8 5.14Z"/>
                   </svg>
                 </span>
-                <span class="play-caption">Watch 66s Story</span>
+                <span class="play-caption">Watch App Walkthrough</span>
               </button>
             </div>
           </div>
-          <p class="media-footnote">66-second walkthrough with voiceover &amp; subtitles · 100% sample trip data</p>
+          <p class="media-footnote">See how one journey comes together — from boarding pass to keepsake.</p>
         </div>
       </div>
     </section>
 
-    <!-- INTERACTIVE 5-TAB FEATURE EXPLORER -->
+    <!-- INTERACTIVE 6-TAB FEATURE EXPLORER -->
     <section class="section section-warm" id="features">
       <div class="container">
         <div class="section-head">
           <p class="section-kicker">Inside the App</p>
           <h2 class="section-title">Everything a trip creates, organized without the busywork.</h2>
-          <p class="section-desc">Tap any chapter below to see how Wanderer's Ledger handles bookings, geography, multi-currency spend, and safe sharing.</p>
+          <p class="section-desc">Tap any chapter below to see how Wanderer's Ledger handles bookings, geography, multi-currency spend, safe sharing, and printable keepsakes.</p>
         </div>
 
         <div class="feature-tabs" role="tablist" aria-label="App feature walkthrough tabs">
@@ -131,6 +131,7 @@
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="spend" id="tab-spend">Historical FX Spend</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="bookings" id="tab-bookings">Bookings &amp; Maps</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="shared" id="tab-shared">Co-Traveler Roles</button>
+          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="keepsake" id="tab-keepsake">Keepsake PDF</button>
         </div>
 
         <div class="feature-stage" role="tabpanel" id="feature-panel">
@@ -173,131 +174,102 @@
       </div>
     </section>
 
-    <!-- INTERACTIVE 3-THEME KEEPSAKE MAGAZINE PREVIEW -->
-    <section class="section" id="keepsake">
+    <!-- INTERACTIVE INSTAGRAM STUDIO -->
+    <section class="section" id="studio">
       <div class="container">
         <div class="section-head">
-          <p class="section-kicker">Keepsake Magazine Studio</p>
-          <h2 class="section-title">Turn any journey into a printable A4 travel book.</h2>
+          <p class="section-kicker">Instagram Studio</p>
+          <h2 class="section-title">Share the story, never the receipts.</h2>
           <p class="section-desc">
-            Choose from three complete end-to-end themes, drag and zoom your cover photo with 1:1 WYSIWYG framing, and export an A4 PDF ready to print or send to family. Try switching the book theme below.
+            Turn your favorite trip photos, flight routes, and country stamps into crisp 4:5 feed collages and 9:16 stories — paired with ready-to-paste captions that automatically leave out every price and receipt.
           </p>
         </div>
 
-        <div class="keepsake-controls">
-          <div class="theme-switcher" role="tablist" aria-label="Keepsake Magazine PDF theme preview">
-            <button type="button" class="theme-btn is-active" role="tab" aria-selected="true" data-keepsake-theme="magazine" id="ks-btn-magazine">Magazine</button>
-            <button type="button" class="theme-btn" role="tab" aria-selected="false" data-keepsake-theme="artbook" id="ks-btn-artbook">Art Book</button>
-            <button type="button" class="theme-btn" role="tab" aria-selected="false" data-keepsake-theme="passport" id="ks-btn-passport">Passport</button>
+        <div class="studio-controls">
+          <div class="studio-control-group">
+            <span class="studio-control-label">Format</span>
+            <div class="theme-switcher" role="tablist" aria-label="Instagram Studio format switcher">
+              <button type="button" class="theme-btn format-btn is-active" role="tab" aria-selected="true" data-studio-format="story" id="ig-fmt-story">9:16 Story</button>
+              <button type="button" class="theme-btn format-btn" role="tab" aria-selected="false" data-studio-format="collage" id="ig-fmt-collage">4:5 Collage</button>
+              <button type="button" class="theme-btn format-btn" role="tab" aria-selected="false" data-studio-format="stamp" id="ig-fmt-stamp">Stamp Card</button>
+            </div>
           </div>
-          <span class="zero-spend-note">Zero prices, budgets, or receipts ever printed</span>
+
+          <div class="studio-control-group">
+            <span class="studio-control-label">Try a Scene</span>
+            <div class="theme-switcher" role="tablist" aria-label="Sample travel destination scenes">
+              <button type="button" class="theme-btn scene-btn is-active" role="tab" aria-selected="true" data-studio-scene="alps" id="ig-scene-alps">Swiss Alps</button>
+              <button type="button" class="theme-btn scene-btn" role="tab" aria-selected="false" data-studio-scene="kyoto" id="ig-scene-kyoto">Kyoto Autumn</button>
+              <button type="button" class="theme-btn scene-btn" role="tab" aria-selected="false" data-studio-scene="amalfi" id="ig-scene-amalfi">Amalfi Coast</button>
+            </div>
+          </div>
         </div>
 
-        <div class="keepsake-spread" id="keepsake-spread" data-theme="magazine">
-          <!-- Page 1: Interactive Cover Preview -->
-          <article class="a4-page a4-cover" aria-label="Sample Keepsake PDF Cover Page">
-            <div class="a4-cover-photo">
-              <svg viewBox="0 0 360 440" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                <defs>
-                  <linearGradient id="ksSky" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#38BDF8"/>
-                    <stop offset="56%" stop-color="#BAE6FD"/>
-                    <stop offset="100%" stop-color="#FEF3C7"/>
-                  </linearGradient>
-                  <linearGradient id="ksLake" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#0284C7"/>
-                    <stop offset="100%" stop-color="#0C4A6E"/>
-                  </linearGradient>
-                </defs>
-                <rect width="360" height="295" fill="url(#ksSky)"/>
-                <circle cx="288" cy="78" r="24" fill="#FEF08A"/>
-                <polygon points="-20,295 104,118 220,295" fill="#475569"/>
-                <polygon points="104,118 76,162 96,154 110,168 126,154 140,164" fill="#F8FAFC"/>
-                <polygon points="124,295 250,92 385,295" fill="#334155"/>
-                <polygon points="250,92 218,142 238,134 254,150 272,134 290,146" fill="#FFFFFF"/>
-                <rect x="0" y="290" width="360" height="150" fill="url(#ksLake)"/>
-                <path d="M22 330 Q105 318 195 330 T340 326" stroke="#7DD3FC" stroke-width="3.5" fill="none" opacity="0.58"/>
-                <path d="M46 364 Q145 352 240 364 T355 360" stroke="#BAE6FD" stroke-width="2.5" fill="none" opacity="0.4"/>
-              </svg>
-            </div>
-            <div class="a4-cover-overlay">
-              <div class="cover-top">
-                <span>WANDERER'S LEDGER</span>
-                <span id="ks-issue-tag">ISSUE 01</span>
+        <div class="studio-stage">
+          <div class="studio-preview-mat">
+            <article class="ig-card" id="ig-card" data-format="story" aria-label="Interactive Instagram Studio export preview">
+              <div class="ig-hero-wrap">
+                <img id="ig-hero-img" class="ig-hero-img" src="assets/scene-alps.svg" alt="Illustrated Swiss Alps red scenic train crossing stone viaduct over turquoise lake" width="640" height="480" />
+                <div class="ig-story-scrim" aria-hidden="true"></div>
               </div>
-              <div class="cover-bottom">
-                <div class="cover-dates">SEP 12 – SEP 21, 2026</div>
-                <h4>Europe Autumn</h4>
-                <div class="cover-stats">14,680 KM · 2 COUNTRIES · 6 POLAROIDS</div>
-              </div>
-            </div>
-          </article>
 
-          <!-- Page 2: Interactive Inside Spread Preview -->
-          <article class="a4-page a4-inside" aria-label="Sample Keepsake PDF Inside Spread">
-            <div class="inside-kicker" id="ks-spread-kicker">PAGE 02 · ROUTE, STAMPS &amp; BOARDING PASSES</div>
-            <div class="inside-route">Mumbai → Zurich (via DXB) → Lucerne → Zurich → Munich → Mumbai</div>
-
-            <div class="inside-stamps">
-              <span class="mini-stamp ch">ADMITTED · SWITZERLAND</span>
-              <span class="mini-stamp de">ADMITTED · GERMANY</span>
-            </div>
-
-            <div class="inside-pass">
-              <div class="inside-pass-top">
-                <span>EMIRATES · EK 507 · EK 87</span>
-                <span>VIA DXB</span>
-              </div>
-              <div class="inside-pass-route">BOM → ZRH</div>
-            </div>
-
-            <div class="inside-pass">
-              <div class="inside-pass-top">
-                <span>STAY · 2 NIGHTS</span>
-                <span>ZURICH</span>
-              </div>
-              <div class="inside-pass-route">Alpine View Boutique Hotel</div>
-            </div>
-
-            <div class="inside-pass">
-              <div class="inside-pass-top">
-                <span>SBB INTERCITY · RAIL</span>
-                <span>SEP 14 · 09:05</span>
-              </div>
-              <div class="inside-pass-route">Zurich HB → Lucerne</div>
-            </div>
-
-            <blockquote class="inside-note">
-              "Morning mist cleared just as the train curved along Lake Lucerne — every ticket, stamp, and photo tucked neatly in one journal."
-            </blockquote>
-
-            <div class="inside-polaroids">
-              <div class="mini-polaroid">
-                <div class="mini-polaroid-img">
-                  <svg viewBox="0 0 180 110" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                    <rect width="180" height="72" fill="#BAE6FD"/>
-                    <polygon points="10,72 68,20 124,72" fill="#475569"/>
-                    <polygon points="68,20 54,38 68,34 82,38" fill="#FFF"/>
-                    <rect y="72" width="180" height="38" fill="#0284C7"/>
-                  </svg>
+              <div class="ig-content">
+                <div class="ig-top-bar">
+                  <span>WANDERER'S LEDGER</span>
+                  <span class="ig-stamp-pill" id="ig-stamp-pill">ADMITTED · SWITZERLAND</span>
                 </div>
-                <span>Lake Lucerne · Sep 14</span>
-              </div>
-              <div class="mini-polaroid">
-                <div class="mini-polaroid-img">
-                  <svg viewBox="0 0 180 110" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                    <rect width="180" height="110" fill="#93C5FD"/>
-                    <path d="M0 78 Q90 46 180 68 L180 110 L0 110 Z" fill="#15803D"/>
-                    <rect x="20" y="54" width="140" height="14" rx="3" fill="#DC2626"/>
-                    <rect x="28" y="57" width="34" height="6" fill="#E0F2FE"/>
-                    <rect x="72" y="57" width="34" height="6" fill="#E0F2FE"/>
-                    <rect x="116" y="57" width="34" height="6" fill="#E0F2FE"/>
-                  </svg>
+
+                <div class="ig-collage-row">
+                  <div class="ig-sub-polaroid">
+                    <img id="ig-sub-img" src="assets/scene-alps-2.svg" alt="Illustrated Alpine cable car over wildflower meadow" width="360" height="280" />
+                    <span id="ig-sub-caption">Mt. Pilatus · Sep 15</span>
+                  </div>
+                  <div class="ig-collage-meta">
+                    <span class="ig-collage-stamp" id="ig-collage-stamp">ADMITTED · SWITZERLAND</span>
+                    <div>
+                      <div class="ig-collage-route" id="ig-collage-route">BOM → ZRH → LUCERNE</div>
+                      <div class="ig-collage-note" id="ig-collage-note">Zero spend or prices shown</div>
+                    </div>
+                  </div>
                 </div>
-                <span>SBB Viaduct · Sep 15</span>
+
+                <div class="ig-footer-block">
+                  <div class="ig-route-tag" id="ig-route-tag">SEP 12 – SEP 21 · BOM → ZRH → LUCERNE</div>
+                  <h4 class="ig-title" id="ig-title">Swiss Alps Autumn</h4>
+                  <div class="ig-stats">
+                    <span id="ig-stats-left">14,680 KM · 2 COUNTRIES</span>
+                    <span id="ig-stats-right">6 MEMORIES</span>
+                  </div>
+                </div>
               </div>
+            </article>
+          </div>
+
+          <div class="studio-caption-panel">
+            <div class="studio-panel-head">
+              <span class="studio-panel-kicker">Ready-to-Paste Caption</span>
+              <span class="zero-spend-note">Spend Shield Active · Zero Prices Shown</span>
             </div>
-          </article>
+
+            <div class="caption-box" id="studio-caption-text">From boarding gates to alpine train windows — 9 sunlit days winding through Zurich, Lake Lucerne, and the peaks beyond.
+
+Route: Mumbai → Zurich → Lucerne → Munich
+14,680 km logged · 2 new passport stamps · 6 favorite frames.
+
+Logged offline with Wanderer's Ledger.
+#SwissAlps #TravelJournal #WanderersLedger</div>
+
+            <div class="studio-specs">
+              <span class="studio-spec-pill" id="studio-spec-ratio">1080×1920 · 9:16 Story PNG</span>
+              <span class="studio-spec-pill">Generated 100% Offline</span>
+              <span class="studio-spec-pill">Expenses Auto-Stripped</span>
+            </div>
+
+            <div class="studio-panel-actions">
+              <button type="button" class="btn btn-secondary" id="copy-caption-btn">Copy Sample Caption</button>
+              <span class="studio-hint">Switch formats or travel scenes above to test the live preview.</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -329,10 +301,10 @@
     <section class="section" id="early-access">
       <div class="container access-grid">
         <div>
-          <p class="section-kicker">Early Access · Closed Beta</p>
+          <p class="section-kicker">Early Access · Open Now</p>
           <h2 class="section-title">Request your invite to Wanderer's Ledger.</h2>
           <p class="section-desc">
-            We're currently running our Google Play Closed Beta on Android and building the iOS TestFlight waitlist. Drop your details and we'll send your personal invite link directly.
+            Android Closed Beta is open on Google Play right now, and our iOS TestFlight waitlist is open too. Drop your details and we'll send your personal invite link directly.
           </p>
           <ul class="access-perks">
             <li>Direct access to the latest Google Play Closed Testing builds (currently <strong>v0.6.8</strong>).</li>
@@ -435,7 +407,7 @@
               Download PDF Manual
             </a>
             <a href="#story" class="btn btn-secondary" style="background:rgba(255,255,255,0.1);color:#FFF;border-color:rgba(255,255,255,0.28);">
-              Watch 66s Video
+              Watch App Walkthrough
             </a>
           </div>
         </div>
@@ -554,6 +526,10 @@
             </div>
           </div>
         </div>
+
+        <p class="faq-support-note">
+          Have a question or suggestion? Reach out anytime at <a href="mailto:vg.life.apps@gmail.com">vg.life.apps@gmail.com</a>.
+        </p>
       </div>
     </section>
   </main>
@@ -572,7 +548,7 @@
         <a href="#early-access">Early Access</a>
         <a href="https://github.com/GVRGowtham/wander-ledger/releases/download/v0.6.8/Wanderers_Ledger_User_Manual_v0.6.8.pdf" target="_blank" rel="noopener">User Manual</a>
         <a href="privacy.html">Privacy Policy</a>
-        <a href="https://github.com/GVRGowtham/wander-ledger" target="_blank" rel="noopener">GitHub</a>
+        <a href="mailto:vg.life.apps@gmail.com">vg.life.apps@gmail.com</a>
       </div>
     </div>
   </footer>

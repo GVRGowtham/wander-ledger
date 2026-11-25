@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="52%" stop-color="#BAE6FD"/>
+      <stop offset="85%" stop-color="#FEF3C7"/>
+      <stop offset="100%" stop-color="#FDE68A"/>
+    </linearGradient>
+    <linearGradient id="sunGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FEF08A"/>
+      <stop offset="100%" stop-color="#FB923C"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="48%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#0C4A6E"/>
+    </linearGradient>
+    <linearGradient id="mtnFar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="mtnNear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="meadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="100%" stop-color="#15803D"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sky & Sun -->
+  <rect width="640" height="335" fill="url(#sky)"/>
+  <circle cx="515" cy="96" r="52" fill="#FEF08A" opacity="0.32"/>
+  <circle cx="515" cy="96" r="34" fill="url(#sunGlow)"/>
+
+  <!-- Cartoon Fluffy Clouds -->
+  <g fill="#FFFFFF" opacity="0.92">
+    <ellipse cx="122" cy="86" rx="44" ry="18"/>
+    <circle cx="102" cy="76" r="18"/>
+    <circle cx="126" cy="70" r="22"/>
+    <circle cx="148" cy="78" r="15"/>
+    <ellipse cx="378" cy="112" rx="34" ry="13"/>
+    <circle cx="364" cy="105" r="14"/>
+    <circle cx="384" cy="101" r="17"/>
+    <circle cx="400" cy="107" r="12"/>
+  </g>
+
+  <!-- Far Snow-Capped Alpine Peaks -->
+  <polygon points="-20,310 110,126 245,310" fill="url(#mtnFar)"/>
+  <polygon points="110,126 76,174 96,166 112,182 130,166 148,176" fill="#F8FAFC"/>
+  <polygon points="170,310 326,88 492,310" fill="url(#mtnNear)"/>
+  <polygon points="326,88 282,152 308,142 328,162 350,140 374,154" fill="#FFFFFF"/>
+  <polygon points="326,88 350,140 374,154 492,310 382,310" fill="#0F172A" opacity="0.22"/>
+  <polygon points="415,310 548,134 670,310" fill="url(#mtnFar)"/>
+  <polygon points="548,134 516,178 536,170 550,184 568,168 584,178" fill="#F8FAFC"/>
+
+  <!-- Turquoise Alpine Lake -->
+  <rect x="0" y="302" width="640" height="178" fill="url(#lake)"/>
+  <!-- Sun & Mountain Reflection -->
+  <ellipse cx="515" cy="340" rx="46" ry="8" fill="#FEF08A" opacity="0.45"/>
+  <ellipse cx="515" cy="364" rx="32" ry="5" fill="#FDE68A" opacity="0.35"/>
+  <path d="M24 342 Q120 330 225 342 T430 338 T620 344" stroke="#7DD3FC" stroke-width="3.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <path d="M60 388 Q170 376 285 388 T540 384" stroke="#BAE6FD" stroke-width="2.5" fill="none" opacity="0.38" stroke-linecap="round"/>
+  <path d="M120 434 Q240 422 360 434 T600 428" stroke="#7DD3FC" stroke-width="3" fill="none" opacity="0.35" stroke-linecap="round"/>
+
+  <!-- Rolling Green Alpine Hills -->
+  <path d="M-10,320 Q110,248 255,305 L255,345 L-10,345 Z" fill="url(#meadow)"/>
+  <path d="M405,315 Q535,244 650,290 L650,345 L405,345 Z" fill="url(#meadow)"/>
+
+  <!-- Stone Landwasser-style Viaduct -->
+  <path d="M0,266 L640,266 L640,344 L594,344 L594,302 A36,34 0 0 0 522,302 L522,344 L478,344 L478,302 A36,34 0 0 0 406,302 L406,344 L362,344 L362,302 A36,34 0 0 0 290,302 L290,344 L246,344 L246,302 A36,34 0 0 0 174,302 L174,344 L130,344 L130,302 A36,34 0 0 0 58,302 L58,344 L0,344 Z" fill="#E7E0D2" stroke="#B6A892" stroke-width="2"/>
+  <rect x="0" y="262" width="640" height="8" fill="#CBD5E1"/>
+
+  <!-- Iconic Red Swiss Panoramic Train -->
+  <g>
+    <!-- Car 1 -->
+    <rect x="74" y="226" width="142" height="36" rx="8" fill="#DC2626" stroke="#991B1B" stroke-width="2"/>
+    <rect x="74" y="249" width="142" height="5" fill="#FFFFFF"/>
+    <rect x="86" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <rect x="128" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <rect x="170" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <!-- Connector -->
+    <rect x="216" y="236" width="10" height="20" fill="#334155"/>
+    <!-- Car 2 -->
+    <rect x="226" y="226" width="142" height="36" rx="8" fill="#DC2626" stroke="#991B1B" stroke-width="2"/>
+    <rect x="226" y="249" width="142" height="5" fill="#FFFFFF"/>
+    <rect x="238" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <rect x="280" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <rect x="322" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <!-- Connector -->
+    <rect x="368" y="236" width="10" height="20" fill="#334155"/>
+    <!-- Locomotive -->
+    <path d="M378,226 L504,226 Q522,226 526,244 L528,256 Q528,262 520,262 L378,262 Z" fill="#DC2626" stroke="#991B1B" stroke-width="2"/>
+    <rect x="378" y="249" width="146" height="5" fill="#FFFFFF"/>
+    <rect x="392" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <rect x="434" y="232" width="34" height="14" rx="3" fill="#E0F2FE"/>
+    <path d="M478,232 L506,232 Q514,232 517,246 L478,246 Z" fill="#FEF08A"/>
+    <!-- Swiss Cross Emblem -->
+    <rect x="491" y="251" width="10" height="10" rx="2" fill="#B91C1C"/>
+    <rect x="495" y="253" width="2" height="6" fill="#FFFFFF"/>
+    <rect x="493" y="255" width="6" height="2" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Cozy Wooden Swiss Chalet on Foreground Hill -->
+  <path d="M-10,418 Q135,360 285,435 L285,490 L-10,490 Z" fill="#16A34A"/>
+  <g transform="translate(52,338)">
+    <rect x="14" y="28" width="64" height="44" rx="3" fill="#FDE68A" stroke="#92400E" stroke-width="2"/>
+    <polygon points="4,32 46,4 88,32" fill="#9A3412" stroke="#7C2D12" stroke-width="2"/>
+    <rect x="24" y="38" width="14" height="14" rx="2" fill="#FEF08A" stroke="#92400E" stroke-width="1.5"/>
+    <rect x="54" y="38" width="14" height="14" rx="2" fill="#FEF08A" stroke="#92400E" stroke-width="1.5"/>
+    <rect x="40" y="50" width="12" height="22" rx="2" fill="#78350F"/>
+    <!-- Flower Box -->
+    <rect x="21" y="51" width="20" height="5" rx="2" fill="#DC2626"/>
+    <rect x="51" y="51" width="20" height="5" rx="2" fill="#DC2626"/>
+  </g>
+
+  <!-- Cartoon Pine Trees -->
+  <g fill="#166534">
+    <polygon points="18,430 34,378 50,430"/>
+    <polygon points="22,404 34,364 46,404"/>
+    <polygon points="154,436 172,380 190,436"/>
+    <polygon points="158,408 172,366 186,408"/>
+    <polygon points="196,446 212,398 228,446"/>
+  </g>
+
+  <!-- Tiny Wooden Boat on Lake -->
+  <g transform="translate(420,404)">
+    <path d="M0,16 L54,16 L46,26 L8,26 Z" fill="#FFFFFF" stroke="#0C4A6E" stroke-width="1.8"/>
+    <line x1="26" y1="16" x2="26" y2="-16" stroke="#0C4A6E" stroke-width="2"/>
+    <polygon points="28,-14 52,12 28,12" fill="#F97316"/>
+    <polygon points="24,-10 8,12 24,12" fill="#FEF3C7"/>
+  </g>
+</svg>
