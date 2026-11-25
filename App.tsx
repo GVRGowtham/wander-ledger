@@ -13,12 +13,14 @@ import * as Notifications from 'expo-notifications';
 import { useIncomingShare } from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { FEATURE_FLAGS } from './src/config/featureFlags';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { InstagramStudioScreen } from './src/screens/InstagramStudioScreen';
 import { NewTripScreen } from './src/screens/NewTripScreen';
 import { PassportScreen } from './src/screens/PassportScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SharedTripsScreen } from './src/screens/SharedTripsScreen';
+import { StudioScreen } from './src/screens/StudioScreen';
 import { TripDetailScreen } from './src/screens/TripDetailScreen';
 import { TripsHubScreen } from './src/screens/TripsHubScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
@@ -26,11 +28,11 @@ import { WorldMapScreen } from './src/screens/WorldMapScreen';
 import { COLORS, SHADOWS } from './src/theme/tokens';
 import { IncomingSharePayload } from './src/types/models';
 
-type MainTab = 'trips' | 'map' | 'shared' | 'passport';
+type MainTab = 'trips' | 'map' | 'shared' | 'studio' | 'passport';
 type OverlayRoute =
   | { name: 'none' }
   | { name: 'trip'; tripId: string }
-  | { name: 'ig_studio'; tripId: string }
+  | { name: 'ig_studio'; tripId: string; returnTo?: 'trip' | 'studio' }
   | { name: 'new_trip' }
   | { name: 'scanner'; incomingShare?: IncomingSharePayload | null }
   | { name: 'welcome' };
@@ -129,7 +131,11 @@ const MainShell: React.FC = () => {
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (overlay.name === 'ig_studio') {
-        setOverlay({ name: 'trip', tripId: overlay.tripId });
+        if (overlay.returnTo === 'studio') {
+          setOverlay({ name: 'none' });
+        } else {
+          setOverlay({ name: 'trip', tripId: overlay.tripId });
+        }
         return true;
       }
       if (overlay.name !== 'none') {
@@ -163,7 +169,10 @@ const MainShell: React.FC = () => {
   }
 
   const openTrip = (tripId: string) => setOverlay({ name: 'trip', tripId });
-  const openIgStudio = (tripId: string) => setOverlay({ name: 'ig_studio', tripId });
+  const openIgStudio = (tripId: string) =>
+    setOverlay({ name: 'ig_studio', tripId, returnTo: 'trip' });
+  const openIgStudioFromHub = (tripId: string) =>
+    setOverlay({ name: 'ig_studio', tripId, returnTo: 'studio' });
   const openScanner = () => setOverlay({ name: 'scanner' });
   const openNewTrip = () => setOverlay({ name: 'new_trip' });
   const openWelcome = () => setOverlay({ name: 'welcome' });
@@ -206,13 +215,25 @@ const MainShell: React.FC = () => {
       return (
         <InstagramStudioScreen
           tripId={overlay.tripId}
-          onBack={() => setOverlay({ name: 'trip', tripId: overlay.tripId })}
+          onBack={() => {
+            if (overlay.returnTo === 'studio') {
+              setOverlay({ name: 'none' });
+            } else {
+              setOverlay({ name: 'trip', tripId: overlay.tripId });
+            }
+          }}
         />
       );
     }
     if (overlay.name === 'trip') {
       const backLabel =
-        activeTab === 'map' ? 'Map' : activeTab === 'shared' ? 'Shared' : 'Trips';
+        activeTab === 'map'
+          ? 'Map'
+          : activeTab === 'studio'
+            ? 'Studio'
+            : activeTab === 'shared'
+              ? 'Shared'
+              : 'Trips';
       return (
         <TripDetailScreen
           tripId={overlay.tripId}
@@ -228,7 +249,23 @@ const MainShell: React.FC = () => {
       case 'map':
         return <WorldMapScreen onOpenTrip={openTrip} />;
       case 'shared':
-        return <SharedTripsScreen onOpenTrip={openTrip} />;
+        return FEATURE_FLAGS.CLOUD_COLLAB_ENABLED ? (
+          <SharedTripsScreen onOpenTrip={openTrip} />
+        ) : (
+          <StudioScreen
+            onOpenTrip={openTrip}
+            onOpenIgStudio={openIgStudioFromHub}
+            onNewTrip={openNewTrip}
+          />
+        );
+      case 'studio':
+        return (
+          <StudioScreen
+            onOpenTrip={openTrip}
+            onOpenIgStudio={openIgStudioFromHub}
+            onNewTrip={openNewTrip}
+          />
+        );
       case 'passport':
         return <PassportScreen onOpenWelcome={openWelcome} />;
       case 'trips':
@@ -291,15 +328,27 @@ const MainShell: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <NavButton
-            emoji="💌"
-            label="Shared"
-            active={isTabHighlighted('shared')}
-            onPress={() => {
-              setOverlay({ name: 'none' });
-              setActiveTab('shared');
-            }}
-          />
+          {FEATURE_FLAGS.CLOUD_COLLAB_ENABLED ? (
+            <NavButton
+              emoji="💌"
+              label="Shared"
+              active={isTabHighlighted('shared')}
+              onPress={() => {
+                setOverlay({ name: 'none' });
+                setActiveTab('shared');
+              }}
+            />
+          ) : (
+            <NavButton
+              emoji="🎨"
+              label="Studio"
+              active={isTabHighlighted('studio')}
+              onPress={() => {
+                setOverlay({ name: 'none' });
+                setActiveTab('studio');
+              }}
+            />
+          )}
           <NavButton
             emoji="🛂"
             label="Passport"

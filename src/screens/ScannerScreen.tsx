@@ -56,6 +56,7 @@ import {
   ScanResult,
   Trip,
 } from '../types/models';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 import { isCollaborativeTrip } from '../services/sharingHelpers';
 import { formatTimeHmInput } from '../services/timeInputUtils';
 import { resolveDefaultFxDate } from '../services/spendCurrencyUtils';
@@ -123,9 +124,10 @@ export const ScannerScreen: React.FC<Props> = ({
 
   const targetTripForShare =
     destinationChoice === 'existing' ? trips.find((t) => t.id === selectedTripId) : undefined;
-  const targetTripIsCollab = targetTripForShare
-    ? isCollaborativeTrip(targetTripForShare, profile)
-    : false;
+  const targetTripIsCollab =
+    FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && targetTripForShare
+      ? isCollaborativeTrip(targetTripForShare, profile)
+      : false;
 
   const homeCurrency = profile?.homeCurrency || 'USD';
 

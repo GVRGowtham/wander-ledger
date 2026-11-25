@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -14,8 +15,9 @@ import * as Haptics from 'expo-haptics';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { DriveBackupMetadata, formatBytes } from '../services/driveBackupHelpers';
 import { COLORS, SHADOWS } from '../theme/tokens';
-import { DistanceUnit } from '../types/models';
+import { DistanceUnit, UserProfile } from '../types/models';
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD'];
 
@@ -42,9 +44,9 @@ const HOW_IT_WORKS = [
     border: '#A7F3D0',
   },
   {
-    emoji: '🗺️',
-    title: 'World Map & Passport',
-    desc: 'Watch geodesic flight arcs, earn ink country stamps, and share family-safe postcards.',
+    emoji: '☁️',
+    title: 'Personal Google Drive Backup',
+    desc: 'Offline-first by default, with optional private backup & restore straight to your own Google Drive.',
     bg: '#F0F9FF',
     border: '#BAE6FD',
   },
@@ -55,18 +57,54 @@ interface Props {
   onDone?: () => void;
 }
 
+interface PendingGoogleRestore {
+  profile: UserProfile;
+  remoteBackup: DriveBackupMetadata;
+  accessToken: string;
+}
+
+function formatBackupDate(iso?: string): string {
+  if (!iso) return 'Recently';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+    return d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
 export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) => {
-  const { profile, startLocalTravelogue, updateProfileSettings } = useApp();
+  const {
+    profile,
+    driveBusyMode,
+    driveProgress,
+    startLocalTravelogue,
+    updateProfileSettings,
+    signInWithGoogleAccount,
+    commitGoogleProfile,
+    restoreFromGoogleDrive,
+  } = useApp();
   const keyboardHeight = useKeyboardHeight();
   const [homeCurrency, setHomeCurrency] = useState(profile?.homeCurrency || 'USD');
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(profile?.distanceUnit || 'km');
   const [firstName, setFirstName] = useState(
     profile && profile.displayName !== 'Wanderer' ? profile.displayName : ''
   );
-  const [loading, setLoading] = useState(false);
+  const [loadingOffline, setLoadingOffline] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<PendingGoogleRestore | null>(null);
 
-  const handleStart = async () => {
-    setLoading(true);
+  const isGoogleBusy =
+    driveBusyMode === 'signing_in' ||
+    driveBusyMode === 'checking' ||
+    driveBusyMode === 'restoring';
+
+  const handleStartOffline = async () => {
+    setLoadingOffline(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     try {
       if (isRevisit && profile) {
@@ -83,9 +121,158 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
         await startLocalTravelogue(homeCurrency, firstName, distanceUnit);
       }
     } finally {
-      setLoading(false);
+      setLoadingOffline(false);
     }
   };
+
+  const handleContinueWithGoogle = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const outcome = await signInWithGoogleAccount({
+      homeCurrency,
+      distanceUnit,
+      deferCommitIfBackupFound: true,
+    });
+
+    if (outcome.status === 'cancelled') {
+      return;
+    }
+    if (outcome.status === 'error') {
+      Alert.alert(
+        'Google Sign-In Unavailable',
+        `${outcome.message}\n\nNo worries — you can tap "Continue Offline" right now and connect Google Drive anytime from Passport.`
+      );
+      return;
+    }
+
+    // Respect manually typed first name if user entered one before tapping Google
+    const customName = firstName.trim();
+    const finalProfile: UserProfile = customName
+      ? {
+          ...outcome.profile,
+          displayName: customName,
+          avatarInitials: customName.slice(0, 2).toUpperCase() || 'WL',
+        }
+      : outcome.profile;
+
+    if (outcome.deferred && outcome.remoteBackup.exists) {
+      setFirstName(finalProfile.displayName);
+      setPendingRestore({
+        profile: finalProfile,
+        remoteBackup: outcome.remoteBackup,
+        accessToken: outcome.accessToken,
+      });
+    } else if (customName) {
+      await commitGoogleProfile(finalProfile);
+    }
+  };
+
+  const handleRestoreFromPending = async () => {
+    if (!pendingRestore) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const res = await restoreFromGoogleDrive('replace', pendingRestore.accessToken);
+    if (res.status === 'success') {
+      await commitGoogleProfile(pendingRestore.profile);
+    } else {
+      Alert.alert(
+        'Restore Paused',
+        res.error || 'Could not finish downloading your backup right now. You can retry anytime from Passport.'
+      );
+    }
+  };
+
+  const handleStartFreshFromPending = async () => {
+    if (!pendingRestore) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    await commitGoogleProfile(pendingRestore.profile);
+  };
+
+  // Celebratory Restore View when a returning traveler signs in with Google on a fresh device
+  if (pendingRestore) {
+    const rb = pendingRestore.remoteBackup;
+    const restoring = driveBusyMode === 'restoring';
+    return (
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+          <DestinationBanner vibe="coastal" height={158} />
+          <View style={styles.heroBody}>
+            <View style={styles.logoBadge}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logoImage}
+                resizeMode="cover"
+              />
+            </View>
+            <Text style={styles.brandTitle}>
+              Welcome back, {pendingRestore.profile.displayName}! 🎉
+            </Text>
+            <Text style={styles.tagline}>
+              We found your private Wanderer&apos;s Ledger backup in Google Drive ({pendingRestore.profile.email}).
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.restoreFoundCard}>
+          <View style={styles.restoreBadge}>
+            <Text style={styles.restoreBadgeText}>☁️ BACKUP FOUND IN GOOGLE DRIVE</Text>
+          </View>
+          <Text style={styles.restoreHeadline}>
+            {rb.tripsCount} {rb.tripsCount === 1 ? 'Trip' : 'Trips'} • {rb.memoriesCount}{' '}
+            {rb.memoriesCount === 1 ? 'Memory' : 'Memories'}
+          </Text>
+          <Text style={styles.restoreMeta}>
+            {rb.mediaCount} compressed {rb.mediaCount === 1 ? 'photo/receipt' : 'photos & receipts'}
+            {rb.totalMediaBytes > 0 ? ` (${formatBytes(rb.totalMediaBytes)})` : ''} • Last backed up{' '}
+            {formatBackupDate(rb.updatedAt)}
+          </Text>
+
+          {restoring && driveProgress ? (
+            <View style={styles.progressBox}>
+              <ActivityIndicator color={COLORS.coral} size="small" />
+              <Text style={styles.progressText}>{driveProgress.label}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={handleRestoreFromPending}
+            disabled={restoring}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={['#F97316', '#F43F5E', '#EC4899']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.ctaBtn}
+            >
+              {restoring ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.ctaBtnText}>📥 Restore My Travelogue</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleStartFreshFromPending}
+            disabled={restoring}
+            style={styles.secondaryGhostBtn}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.secondaryGhostBtnText}>
+              ✨ Start Fresh (Keep Cloud Backup Safe)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.footnote}>
+          Auto-backup stays off until you enable it in Passport — your existing Drive backup will never be overwritten without your consent.
+        </Text>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
@@ -109,34 +296,70 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
               resizeMode="cover"
             />
           </View>
-          <Text style={styles.brandTitle}>Welcome to Wanderer's Ledger</Text>
+          <Text style={styles.brandTitle}>Welcome to Wanderer&apos;s Ledger</Text>
           <Text style={styles.tagline}>
-            Your sunlit pocket travelogue — every flight, train, road trip, hotel bill & Polaroid memory in one happy place.
+            Your sunlit pocket travelogue — every flight, train, road trip, hotel bill &amp; Polaroid memory in one happy place.
           </Text>
         </View>
       </View>
 
-      {/* Quick Visual Overview: How to Use */}
-      <View style={styles.guideSection}>
-        <Text style={styles.sectionLabel}>✨ HOW IT WORKS</Text>
-        {HOW_IT_WORKS.map((item) => (
-          <View
-            key={item.title}
-            style={[
-              styles.guideCard,
-              { backgroundColor: item.bg, borderColor: item.border },
-            ]}
+      {/* Primary Onboarding Choice (Google Drive Backup OR 100% Offline) */}
+      {!isRevisit && (
+        <View style={styles.authChoiceCard}>
+          <TouchableOpacity
+            onPress={handleContinueWithGoogle}
+            disabled={isGoogleBusy || loadingOffline}
+            style={styles.googleBtn}
+            activeOpacity={0.88}
           >
-            <View style={styles.guideIconWrap}>
-              <Text style={styles.guideEmoji}>{item.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.guideTitle}>{item.title}</Text>
-              <Text style={styles.guideDesc}>{item.desc}</Text>
-            </View>
+            {isGoogleBusy ? (
+              <View style={styles.googleBtnRow}>
+                <ActivityIndicator color={COLORS.navy} size="small" />
+                <Text style={styles.googleBtnTitle}>
+                  {driveProgress?.label || 'Signing in with Google…'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.googleBtnRow}>
+                <View style={styles.googleG}>
+                  <Text style={styles.googleGText}>G</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.googleBtnTitle}>Continue with Google</Text>
+                  <Text style={styles.googleBtnSub}>
+                    Restore an existing backup or enable private Google Drive backup
+                  </Text>
+                </View>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.orRow}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>OR STAY 100% OFFLINE</Text>
+            <View style={styles.orLine} />
           </View>
-        ))}
-      </View>
+
+          <TouchableOpacity
+            onPress={handleStartOffline}
+            disabled={loadingOffline || isGoogleBusy}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={['#F97316', '#F43F5E', '#EC4899']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.ctaBtn}
+            >
+              {loadingOffline ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.ctaBtnText}>✈️ Continue Offline (No Account)</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Optional First Name + Home Currency + Distance Unit */}
       <View style={styles.setupCard}>
@@ -192,26 +415,47 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
         </View>
       </View>
 
-      {/* Single Primary CTA */}
-      <TouchableOpacity onPress={handleStart} disabled={loading} activeOpacity={0.9}>
-        <LinearGradient
-          colors={['#F97316', '#F43F5E', '#EC4899']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.ctaBtn}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.ctaBtnText}>
-              {isRevisit ? '✈️ Back to My Travelogue' : "✈️ Let's Capture Travel"}
-            </Text>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* Quick Visual Overview: How to Use */}
+      <View style={styles.guideSection}>
+        <Text style={styles.sectionLabel}>✨ HOW IT WORKS</Text>
+        {HOW_IT_WORKS.map((item) => (
+          <View
+            key={item.title}
+            style={[
+              styles.guideCard,
+              { backgroundColor: item.bg, borderColor: item.border },
+            ]}
+          >
+            <View style={styles.guideIconWrap}>
+              <Text style={styles.guideEmoji}>{item.emoji}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guideTitle}>{item.title}</Text>
+              <Text style={styles.guideDesc}>{item.desc}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {isRevisit && (
+        <TouchableOpacity onPress={handleStartOffline} disabled={loadingOffline} activeOpacity={0.9}>
+          <LinearGradient
+            colors={['#F97316', '#F43F5E', '#EC4899']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaBtn}
+          >
+            {loadingOffline ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.ctaBtnText}>✈️ Back to My Travelogue</Text>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.footnote}>
-        Works 100% offline in airplane mode • Your trips, photos & receipts stay private on your device ✨
+        Works 100% offline in airplane mode • Optional backups go strictly to your own hidden Google Drive app folder ✨
       </Text>
     </ScrollView>
   );
@@ -272,6 +516,139 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
     marginTop: 6,
+  },
+
+  authChoiceCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+    gap: 12,
+    ...SHADOWS.card,
+  },
+  googleBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    ...SHADOWS.card,
+  },
+  googleBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  googleG: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleGText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#2563EB',
+  },
+  googleBtnTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  googleBtnSub: {
+    fontSize: 11.5,
+    color: COLORS.inkMuted,
+    marginTop: 1,
+    lineHeight: 15,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  orText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.inkSoft,
+    letterSpacing: 0.7,
+  },
+
+  restoreFoundCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1.5,
+    borderColor: '#6EE7B7',
+    gap: 12,
+    ...SHADOWS.card,
+  },
+  restoreBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+  },
+  restoreBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: '#047857',
+    letterSpacing: 0.5,
+  },
+  restoreHeadline: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  restoreMeta: {
+    fontSize: 13,
+    color: COLORS.inkMuted,
+    lineHeight: 19,
+  },
+  progressBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  progressText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.coralDark,
+    flex: 1,
+  },
+  secondaryGhostBtn: {
+    backgroundColor: COLORS.canvas,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  secondaryGhostBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.inkMuted,
   },
 
   guideSection: {
@@ -373,8 +750,8 @@ const styles = StyleSheet.create({
   },
 
   ctaBtn: {
-    borderRadius: 20,
-    paddingVertical: 16,
+    borderRadius: 18,
+    paddingVertical: 15,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -383,7 +760,7 @@ const styles = StyleSheet.create({
   ctaBtnText: {
     color: '#FFFFFF',
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: 15,
     letterSpacing: 0.2,
   },
   footnote: {

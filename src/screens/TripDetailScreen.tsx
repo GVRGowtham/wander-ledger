@@ -36,6 +36,7 @@ import {
   IgSingleCanvas,
 } from '../components/instagram/IgPostcardCanvas';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useApp } from '../context/AppContext';
 import {
   calculateDistanceMiles,
@@ -335,11 +336,13 @@ export const TripDetailScreen: React.FC<Props> = ({
   const memories = getMemoriesForTrip(trip.id);
   const summary = getSummaryForTrip(trip.id);
 
-  const myRole = getTripAccessRole(trip, profile);
+  const myRole = FEATURE_FLAGS.CLOUD_COLLAB_ENABLED
+    ? getTripAccessRole(trip, profile)
+    : 'owner';
   const isOwner = myRole === 'owner';
   const isViewer = myRole === 'viewer';
-  const isCollab = isCollaborativeTrip(trip, profile);
-  const editorCount = getEditorCount(trip);
+  const isCollab = FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && isCollaborativeTrip(trip, profile);
+  const editorCount = FEATURE_FLAGS.CLOUD_COLLAB_ENABLED ? getEditorCount(trip) : 1;
 
   const stopMap = new Map(stops.map((s) => [s.id, s]));
   const activeStopFilter =
@@ -380,7 +383,8 @@ export const TripDetailScreen: React.FC<Props> = ({
   const sharedSpendItems = fullSpendLedger.items.filter(
     (i) => i.source === 'expense' && i.isShared
   );
-  const showExpenseFilter = isCollab || sharedSpendItems.length > 0;
+  const showExpenseFilter =
+    FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && (isCollab || sharedSpendItems.length > 0);
   const activeExpenseFilter = showExpenseFilter ? expenseFilter : 'all';
   const visibleSpendItems =
     activeExpenseFilter === 'personal'
@@ -1438,15 +1442,17 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.glassBtnText}>{`← ${backLabel}`}</Text>
           </TouchableOpacity>
           <View style={styles.headerRightActions}>
-            <TouchableOpacity
-              onPress={() => setShareModal(true)}
-              style={styles.glassBtn}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.glassBtnText}>
-                👥{trip.coTravelers.length > 0 ? ` ${trip.coTravelers.length}` : ''}
-              </Text>
-            </TouchableOpacity>
+            {FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && (
+              <TouchableOpacity
+                onPress={() => setShareModal(true)}
+                style={styles.glassBtn}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.glassBtnText}>
+                  👥{trip.coTravelers.length > 0 ? ` ${trip.coTravelers.length}` : ''}
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={handleSharePostcard}
               disabled={sharingPostcard}
@@ -2354,9 +2360,9 @@ export const TripDetailScreen: React.FC<Props> = ({
                     {isOpen && (
                       <View style={styles.receiptDrawer}>
                         <Text style={styles.receiptPrivateBadge}>
-                          {item.isShared
+                          {FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && item.isShared
                             ? '🤝 Shared Receipt (Visible to trip Editors • Hidden from Viewers & Postcards)'
-                            : '🔒 Personal Receipt (Visible only to you)'}
+                            : '🔒 Private Receipt (Visible only to you • Excluded from Studio & Postcards)'}
                         </Text>
                         {item.receiptUri && (
                           <Image

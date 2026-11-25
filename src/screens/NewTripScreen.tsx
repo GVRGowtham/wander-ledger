@@ -22,6 +22,7 @@ import {
   TransportDraft,
   TransportFormFields,
 } from '../components/forms/TransportFormFields';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useApp } from '../context/AppContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { AirportInfo, inferDestinationVibe } from '../db/airportsData';
@@ -562,17 +563,19 @@ export const NewTripScreen: React.FC<Props> = ({
               style={styles.input}
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Co-Travelers (Optional)</Text>
-            <TextInput
-              value={coTraveler}
-              onChangeText={setCoTraveler}
-              placeholder="Names or emails"
-              placeholderTextColor={COLORS.inkSoft}
-              autoCapitalize="none"
-              style={styles.input}
-            />
-          </View>
+          {FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && (
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Co-Travelers (Optional)</Text>
+              <TextInput
+                value={coTraveler}
+                onChangeText={setCoTraveler}
+                placeholder="Names or emails"
+                placeholderTextColor={COLORS.inkSoft}
+                autoCapitalize="none"
+                style={styles.input}
+              />
+            </View>
+          )}
         </View>
       </View>
 

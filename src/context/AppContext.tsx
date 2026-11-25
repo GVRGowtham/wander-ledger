@@ -83,6 +83,32 @@ import {
   syncTravelReminders,
 } from '../services/reminderService';
 import {
+  DriveBackupMetadata,
+  formatDriveFirstName,
+} from '../services/driveBackupHelpers';
+import {
+  checkDriveBackupMetadata,
+  configureGoogleDriveAuth,
+  deleteGoogleDriveBackup,
+  DriveBackupLocalSummary,
+  DriveBackupRunResult,
+  DriveProgress,
+  DriveRestoreRunResult,
+  getLastDriveBackupAt,
+  getLastDriveBackupSummary,
+  markLocalDataModified,
+  runGoogleDriveBackup,
+  runGoogleDriveRestore,
+  signInWithGoogleDrive,
+  signOutGoogleDrive,
+} from '../services/googleDriveBackupService';
+import {
+  disableDailyDriveBackup,
+  enableDailyDriveBackup,
+  isDailyDriveBackupEnabled,
+  maybeRunForegroundCatchUpBackup,
+} from '../services/driveAutoBackupTask';
+import {
   CoTravelerRole,
   DistanceUnit,
   Expense,
@@ -97,6 +123,25 @@ import {
   UserProfile,
 } from '../types/models';
 
+export type DriveBusyMode =
+  | 'idle'
+  | 'signing_in'
+  | 'checking'
+  | 'backing_up'
+  | 'restoring'
+  | 'deleting';
+
+export type GoogleAccountSignInOutcome =
+  | { status: 'cancelled' }
+  | { status: 'error'; message: string }
+  | {
+      status: 'success';
+      profile: UserProfile;
+      remoteBackup: DriveBackupMetadata;
+      accessToken: string;
+      deferred: boolean;
+    };
+
 interface AppContextValue {
   ready: boolean;
   profile: UserProfile | null;
@@ -106,6 +151,33 @@ interface AppContextValue {
   lastSyncedAt: string | null;
   syncError: string | null;
   lastSyncSummary: string | null;
+  // Personal Google Drive Backup & Restore (v0.7.0)
+  driveBusyMode: DriveBusyMode;
+  driveProgress: DriveProgress | null;
+  driveError: string | null;
+  lastDriveBackupAt: string | null;
+  lastDriveBackupSummary: DriveBackupLocalSummary | null;
+  driveRemoteBackup: DriveBackupMetadata | null;
+  driveAutoBackupEnabled: boolean;
+  signInWithGoogleAccount: (options?: {
+    homeCurrency?: string;
+    distanceUnit?: DistanceUnit;
+    deferCommitIfBackupFound?: boolean;
+  }) => Promise<GoogleAccountSignInOutcome>;
+  commitGoogleProfile: (nextProfile: UserProfile) => Promise<void>;
+  signOutGoogleAccount: () => Promise<void>;
+  backUpToGoogleDrive: () => Promise<DriveBackupRunResult>;
+  restoreFromGoogleDrive: (
+    mode: 'merge' | 'replace',
+    accessToken?: string
+  ) => Promise<DriveRestoreRunResult>;
+  deleteGoogleDriveCloudBackup: () => Promise<{
+    status: 'success' | 'signed_out' | 'error';
+    deletedCount?: number;
+    error?: string;
+  }>;
+  toggleDailyDriveBackup: (enable: boolean) => Promise<{ enabled: boolean; reason?: string }>;
+  refreshDriveBackupMetadata: () => Promise<DriveBackupMetadata>;
   trips: Trip[];
   allFlights: Flight[];
   allTransports: TransportLeg[];
@@ -182,6 +254,16 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+function makeAvatarInitials(name: string): string {
+  const clean = name.trim();
+  if (!clean) return 'WL';
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase() || 'WL';
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const cloudReady = isCloudConfigured();
   const [ready, setReady] = useState(false);
@@ -206,6 +288,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncSummary, setLastSyncSummary] = useState<string | null>(null);
+
+  // Personal Google Drive Backup & Restore state
+  const [driveBusyMode, setDriveBusyMode] = useState<DriveBusyMode>('idle');
+  const [driveProgress, setDriveProgress] = useState<DriveProgress | null>(null);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [lastDriveBackupAt, setLastDriveBackupAt] = useState<string | null>(null);
+  const [lastDriveBackupSummary, setLastDriveBackupSummary] =
+    useState<DriveBackupLocalSummary | null>(null);
+  const [driveRemoteBackup, setDriveRemoteBackup] = useState<DriveBackupMetadata | null>(null);
+  const [driveAutoBackupEnabled, setDriveAutoBackupEnabled] = useState(false);
 
   const syncInFlightRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -403,6 +495,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [cloudReady, syncNowWithProfile]);
 
   const refreshAll = useCallback(() => {
+    markLocalDataModified();
     loadLocalSnapshotIntoState();
     scheduleBackgroundSync();
   }, [loadLocalSnapshotIntoState, scheduleBackgroundSync]);
@@ -411,6 +504,245 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     () => syncNowWithProfile(profileRef.current),
     [syncNowWithProfile]
   );
+
+  // ------------------------------------------------------------------
+  // Personal Google Drive Backup & Restore (v0.7.0)
+  // ------------------------------------------------------------------
+
+  const refreshDriveMetaFromDb = useCallback(() => {
+    const savedAt = getLastDriveBackupAt();
+    setLastDriveBackupAt(savedAt && savedAt.trim() ? savedAt : null);
+    setLastDriveBackupSummary(getLastDriveBackupSummary());
+    setDriveAutoBackupEnabled(isDailyDriveBackupEnabled());
+  }, []);
+
+  const commitGoogleProfile = useCallback(
+    async (nextProfile: UserProfile) => {
+      await saveProfile(nextProfile);
+      setProfile(nextProfile);
+      profileRef.current = nextProfile;
+      loadLocalSnapshotIntoState();
+      refreshDriveMetaFromDb();
+    },
+    [loadLocalSnapshotIntoState, refreshDriveMetaFromDb]
+  );
+
+  const signInWithGoogleAccount = useCallback(
+    async (options?: {
+      homeCurrency?: string;
+      distanceUnit?: DistanceUnit;
+      deferCommitIfBackupFound?: boolean;
+    }): Promise<GoogleAccountSignInOutcome> => {
+      setDriveBusyMode('signing_in');
+      setDriveError(null);
+      setDriveProgress({
+        phase: 'checking',
+        completed: 0,
+        total: 1,
+        label: 'Signing in with Google…',
+      });
+
+      try {
+        const res = await signInWithGoogleDrive();
+        if (res.status === 'cancelled') {
+          return { status: 'cancelled' };
+        }
+        if (res.status === 'error') {
+          setDriveError(res.message);
+          return { status: 'error', message: res.message };
+        }
+
+        setDriveBusyMode('checking');
+        setDriveProgress({
+          phase: 'checking',
+          completed: 0,
+          total: 1,
+          label: 'Checking Google Drive for an existing backup…',
+        });
+
+        const remoteBackup = await checkDriveBackupMetadata(res.accessToken);
+        setDriveRemoteBackup(remoteBackup);
+
+        const cur = profileRef.current;
+        const googleFirstName = formatDriveFirstName(
+          res.user.givenName,
+          res.user.name,
+          res.user.email
+        );
+        // If user already customized their Passport name (not default 'Wanderer'), preserve it!
+        // Otherwise pre-fill their Google first name (still editable anytime in Passport).
+        const resolvedName =
+          cur && cur.displayName && cur.displayName !== 'Wanderer'
+            ? cur.displayName
+            : googleFirstName;
+
+        const nextProfile: UserProfile = {
+          id: cur?.id && cur.id !== 'local_wanderer' ? cur.id : `google_${res.user.id}`,
+          email: res.user.email,
+          displayName: resolvedName,
+          avatarInitials: makeAvatarInitials(resolvedName),
+          avatarUrl: res.user.photo ?? cur?.avatarUrl,
+          homeCurrency: options?.homeCurrency || cur?.homeCurrency || 'USD',
+          distanceUnit: options?.distanceUnit || cur?.distanceUnit || 'km',
+          wifiOnlyPhotoSync: cur?.wifiOnlyPhotoSync ?? true,
+          authMode: 'google',
+          lastSyncedAt: remoteBackup.updatedAt ?? cur?.lastSyncedAt,
+        };
+
+        const shouldDefer = Boolean(options?.deferCommitIfBackupFound && remoteBackup.exists);
+        if (!shouldDefer) {
+          await commitGoogleProfile(nextProfile);
+        }
+
+        return {
+          status: 'success',
+          profile: nextProfile,
+          remoteBackup,
+          accessToken: res.accessToken,
+          deferred: shouldDefer,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unable to sign in with Google.';
+        setDriveError(msg);
+        return { status: 'error', message: msg };
+      } finally {
+        setDriveBusyMode('idle');
+        setDriveProgress(null);
+      }
+    },
+    [commitGoogleProfile]
+  );
+
+  const signOutGoogleAccount = useCallback(async (): Promise<void> => {
+    await disableDailyDriveBackup();
+    await signOutGoogleDrive();
+    const cur = profileRef.current;
+    if (cur) {
+      const localOnly: UserProfile = {
+        ...cur,
+        email: '',
+        avatarUrl: undefined,
+        authMode: 'local_test',
+      };
+      await saveProfile(localOnly);
+      setProfile(localOnly);
+      profileRef.current = localOnly;
+    }
+    setDriveAutoBackupEnabled(false);
+    setDriveRemoteBackup(null);
+    setDriveError(null);
+    setDriveProgress(null);
+  }, []);
+
+  const backUpToGoogleDrive = useCallback(async (): Promise<DriveBackupRunResult> => {
+    setDriveBusyMode('backing_up');
+    setDriveError(null);
+    setDriveProgress({
+      phase: 'checking',
+      completed: 0,
+      total: 1,
+      label: 'Preparing backup…',
+    });
+    try {
+      const res = await runGoogleDriveBackup({
+        onProgress: (p) => setDriveProgress(p),
+      });
+      refreshDriveMetaFromDb();
+      if (res.status === 'success') {
+        setDriveRemoteBackup({
+          exists: true,
+          updatedAt: res.updatedAt,
+          appVersion: '0.7.0',
+          tripsCount: res.tripsCount ?? 0,
+          flightsCount: allFlights.length,
+          memoriesCount: res.memoriesCount ?? 0,
+          mediaCount: (res.mediaUploaded ?? 0) + (res.mediaSkipped ?? 0),
+          totalMediaBytes: res.totalBytes ?? 0,
+        });
+      } else if (res.status === 'error' || res.status === 'signed_out') {
+        setDriveError(res.error || 'Backup could not complete right now.');
+      }
+      return res;
+    } finally {
+      setDriveBusyMode('idle');
+      setDriveProgress(null);
+    }
+  }, [allFlights.length, refreshDriveMetaFromDb]);
+
+  const restoreFromGoogleDrive = useCallback(
+    async (mode: 'merge' | 'replace', accessToken?: string): Promise<DriveRestoreRunResult> => {
+      setDriveBusyMode('restoring');
+      setDriveError(null);
+      setDriveProgress({
+        phase: 'downloading_manifest',
+        completed: 0,
+        total: 1,
+        label: 'Reading your Google Drive backup…',
+      });
+      try {
+        const res = await runGoogleDriveRestore(mode, {
+          accessToken,
+          onProgress: (p) => setDriveProgress(p),
+        });
+        if (res.status === 'success') {
+          loadLocalSnapshotIntoState();
+          refreshDriveMetaFromDb();
+        } else if (res.status === 'error' || res.status === 'signed_out') {
+          setDriveError(res.error || 'Restore could not complete right now.');
+        }
+        return res;
+      } finally {
+        setDriveBusyMode('idle');
+        setDriveProgress(null);
+      }
+    },
+    [loadLocalSnapshotIntoState, refreshDriveMetaFromDb]
+  );
+
+  const deleteGoogleDriveCloudBackup = useCallback(async () => {
+    setDriveBusyMode('deleting');
+    setDriveError(null);
+    try {
+      const res = await deleteGoogleDriveBackup((p) => setDriveProgress(p));
+      if (res.status === 'success') {
+        setDriveRemoteBackup({
+          exists: false,
+          tripsCount: 0,
+          flightsCount: 0,
+          memoriesCount: 0,
+          mediaCount: 0,
+          totalMediaBytes: 0,
+        });
+        refreshDriveMetaFromDb();
+      } else if (res.error) {
+        setDriveError(res.error);
+      }
+      return res;
+    } finally {
+      setDriveBusyMode('idle');
+      setDriveProgress(null);
+    }
+  }, [refreshDriveMetaFromDb]);
+
+  const toggleDailyDriveBackup = useCallback(
+    async (enable: boolean): Promise<{ enabled: boolean; reason?: string }> => {
+      if (!enable) {
+        await disableDailyDriveBackup();
+        setDriveAutoBackupEnabled(false);
+        return { enabled: false };
+      }
+      const res = await enableDailyDriveBackup();
+      setDriveAutoBackupEnabled(res.enabled);
+      return res;
+    },
+    []
+  );
+
+  const refreshDriveBackupMetadata = useCallback(async (): Promise<DriveBackupMetadata> => {
+    const meta = await checkDriveBackupMetadata();
+    setDriveRemoteBackup(meta);
+    return meta;
+  }, []);
 
   const connectGoogleCloud = useCallback(async (): Promise<boolean> => {
     if (!cloudReady) return false;
@@ -469,15 +801,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         getDb();
         purgeLegacySeedDataIfNeeded();
+        configureGoogleDriveAuth();
         const saved = await loadSavedProfile();
         const cachedFx = loadCachedFxRates();
         const storedSnapshots = loadAllFxRateSnapshots();
         const savedSyncTime = getLastSyncedAt();
+        const savedDriveAt = getLastDriveBackupAt();
+        const savedDriveSummary = getLastDriveBackupSummary();
+        const savedAutoBackup = isDailyDriveBackupEnabled();
         if (mounted) {
           setFxRates(cachedFx);
           setFxSnapshots(storedSnapshots);
           fxSnapshotsRef.current = storedSnapshots;
           setLastSyncedAt(savedSyncTime || saved?.lastSyncedAt || null);
+          setLastDriveBackupAt(savedDriveAt && savedDriveAt.trim() ? savedDriveAt : null);
+          setLastDriveBackupSummary(savedDriveSummary);
+          setDriveAutoBackupEnabled(savedAutoBackup);
           if (saved) {
             setProfile(saved);
             profileRef.current = saved;
@@ -493,7 +832,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setReady(true);
         }
 
-        // Silent background sync on startup ONLY when cloud is configured & user signed into Google
+        // Silent foreground catch-up for Daily Google Drive Auto-Backup (>24h & changed)
+        if (mounted && saved?.authMode === 'google' && savedAutoBackup) {
+          maybeRunForegroundCatchUpBackup()
+            .then((ran) => {
+              if (ran && mounted) {
+                refreshDriveMetaFromDb();
+              }
+            })
+            .catch(() => {});
+        }
+
+        // Silent background sync on startup ONLY when legacy Supabase cloud is configured
         if (mounted && cloudReady && saved?.authMode === 'google') {
           syncNowWithProfile(saved).catch(() => {});
         }
@@ -522,7 +872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       mounted = false;
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [cloudReady, loadLocalSnapshotIntoState, syncNowWithProfile]);
+  }, [cloudReady, loadLocalSnapshotIntoState, refreshDriveMetaFromDb, syncNowWithProfile]);
 
   const startLocalTravelogue = useCallback(
     async (homeCurrency = 'USD', firstName?: string, distanceUnit: DistanceUnit = 'km') => {
@@ -812,6 +1162,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         lastSyncedAt,
         syncError,
         lastSyncSummary,
+        driveBusyMode,
+        driveProgress,
+        driveError,
+        lastDriveBackupAt,
+        lastDriveBackupSummary,
+        driveRemoteBackup,
+        driveAutoBackupEnabled,
+        signInWithGoogleAccount,
+        commitGoogleProfile,
+        signOutGoogleAccount,
+        backUpToGoogleDrive,
+        restoreFromGoogleDrive,
+        deleteGoogleDriveCloudBackup,
+        toggleDailyDriveBackup,
+        refreshDriveBackupMetadata,
         trips,
         allFlights,
         allTransports,

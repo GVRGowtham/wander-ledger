@@ -18,6 +18,7 @@ import {
   filterTripsBySearchAndYear,
 } from '../services/tripSearchHelpers';
 import { convertAmountToPreferred } from '../services/spendCurrencyUtils';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 import { formatTripTitleWithFlags } from '../services/placeLookupService';
 import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
@@ -442,7 +443,7 @@ const ActiveHeroCard: React.FC<{
               ☀️ DAY {currentDay} OF {totalDays}
             </Text>
           </View>
-          {trip.coTravelers.length > 0 && (
+          {FEATURE_FLAGS.CLOUD_COLLAB_ENABLED && trip.coTravelers.length > 0 && (
             <View style={styles.sharedPill}>
               <Text style={styles.sharedPillText}>
                 🤝 Shared ({trip.coTravelers.length + 1})

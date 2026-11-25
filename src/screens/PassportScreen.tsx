@@ -20,6 +20,7 @@ import {
   restoreFromBackupSnapshot,
   validateBackupSnapshot,
 } from '../services/cloudSyncService';
+import { DriveBackupMetadata, formatBytes } from '../services/driveBackupHelpers';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { shareLocalFileSafely } from '../services/shareMediaService';
 import { buildTripSpendLedger } from '../services/spendCurrencyUtils';
@@ -46,12 +47,20 @@ interface Props {
 export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   const {
     profile,
-    cloudConfigured,
-    syncStatus,
-    pendingSyncCount,
-    lastSyncedAt,
-    syncError,
-    lastSyncSummary,
+    driveBusyMode,
+    driveProgress,
+    driveError,
+    lastDriveBackupAt,
+    lastDriveBackupSummary,
+    driveRemoteBackup,
+    driveAutoBackupEnabled,
+    signInWithGoogleAccount,
+    signOutGoogleAccount,
+    backUpToGoogleDrive,
+    restoreFromGoogleDrive,
+    deleteGoogleDriveCloudBackup,
+    toggleDailyDriveBackup,
+    refreshDriveBackupMetadata,
     trips,
     allFlights,
     allTransports,
@@ -67,17 +76,17 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     scheduledRemindersCount,
     toggleTravelReminders,
     refreshAll,
-    syncNow,
-    connectGoogleCloud,
-    disconnectCloud,
     updateProfileSettings,
     clearAllData,
   } = useApp();
 
   const [renameModal, setRenameModal] = useState(false);
   const [draftName, setDraftName] = useState('');
-  const [connectingCloud, setConnectingCloud] = useState(false);
   const [togglingReminders, setTogglingReminders] = useState(false);
+  const [togglingAutoBackup, setTogglingAutoBackup] = useState(false);
+
+  const isDriveBusy = driveBusyMode !== 'idle';
+  const isGoogleConnected = profile?.authMode === 'google' && Boolean(profile?.email);
 
   // Multi-country geography: counts visited countries across trips, stops & open-jaw legs,
   // while keeping <24h airside airport layovers separate as Transit Hubs.
@@ -108,40 +117,175 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     setRenameModal(false);
   };
 
-  const handleConnectGoogle = async () => {
-    setConnectingCloud(true);
+  const executeDriveRestore = async (mode: 'merge' | 'replace', accessToken?: string) => {
+    const res = await restoreFromGoogleDrive(mode, accessToken);
+    if (res.status === 'success') {
+      Alert.alert(
+        'Backup Restored ✨',
+        `Restored ${res.tripsRestored ?? 0} ${(res.tripsRestored ?? 0) === 1 ? 'trip' : 'trips'}, ${res.itemsRestored ?? 0} entries, and ${res.mediaDownloaded ?? 0} ${(res.mediaDownloaded ?? 0) === 1 ? 'photo/receipt' : 'photos & receipts'} from Google Drive.`
+      );
+    } else if (res.status === 'no_backup') {
+      Alert.alert(
+        'No Backup Found',
+        'There is no Wanderer’s Ledger backup in your Google Drive yet. Tap "Back Up Now" to create your first backup!'
+      );
+    } else {
+      Alert.alert(
+        'Restore Paused',
+        res.error || 'Could not reach Google Drive right now. Your local data is safe.'
+      );
+    }
+  };
+
+  const promptRestoreChoices = (meta: DriveBackupMetadata, accessToken?: string) => {
+    const sizeText = meta.totalMediaBytes > 0 ? ` (${formatBytes(meta.totalMediaBytes)})` : '';
+    const backupSummary = `${meta.tripsCount} ${meta.tripsCount === 1 ? 'trip' : 'trips'} • ${meta.memoriesCount} ${meta.memoriesCount === 1 ? 'memory' : 'memories'} • ${meta.mediaCount} ${meta.mediaCount === 1 ? 'photo' : 'photos'}${sizeText}`;
+
+    if (trips.length > 0) {
+      Alert.alert(
+        'Google Drive Backup Found ☁️',
+        `Drive backup has ${backupSummary}.\n\nYou also have ${trips.length} ${trips.length === 1 ? 'trip' : 'trips'} on this device. How would you like to restore?`,
+        [
+          {
+            text: 'Merge Both (Recommended)',
+            onPress: () => {
+              executeDriveRestore('merge', accessToken).catch(() => {});
+            },
+          },
+          {
+            text: 'Replace This Device',
+            style: 'destructive',
+            onPress: () => {
+              executeDriveRestore('replace', accessToken).catch(() => {});
+            },
+          },
+          { text: 'Not Now', style: 'cancel' },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Restore Google Drive Backup? 📥',
+        `Found ${backupSummary} in your private Google Drive app folder.`,
+        [
+          { text: 'Not Now', style: 'cancel' },
+          {
+            text: 'Restore Now',
+            onPress: () => {
+              executeDriveRestore('replace', accessToken).catch(() => {});
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const handleConnectGoogleDrive = async () => {
+    const outcome = await signInWithGoogleAccount({ deferCommitIfBackupFound: false });
+    if (outcome.status === 'cancelled') return;
+    if (outcome.status === 'error') {
+      Alert.alert(
+        'Google Sign-In Error',
+        `${outcome.message}\n\nYour local travelogue remains 100% safe on this device.`
+      );
+      return;
+    }
+
+    if (outcome.remoteBackup.exists) {
+      promptRestoreChoices(outcome.remoteBackup, outcome.accessToken);
+    } else {
+      Alert.alert(
+        'Google Account Connected ✓',
+        'Auto-backup is off by default. Tap "Back Up Now" or turn on Daily Auto-Backup whenever you are ready!'
+      );
+    }
+  };
+
+  const handleBackUpNow = async () => {
+    const res = await backUpToGoogleDrive();
+    if (res.status === 'success') {
+      const sizeStr = res.totalBytes ? ` (${formatBytes(res.totalBytes)})` : '';
+      const photoNote =
+        (res.mediaUploaded ?? 0) > 0
+          ? `${res.mediaUploaded} new ${(res.mediaUploaded ?? 0) === 1 ? 'photo/receipt' : 'photos & receipts'} uploaded`
+          : 'all photos already up to date';
+      Alert.alert(
+        'Backed Up to Google Drive ☁️',
+        `Saved ${res.tripsCount ?? trips.length} ${(res.tripsCount ?? trips.length) === 1 ? 'trip' : 'trips'} and ${photoNote}${sizeStr}.`
+      );
+    } else if (res.status === 'signed_out') {
+      Alert.alert('Sign-In Needed', res.error || 'Please sign in with Google again to back up.');
+    } else if (res.status === 'error') {
+      Alert.alert(
+        'Backup Paused',
+        res.error || 'Could not reach Google Drive right now. Your local data is safe.'
+      );
+    }
+  };
+
+  const handleRestoreFromDrivePress = async () => {
+    const meta = await refreshDriveBackupMetadata();
+    if (!meta.exists) {
+      Alert.alert(
+        'No Backup Found Yet',
+        'There is no Wanderer’s Ledger backup in your Google Drive yet. Tap "Back Up Now" to create your first backup!'
+      );
+      return;
+    }
+    promptRestoreChoices(meta);
+  };
+
+  const handleToggleAutoBackup = async (val: boolean) => {
+    if (togglingAutoBackup) return;
+    setTogglingAutoBackup(true);
     try {
-      const ok = await connectGoogleCloud();
-      if (ok) {
-        Alert.alert('Cloud Sync Enabled ☁️', 'Your travelogue is now syncing securely with Google + Supabase.');
-      } else {
-        Alert.alert('Sign-in Cancelled', 'No worries — your local travelogue remains 100% intact on this device.');
+      const res = await toggleDailyDriveBackup(val);
+      if (val && res.reason) {
+        Alert.alert('Daily Auto-Backup Enabled ☁️', res.reason);
       }
-    } catch {
-      Alert.alert('Cloud Sign-in Error', 'Could not complete Google sign-in. Your local data is untouched.');
     } finally {
-      setConnectingCloud(false);
+      setTogglingAutoBackup(false);
     }
   };
 
-  const handleSyncNow = async () => {
-    const res = await syncNow();
-    if (res.status === 'error') {
-      Alert.alert('Sync Paused', res.error || 'Could not reach the cloud right now. Local data is safe.');
-    }
-  };
-
-  const handleDisconnectCloud = () => {
+  const handleDeleteCloudBackup = () => {
     Alert.alert(
-      'Disconnect Cloud Sync?',
-      'Your phone will keep all your trips, flights, memories & receipts locally, and simply pause cloud syncing until you sign back in.',
+      'Delete Google Drive Backup?',
+      'This removes your Wanderer’s Ledger backup from Google Drive ONLY. All trips, bookings, expenses, and photos on this phone stay 100% untouched.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Disconnect',
+          text: 'Delete Cloud Backup',
+          style: 'destructive',
+          onPress: async () => {
+            const res = await deleteGoogleDriveCloudBackup();
+            if (res.status === 'success') {
+              Alert.alert(
+                'Cloud Backup Deleted ✓',
+                'Removed your backup from Google Drive. Your local travelogue on this phone is untouched.'
+              );
+            } else {
+              Alert.alert(
+                'Could Not Delete',
+                res.error || 'Unable to reach Google Drive right now.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSignOutGoogle = () => {
+    Alert.alert(
+      'Sign Out of Google?',
+      'Your phone will keep all your trips, flights, memories & receipts locally, and simply pause Google Drive backup until you sign back in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
           style: 'destructive',
           onPress: () => {
-            disconnectCloud().catch(() => {});
+            signOutGoogleAccount().catch(() => {});
           },
         },
       ]
@@ -327,8 +471,8 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             <Text style={styles.passportLabel}>PASSPORT • WANDERER'S LEDGER</Text>
             <Text style={styles.userName}>{profile?.displayName || 'Wanderer'}</Text>
             <Text style={styles.userEmail} numberOfLines={1}>
-              {profile?.authMode === 'google' && profile?.email
-                ? `${profile.email} • Google Synced ✓`
+              {isGoogleConnected && profile?.email
+                ? `${profile.email} • Google Drive ✓`
                 : 'Saved privately on this device ✓ • Tap to rename'}
             </Text>
           </View>
@@ -463,102 +607,69 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         )}
       </View>
 
-      {/* Cloud Backup & Sync Card (Offline-first + Plug-and-play Supabase & R2) */}
+      {/* Personal Google Drive Backup & Restore Card (WhatsApp-style private appDataFolder) */}
       <View style={styles.card}>
         <View style={styles.rowBetween}>
-          <Text style={styles.cardTitle}>☁️ Cloud Backup &amp; Sync</Text>
-          {!cloudConfigured ? (
-            <View style={styles.syncPillOffline}>
-              <Text style={styles.syncPillOfflineText}>📱 Local Vault</Text>
-            </View>
-          ) : profile?.authMode === 'google' ? (
-            <View
-              style={
-                syncStatus === 'error'
-                  ? styles.syncPillError
-                  : syncStatus === 'syncing'
-                    ? styles.syncPillSyncing
-                    : pendingSyncCount > 0
-                      ? styles.syncPillPending
-                      : styles.syncPillSynced
-              }
-            >
-              <Text
-                style={
-                  syncStatus === 'error'
-                    ? styles.syncPillErrorText
-                    : syncStatus === 'syncing'
-                      ? styles.syncPillSyncingText
-                      : pendingSyncCount > 0
-                        ? styles.syncPillPendingText
-                        : styles.syncPillSyncedText
-                }
-              >
-                {syncStatus === 'syncing'
-                  ? 'Syncing…'
-                  : syncStatus === 'error'
-                    ? '⚠️ Retry'
-                    : pendingSyncCount > 0
-                      ? `${pendingSyncCount} pending`
-                      : '✓ Synced'}
+          <Text style={styles.cardTitle}>☁️ Google Drive Backup</Text>
+          {isDriveBusy ? (
+            <View style={styles.syncPillSyncing}>
+              <Text style={styles.syncPillSyncingText}>
+                {driveBusyMode === 'restoring'
+                  ? 'Restoring…'
+                  : driveBusyMode === 'backing_up'
+                    ? 'Backing up…'
+                    : driveBusyMode === 'deleting'
+                      ? 'Deleting…'
+                      : 'Checking…'}
               </Text>
+            </View>
+          ) : !isGoogleConnected ? (
+            <View style={styles.syncPillOffline}>
+              <Text style={styles.syncPillOfflineText}>📱 Local Only</Text>
+            </View>
+          ) : driveError ? (
+            <View style={styles.syncPillError}>
+              <Text style={styles.syncPillErrorText}>⚠️ Retry</Text>
+            </View>
+          ) : lastDriveBackupAt ? (
+            <View style={styles.syncPillSynced}>
+              <Text style={styles.syncPillSyncedText}>✓ Backed Up</Text>
             </View>
           ) : (
             <View style={styles.syncPillPending}>
-              <Text style={styles.syncPillPendingText}>Not Signed In</Text>
+              <Text style={styles.syncPillPendingText}>Not Backed Up</Text>
             </View>
           )}
         </View>
 
-        {!cloudConfigured ? (
+        {!isGoogleConnected ? (
           <>
             <Text style={styles.prefSub}>
               Running 100% offline on this device ({trips.length}{' '}
               {trips.length === 1 ? 'trip' : 'trips'} •{' '}
               {allFlights.length + allTransports.length} travel legs • {allMemories.length}{' '}
-              memories). Cloud Sync (Supabase + Cloudflare R2) is pre-wired and ready as soon as
-              you connect your backend keys.
+              memories). Sign in with Google to back up your trips, compressed photos &amp; receipts
+              to your own hidden Google Drive app folder.
             </Text>
-            <View style={styles.footerSubRow}>
-              <TouchableOpacity
-                onPress={handleExportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📦 Export (.json)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleImportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📥 Import (.json)
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : profile?.authMode !== 'google' ? (
-          <>
-            <Text style={styles.prefSub}>
-              Sign in with Google to automatically back up your {trips.length}{' '}
-              {trips.length === 1 ? 'trip' : 'trips'}, flights, memories &amp; private receipts to
-              your personal cloud vault and restore on any iOS or Android device.
-            </Text>
+
             <TouchableOpacity
-              onPress={handleConnectGoogle}
-              disabled={connectingCloud}
+              onPress={handleConnectGoogleDrive}
+              disabled={isDriveBusy}
               activeOpacity={0.9}
-              style={styles.cloudPrimaryBtn}
+              style={styles.googleConnectBtn}
             >
-              {connectingCloud ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+              {isDriveBusy ? (
+                <ActivityIndicator color={COLORS.navy} size="small" />
               ) : (
-                <Text style={styles.cloudPrimaryBtnText}>🔐 Sign in with Google to Sync</Text>
+                <View style={styles.googleConnectRow}>
+                  <View style={styles.googleGBadge}>
+                    <Text style={styles.googleGBadgeText}>G</Text>
+                  </View>
+                  <Text style={styles.googleConnectBtnText}>Sign in with Google</Text>
+                </View>
               )}
             </TouchableOpacity>
+
             <View style={styles.footerSubRow}>
               <TouchableOpacity
                 onPress={handleExportLocalBackup}
@@ -584,39 +695,94 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
           <>
             <View style={styles.syncMetaBox}>
               <Text style={styles.syncAccountText} numberOfLines={1}>
-                Google Account: {profile.email || profile.displayName}
+                Google Drive: {profile?.email}
               </Text>
               <Text style={styles.syncTimeText}>
-                Last synced: {formatSyncTime(lastSyncedAt)}
+                Last backup:{' '}
+                {lastDriveBackupAt
+                  ? formatSyncTime(lastDriveBackupAt)
+                  : driveRemoteBackup?.exists && driveRemoteBackup.updatedAt
+                    ? formatSyncTime(driveRemoteBackup.updatedAt)
+                    : 'Not backed up yet'}
               </Text>
-              {lastSyncSummary ? (
-                <Text style={styles.syncSummaryText}>{lastSyncSummary}</Text>
+              {lastDriveBackupSummary ? (
+                <Text style={styles.syncSummaryText}>
+                  {lastDriveBackupSummary.tripsCount}{' '}
+                  {lastDriveBackupSummary.tripsCount === 1 ? 'trip' : 'trips'} •{' '}
+                  {lastDriveBackupSummary.memoriesCount}{' '}
+                  {lastDriveBackupSummary.memoriesCount === 1 ? 'memory' : 'memories'} •{' '}
+                  {lastDriveBackupSummary.mediaCount}{' '}
+                  {lastDriveBackupSummary.mediaCount === 1 ? 'photo/receipt' : 'photos & receipts'}
+                  {lastDriveBackupSummary.totalBytes > 0
+                    ? ` (${formatBytes(lastDriveBackupSummary.totalBytes)})`
+                    : ''}
+                </Text>
+              ) : (
+                <Text style={styles.syncHintText}>
+                  Stored privately in your hidden Drive app folder — Wanderer&apos;s Ledger cannot see any other Drive files.
+                </Text>
+              )}
+              {driveProgress ? (
+                <View style={styles.driveProgressRow}>
+                  <ActivityIndicator color={COLORS.coral} size="small" />
+                  <Text style={styles.driveProgressText}>{driveProgress.label}</Text>
+                </View>
               ) : null}
-              {syncError ? <Text style={styles.syncErrorText}>{syncError}</Text> : null}
+              {driveError ? <Text style={styles.syncErrorText}>{driveError}</Text> : null}
             </View>
 
+            {/* Optional Daily Background Auto-Backup (OFF by default on first sign-in) */}
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.switchTitle}>🔄 Daily Auto-Backup</Text>
+                <Text style={styles.switchSub}>
+                  {driveAutoBackupEnabled
+                    ? 'Automatically backs up changes once a day when online'
+                    : 'Off — back up manually anytime, or enable daily auto-backup'}
+                </Text>
+              </View>
+              <Switch
+                value={driveAutoBackupEnabled}
+                disabled={togglingAutoBackup || isDriveBusy}
+                onValueChange={handleToggleAutoBackup}
+                trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
+                thumbColor={driveAutoBackupEnabled ? COLORS.coral : '#FFFFFF'}
+              />
+            </View>
+
+            {/* Primary Manual Actions: Back Up Now + Restore */}
             <View style={styles.footerSubRow}>
               <TouchableOpacity
-                onPress={handleSyncNow}
-                disabled={syncStatus === 'syncing'}
-                style={[styles.cloudPrimaryBtn, { flex: 1.3 }]}
+                onPress={handleBackUpNow}
+                disabled={isDriveBusy}
+                style={[styles.cloudPrimaryBtn, { flex: 1.25 }]}
                 activeOpacity={0.9}
               >
-                {syncStatus === 'syncing' ? (
+                {driveBusyMode === 'backing_up' ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text style={styles.cloudPrimaryBtnText}>☁️ Sync Now</Text>
+                  <Text style={styles.cloudPrimaryBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.84}>
+                    ☁️ Back Up Now
+                  </Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleDisconnectCloud}
-                style={[styles.disconnectBtn, { flex: 0.7 }]}
+                onPress={handleRestoreFromDrivePress}
+                disabled={isDriveBusy}
+                style={[styles.restoreDriveBtn, { flex: 0.95 }]}
                 activeOpacity={0.85}
               >
-                <Text style={styles.disconnectBtnText}>Disconnect</Text>
+                {driveBusyMode === 'restoring' ? (
+                  <ActivityIndicator color={COLORS.navy} size="small" />
+                ) : (
+                  <Text style={styles.restoreDriveBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.84}>
+                    📥 Restore
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
 
+            {/* Portable Offline JSON Export / Import */}
             <View style={styles.footerSubRow}>
               <TouchableOpacity
                 onPress={handleExportLocalBackup}
@@ -635,6 +801,26 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
                   📥 Import (.json)
                 </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Subtle Account & Cloud Backup Controls */}
+            <View style={styles.driveSubActionsRow}>
+              <TouchableOpacity
+                onPress={handleDeleteCloudBackup}
+                disabled={isDriveBusy}
+                style={styles.driveSubActionBtn}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.driveSubActionDanger}>🗑️ Delete Cloud Backup</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSignOutGoogle}
+                disabled={isDriveBusy}
+                style={styles.driveSubActionBtn}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.driveSubActionMuted}>Sign Out</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -1004,7 +1190,46 @@ const styles = StyleSheet.create({
   syncAccountText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
   syncTimeText: { fontSize: 11, color: COLORS.inkMuted },
   syncSummaryText: { fontSize: 11, fontWeight: '700', color: '#047857', marginTop: 2 },
+  syncHintText: { fontSize: 11, color: COLORS.inkSoft, lineHeight: 15, marginTop: 2 },
   syncErrorText: { fontSize: 11, fontWeight: '700', color: COLORS.rose, marginTop: 2 },
+  driveProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderSoft,
+  },
+  driveProgressText: { fontSize: 11.5, fontWeight: '700', color: COLORS.coralDark, flex: 1 },
+  googleConnectBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleConnectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  googleGBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleGBadgeText: { fontSize: 13, fontWeight: '900', color: '#2563EB' },
+  googleConnectBtnText: { color: COLORS.ink, fontWeight: '900', fontSize: 13.5 },
   cloudPrimaryBtn: {
     backgroundColor: COLORS.navy,
     paddingHorizontal: 14,
@@ -1014,6 +1239,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cloudPrimaryBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  restoreDriveBtn: {
+    backgroundColor: COLORS.indigoSoft,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restoreDriveBtnText: { color: COLORS.navy, fontWeight: '800', fontSize: 13 },
   disconnectBtn: {
     backgroundColor: COLORS.canvas,
     borderWidth: 1,
@@ -1036,4 +1272,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backupBtnText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 12.5 },
+  driveSubActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderSoft,
+  },
+  driveSubActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  driveSubActionDanger: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: COLORS.rose,
+  },
+  driveSubActionMuted: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.inkMuted,
+  },
 });
