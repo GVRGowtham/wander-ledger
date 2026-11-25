@@ -27,22 +27,75 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
     getSummaryForTrip,
     getMemoriesForTrip,
   } = useApp();
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(trips[0]?.id ?? null);
 
+  // Extract distinct trip years newest-first (e.g. ['2026', '2025'])
+  const availableYears = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of trips) {
+      const yr = (t.startDate || '').slice(0, 4);
+      if (/^\d{4}$/.test(yr)) {
+        counts.set(yr, (counts.get(yr) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([year, count]) => ({ year, count }));
+  }, [trips]);
+
+  const activeYear =
+    selectedYear && availableYears.some((y) => y.year === selectedYear)
+      ? selectedYear
+      : null;
+
+  const visibleTrips = useMemo(() => {
+    const filtered = activeYear
+      ? trips.filter((t) => (t.startDate || '').startsWith(activeYear))
+      : trips;
+    return [...filtered].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+  }, [trips, activeYear]);
+
+  const visibleTripIds = useMemo(
+    () => new Set(visibleTrips.map((t) => t.id)),
+    [visibleTrips]
+  );
+
+  const visibleFlights = useMemo(
+    () => allFlights.filter((f) => visibleTripIds.has(f.tripId)),
+    [allFlights, visibleTripIds]
+  );
+
+  const visibleTransports = useMemo(
+    () => allTransports.filter((t) => visibleTripIds.has(t.tripId)),
+    [allTransports, visibleTripIds]
+  );
+
+  const visibleStops = useMemo(
+    () => allStops.filter((s) => visibleTripIds.has(s.tripId)),
+    [allStops, visibleTripIds]
+  );
+
   const selectedTrip = useMemo(
-    () => trips.find((t) => t.id === selectedId) ?? trips[0] ?? null,
-    [trips, selectedId]
+    () => visibleTrips.find((t) => t.id === selectedId) ?? visibleTrips[0] ?? null,
+    [visibleTrips, selectedId]
   );
 
   const geography = useMemo(
-    () => deriveGlobalTravelGeography(trips, allFlights, allTransports, allStops),
-    [trips, allFlights, allTransports, allStops]
+    () =>
+      deriveGlobalTravelGeography(
+        visibleTrips,
+        visibleFlights,
+        visibleTransports,
+        visibleStops
+      ),
+    [visibleTrips, visibleFlights, visibleTransports, visibleStops]
   );
 
   const distanceUnit = profile?.distanceUnit ?? 'km';
   const totalDistanceKm =
-    allFlights.reduce((sum, f) => sum + milesToKm(f.distanceMiles), 0) +
-    allTransports.reduce((sum, t) => sum + (t.distanceKm ?? 0), 0);
+    visibleFlights.reduce((sum, f) => sum + milesToKm(f.distanceMiles), 0) +
+    visibleTransports.reduce((sum, t) => sum + (t.distanceKm ?? 0), 0);
   const totalDistanceDisplay = formatDistanceValue(totalDistanceKm, distanceUnit);
   const earthCircumferenceKm = 40075;
   const earthLaps = (totalDistanceKm / earthCircumferenceKm).toFixed(2);
@@ -56,6 +109,12 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
   const selectedHighlight = selectedTrip
     ? getMemoriesForTrip(selectedTrip.id)[0]
     : undefined;
+  const selectedPrimaryFlag =
+    selectedGeo?.visitedCountries[0]?.flag || selectedTrip?.flagEmoji || '🌍';
+  const selectedExtraCountries =
+    selectedGeo && selectedGeo.visitedCountries.length > 1
+      ? selectedGeo.visitedCountries.length - 1
+      : 0;
 
   return (
     <ScrollView
@@ -66,7 +125,11 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>🌍 Your World Map</Text>
-          <Text style={styles.subtitle}>Tap any glowing pin to peek at its postcard!</Text>
+          <Text style={styles.subtitle}>
+            {activeYear
+              ? `Showing your ${activeYear} journeys • tap any pin to peek`
+              : 'Tap any glowing pin to peek at its postcard!'}
+          </Text>
         </View>
         <View style={styles.orbitBadge}>
           <Text style={styles.orbitText}>{earthLaps}x Earth!</Text>
@@ -74,8 +137,8 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
       </View>
 
       <WorldMapSvg
-        trips={trips}
-        flights={allFlights}
+        trips={visibleTrips}
+        flights={visibleFlights}
         visitedPins={geography.visitedCities}
         transitHubs={geography.transitHubs}
         selectedTripId={selectedTrip?.id ?? null}
@@ -91,28 +154,75 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         </View>
       )}
 
-      {/* Quick Destination Filter Chips */}
+      {/* Year Filter Strip (auto-shown once trips span 2+ years) */}
+      {availableYears.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.yearRow}
+        >
+          <TouchableOpacity
+            onPress={() => setSelectedYear(null)}
+            style={[styles.yearPill, activeYear === null && styles.yearPillActive]}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.yearText, activeYear === null && styles.yearTextActive]}>
+              All ({trips.length})
+            </Text>
+          </TouchableOpacity>
+          {availableYears.map(({ year, count }) => {
+            const active = activeYear === year;
+            return (
+              <TouchableOpacity
+                key={year}
+                onPress={() => setSelectedYear(year)}
+                style={[styles.yearPill, active && styles.yearPillActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.yearText, active && styles.yearTextActive]}>
+                  {year} ({count})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* Compact Trip Selector Chips (1 flag + N for multi-country trips) */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
       >
-        {trips.map((t) => {
+        {visibleTrips.map((t) => {
           const active = t.id === selectedTrip?.id;
           const tGeo = geography.byTripId[t.id];
-          const chipFlags = tGeo?.flagsLabel || t.flagEmoji;
-          const chipLabel =
+          const primaryFlag = tGeo?.visitedCountries[0]?.flag || t.flagEmoji || '🌍';
+          const extraCountries =
             tGeo && tGeo.visitedCountries.length > 1
-              ? tGeo.visitedCountries.map((c) => c.country).join(' + ')
-              : t.destinationCity;
+              ? tGeo.visitedCountries.length - 1
+              : 0;
+          const chipLabel = (t.title || t.destinationCity || 'Trip').trim();
           return (
             <TouchableOpacity
               key={t.id}
               onPress={() => setSelectedId(t.id)}
               style={[styles.chip, active && styles.chipActive]}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {chipFlags} {chipLabel}
+              <Text style={styles.chipFlag}>{primaryFlag}</Text>
+              {extraCountries > 0 && (
+                <View style={[styles.chipPlusBadge, active && styles.chipPlusBadgeActive]}>
+                  <Text style={[styles.chipPlusText, active && styles.chipPlusTextActive]}>
+                    +{extraCountries}
+                  </Text>
+                </View>
+              )}
+              <Text
+                style={[styles.chipText, active && styles.chipTextActive]}
+                numberOfLines={1}
+              >
+                {chipLabel}
               </Text>
             </TouchableOpacity>
           );
@@ -124,9 +234,18 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         <View style={styles.postcard}>
           <View style={styles.postcardTop}>
             <View style={styles.postcardLeft}>
-              <Text style={styles.flag}>{selectedGeo?.flagsLabel || selectedTrip.flagEmoji}</Text>
+              <View style={styles.flagWrap}>
+                <Text style={styles.flag}>{selectedPrimaryFlag}</Text>
+                {selectedExtraCountries > 0 && (
+                  <View style={styles.flagPlusPill}>
+                    <Text style={styles.flagPlusText}>+{selectedExtraCountries}</Text>
+                  </View>
+                )}
+              </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cityTitle}>{selectedTrip.title}</Text>
+                <Text style={styles.cityTitle} numberOfLines={1}>
+                  {selectedTrip.title}
+                </Text>
                 <Text style={styles.dateSub}>
                   {selectedGeo && selectedGeo.visitedCountries.length > 0
                     ? `${selectedGeo.countriesLabel} • `
@@ -175,15 +294,19 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
         </View>
       )}
 
-      {/* Lifetime Footprint Stats */}
+      {/* Lifetime / Year Footprint Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
           <Text style={[styles.statNum, { color: COLORS.coral }]}>{countriesCount}</Text>
-          <Text style={styles.statLabel}>Countries</Text>
+          <Text style={styles.statLabel}>
+            {activeYear ? `Countries (${activeYear})` : 'Countries'}
+          </Text>
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statNum, { color: COLORS.sky }]}>{citiesCount}</Text>
-          <Text style={styles.statLabel}>Cities</Text>
+          <Text style={styles.statLabel}>
+            {activeYear ? `Cities (${activeYear})` : 'Cities'}
+          </Text>
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statNum, { color: COLORS.emerald }]}>
@@ -213,20 +336,72 @@ const styles = StyleSheet.create({
     borderColor: '#FCD34D',
   },
   orbitText: { fontSize: 12, fontWeight: '900', color: '#92400E' },
+  yearRow: { gap: 6, paddingVertical: 2 },
+  yearPill: {
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  yearPillActive: {
+    backgroundColor: COLORS.ink,
+    borderColor: COLORS.ink,
+  },
+  yearText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: COLORS.inkMuted,
+    includeFontPadding: false,
+  },
+  yearTextActive: { color: '#FFFFFF' },
   chipsRow: { gap: 8, paddingVertical: 2 },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: COLORS.card,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 99,
     borderWidth: 1,
     borderColor: COLORS.border,
+    maxWidth: 200,
   },
   chipActive: {
     backgroundColor: COLORS.coral,
     borderColor: COLORS.coral,
   },
-  chipText: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+  chipFlag: {
+    fontSize: 13,
+    includeFontPadding: false,
+  },
+  chipPlusBadge: {
+    backgroundColor: COLORS.coralSoft,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 99,
+  },
+  chipPlusBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.24)',
+  },
+  chipPlusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.coralDark,
+    includeFontPadding: false,
+  },
+  chipPlusTextActive: {
+    color: '#FFFFFF',
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.ink,
+    flexShrink: 1,
+    includeFontPadding: false,
+  },
   chipTextActive: { color: '#FFFFFF' },
   postcard: {
     backgroundColor: COLORS.card,
@@ -239,7 +414,25 @@ const styles = StyleSheet.create({
   },
   postcardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   postcardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  flag: { fontSize: 28 },
+  flagWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 38,
+    gap: 2,
+  },
+  flag: { fontSize: 28, includeFontPadding: false },
+  flagPlusPill: {
+    backgroundColor: COLORS.coralSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 99,
+  },
+  flagPlusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.coralDark,
+    includeFontPadding: false,
+  },
   cityTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
   dateSub: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
   openBtn: {
