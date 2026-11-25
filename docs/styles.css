@@ -60,6 +60,7 @@ body {
 
 img {
   max-width: 100%;
+  height: auto;
   display: block;
 }
 
@@ -482,6 +483,9 @@ button, input, select {
 
 .phone-static img {
   width: 100%;
+  height: auto;
+  aspect-ratio: 520 / 1125;
+  object-fit: cover;
   border-radius: 29px;
   transition: opacity 0.22s ease;
 }
