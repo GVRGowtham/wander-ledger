@@ -125,6 +125,14 @@ export interface SuggestedStop {
  * Suggests missing TripStops from existing flights, transports, and stays so
  * multi-hop trips take zero manual typing to organize!
  */
+function dayDiffIso(a?: string, b?: string): number {
+  if (!a || !b) return 0;
+  const ma = Date.parse(`${a.slice(0, 10)}T00:00:00Z`);
+  const mb = Date.parse(`${b.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(ma) || Number.isNaN(mb)) return 0;
+  return Math.abs(Math.round((ma - mb) / 86400000));
+}
+
 export function suggestStopsFromBookings(
   flights: Flight[],
   transports: TransportLeg[],
@@ -134,24 +142,39 @@ export function suggestStopsFromBookings(
   const existingKeys = new Set(
     existingStops.map((s) => s.cityName.trim().toLowerCase())
   );
-  const suggestions = new Map<string, SuggestedStop>();
+  // Keep separate visits for the same city when separated by >= 2 days
+  // (e.g., outbound AUH layover on Oct 31 vs. return AUH stopover on Nov 10).
+  const visitsByCity = new Map<string, SuggestedStop[]>();
 
   const register = (rawCity: string | undefined, startDate?: string, endDate?: string, sourceLabel = '') => {
     const clean = (rawCity || '').trim();
     if (!clean || clean.length < 2) return;
     const key = clean.toLowerCase();
     if (existingKeys.has(key)) return;
-    const prev = suggestions.get(key);
-    if (!prev) {
-      suggestions.set(key, {
+    const sd = startDate?.slice(0, 10);
+    const ed = endDate?.slice(0, 10);
+
+    const list = visitsByCity.get(key) ?? [];
+    const matchingVisit = list.find((v) => {
+      if (!v.startDate || !sd) return true;
+      return dayDiffIso(v.startDate, sd) <= 1;
+    });
+
+    if (!matchingVisit) {
+      list.push({
         cityName: clean,
-        startDate: startDate?.slice(0, 10),
-        endDate: endDate?.slice(0, 10),
+        startDate: sd,
+        endDate: ed,
         sourceLabel,
       });
-    } else if (startDate && (!prev.startDate || startDate.slice(0, 10) < prev.startDate)) {
-      prev.startDate = startDate.slice(0, 10);
-      if (endDate) prev.endDate = endDate.slice(0, 10);
+      visitsByCity.set(key, list);
+    } else {
+      if (sd && (!matchingVisit.startDate || sd < matchingVisit.startDate)) {
+        matchingVisit.startDate = sd;
+      }
+      if (ed && (!matchingVisit.endDate || ed > matchingVisit.endDate)) {
+        matchingVisit.endDate = ed;
+      }
     }
   };
 
@@ -172,7 +195,12 @@ export function suggestStopsFromBookings(
     }
   }
 
-  return Array.from(suggestions.values()).slice(0, 6);
+  const all: SuggestedStop[] = [];
+  for (const list of visitsByCity.values()) {
+    all.push(...list);
+  }
+  all.sort((a, b) => (a.startDate || '9999-99-99').localeCompare(b.startDate || '9999-99-99'));
+  return all.slice(0, 8);
 }
 
 export type JourneyTimelineItem =
@@ -320,17 +348,55 @@ function parseIsoMillis(isoLike?: string | null): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+function isHubExplicitStopForConnection(
+  hubCityKey: string,
+  hubIata: string,
+  prevArrIso: string,
+  nextDepIso: string,
+  stops: TripStop[]
+): boolean {
+  if (!hubCityKey && !hubIata) return false;
+  const iataUpper = hubIata.toUpperCase();
+  const matching = stops.filter((s) => {
+    const sk = normalizeCityKey(s.cityName);
+    return (hubCityKey && sk === hubCityKey) || s.cityName.trim().toUpperCase() === iataUpper;
+  });
+  if (matching.length === 0) return false;
+
+  // Undated stop matches any connection at that hub (backward-compatible)
+  if (matching.some((s) => !s.startDate)) return true;
+
+  const connStartMs = Date.parse(`${(prevArrIso || nextDepIso).slice(0, 10)}T00:00:00Z`);
+  const connEndMs = Date.parse(`${(nextDepIso || prevArrIso).slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(connStartMs) || Number.isNaN(connEndMs)) return true;
+
+  const minConn = Math.min(connStartMs, connEndMs);
+  const maxConn = Math.max(connStartMs, connEndMs);
+  const padMs = 86400000; // ±1 day tolerance for overnight/timezone boundary arrivals
+
+  return matching.some((s) => {
+    const stopStart = Date.parse(`${s.startDate!.slice(0, 10)}T00:00:00Z`);
+    const stopEnd = Date.parse(`${(s.endDate || s.startDate)!.slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(stopStart) || Number.isNaN(stopEnd)) return true;
+    const minStop = Math.min(stopStart, stopEnd) - padMs;
+    const maxStop = Math.max(stopStart, stopEnd) + padMs;
+    return maxConn >= minStop && minConn <= maxStop;
+  });
+}
+
 /**
  * Groups connecting flight legs (same intermediate IATA within <=24h layover,
- * unless the user explicitly added that intermediate city as a real TripStop).
- * Example: BLR -> AUH (Oct 31) + AUH -> ZRH (Nov 1) => BLR -> ZRH (via AUH).
+ * unless the user explicitly added that intermediate city as a real TripStop
+ * covering those dates).
+ * Example: BLR -> AUH (Oct 31) + AUH -> CDG (Oct 31) stays BLR -> CDG (via AUH),
+ * while a return stopover CDG -> AUH (Nov 10) + AUH -> BLR (Nov 11) with an explicit
+ * "Abu Dhabi" Stop on Nov 10 splits cleanly into CDG -> AUH ▸ Abu Dhabi ▸ AUH -> BLR.
  */
 export function groupConnectingFlights(
   flights: Flight[],
   stops: TripStop[] = []
 ): FlightChain[] {
   if (flights.length === 0) return [];
-  const stopKeys = new Set(stops.map((s) => normalizeCityKey(s.cityName)).filter(Boolean));
   const sorted = [...flights].sort((a, b) =>
     normalizeTimelineSortKey(a.departureTime, '08:00').sortKey.localeCompare(
       normalizeTimelineSortKey(b.departureTime, '08:00').sortKey
@@ -343,7 +409,13 @@ export function groupConnectingFlights(
     if (prev && prev.destIata && f.originIata && prev.destIata !== 'TBD') {
       const sameHub = prev.destIata.toUpperCase() === f.originIata.toUpperCase();
       const hubCityKey = normalizeCityKey(prev.destCity || prev.destIata);
-      const isExplicitStop = hubCityKey && stopKeys.has(hubCityKey);
+      const isExplicitStop = isHubExplicitStopForConnection(
+        hubCityKey,
+        prev.destIata,
+        prev.arrivalTime || prev.departureTime,
+        f.departureTime,
+        stops
+      );
 
       const prevEndMs = parseIsoMillis(prev.arrivalTime) ?? parseIsoMillis(prev.departureTime);
       const nextStartMs = parseIsoMillis(f.departureTime);

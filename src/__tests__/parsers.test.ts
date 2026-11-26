@@ -2360,6 +2360,85 @@ describe('v0.6.9 Passport Stamp Formatting & Last-Visited Tracking', () => {
     expect(geo.visitedCountries.some((c) => c.code === 'PL' && c.country === 'Poland' && c.flag === '🇵🇱')).toBe(true);
     expect(geo.visitedCountries.some((c) => c.code === 'IT' && c.country === 'Italy' && c.flag === '🇮🇹')).toBe(true);
   });
+
+  it('suggests separate dates for onward vs. return transit hubs and keeps onward layover stitched when Stop is dated to return', () => {
+    const flights: Flight[] = [
+      {
+        id: 'f1', tripId: 't_auh', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 217',
+        originIata: 'BLR', originCity: 'Bengaluru', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2026-10-31T04:00:00Z', arrivalTime: '2026-10-31T07:00:00Z',
+        durationMinutes: 240, status: 'completed', distanceMiles: 1650, milesEarned: 1650,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f2', tripId: 't_auh', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 31',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'CDG', destCity: 'Paris',
+        departureTime: '2026-10-31T09:30:00Z', arrivalTime: '2026-10-31T14:00:00Z',
+        durationMinutes: 420, status: 'completed', distanceMiles: 3250, milesEarned: 3250,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f3', tripId: 't_auh', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 32',
+        originIata: 'CDG', originCity: 'Paris', destIata: 'AUH', destCity: 'Abu Dhabi',
+        departureTime: '2026-11-10T10:00:00Z', arrivalTime: '2026-11-10T19:00:00Z',
+        durationMinutes: 420, status: 'completed', distanceMiles: 3250, milesEarned: 3250,
+        enrichedOnline: false, createdAt: '',
+      },
+      {
+        id: 'f4', tripId: 't_auh', airlineCode: 'EY', airlineName: 'Etihad Airways', flightNumber: 'EY 216',
+        originIata: 'AUH', originCity: 'Abu Dhabi', destIata: 'BLR', destCity: 'Bengaluru',
+        departureTime: '2026-11-11T10:00:00Z', arrivalTime: '2026-11-11T15:30:00Z',
+        durationMinutes: 240, status: 'completed', distanceMiles: 1650, milesEarned: 1650,
+        enrichedOnline: false, createdAt: '',
+      },
+    ];
+
+    // 1. Before adding any Stop, both Abu Dhabi dates (onward 10-31 and return 11-10) should be suggested
+    const suggested = suggestStopsFromBookings(flights, [], [], []);
+    const auhSuggestions = suggested.filter((s) => s.cityName === 'Abu Dhabi');
+    expect(auhSuggestions.map((s) => s.startDate)).toEqual(['2026-10-31', '2026-11-10']);
+
+    // 2. Adding Abu Dhabi ONLY on the return date (Nov 10) keeps Oct 31 stitched as BLR -> CDG (via AUH),
+    //    while splitting ONLY the return leg into CDG -> AUH ▸ 📍 Abu Dhabi ▸ AUH -> BLR!
+    const returnAuhStop: TripStop = {
+      id: 'stop_auh_ret',
+      tripId: 't_auh',
+      cityName: 'Abu Dhabi',
+      startDate: '2026-11-10',
+      endDate: '2026-11-11',
+      sortOrder: 0,
+      createdAt: '',
+    };
+    const trail = buildJourneyRouteTrail(flights, [], [returnAuhStop]);
+    expect(trail).toBe('✈️ BLR → CDG (via AUH)  ▸  ✈️ CDG → AUH  ▸  ✈️ AUH → BLR');
+    expect(trail).not.toContain('CDG → BLR (via AUH)');
+
+    // 3. Passport & Map geography promotes UAE (Abu Dhabi) to a real visited country because of the Stop
+    const trip: Trip = {
+      id: 't_auh',
+      ownerId: 'local',
+      title: 'Paris & Abu Dhabi',
+      destinationCity: 'Paris',
+      destinationCountry: 'France',
+      countryCode: 'FR',
+      flagEmoji: '🇫🇷',
+      startDate: '2026-10-31',
+      endDate: '2026-11-11',
+      budget: 0,
+      homeCurrency: 'INR',
+      vibe: 'city',
+      lat: 48.85,
+      lng: 2.35,
+      coTravelers: [],
+      isShared: false,
+      createdAt: '2026-10-31T00:00:00Z',
+      updatedAt: '2026-10-31T00:00:00Z',
+    };
+    const geo = deriveTripGeography(trip, flights, [], [returnAuhStop]);
+    expect(geo.visitedCountries.some((c) => c.code === 'FR')).toBe(true);
+    expect(geo.visitedCountries.some((c) => c.code === 'AE')).toBe(true);
+  });
 });
+
 
 

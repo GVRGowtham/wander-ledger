@@ -113,6 +113,7 @@ import {
   Flight,
   Memory,
   Stay,
+  TripStop,
   TransportLeg,
   TripVibe,
 } from '../types/models';
@@ -171,6 +172,7 @@ export const TripDetailScreen: React.FC<Props> = ({
     editTransport,
     removeTransport,
     addTripStop,
+    editTripStop,
     removeTripStop,
     addStay,
     editStay,
@@ -262,8 +264,9 @@ export const TripDetailScreen: React.FC<Props> = ({
     notes: '',
   });
 
-  // Add Stop / Hop Modal
+  // Add / Edit Stop / Hop Modal
   const [stopModal, setStopModal] = useState(false);
+  const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [stopCity, setStopCity] = useState('');
   const [stopStartDate, setStopStartDate] = useState(trip?.startDate || '');
   const [stopEndDate, setStopEndDate] = useState(trip?.endDate || '');
@@ -452,9 +455,18 @@ export const TripDetailScreen: React.FC<Props> = ({
 
   // --- STOPS / HOPS ---
   const openAddStopModal = () => {
+    setEditingStopId(null);
     setStopCity('');
     setStopStartDate(trip.startDate);
     setStopEndDate(trip.endDate);
+    setStopModal(true);
+  };
+
+  const openEditStopModal = (stop: TripStop) => {
+    setEditingStopId(stop.id);
+    setStopCity(stop.cityName);
+    setStopStartDate(stop.startDate || '');
+    setStopEndDate(stop.endDate || stop.startDate || '');
     setStopModal(true);
   };
 
@@ -464,21 +476,37 @@ export const TripDetailScreen: React.FC<Props> = ({
       Alert.alert('City or stop name needed', 'Enter a city, town, or hop name (e.g. Lucerne).');
       return;
     }
-    const newId = generateId('stop');
-    addTripStop({
-      id: newId,
-      tripId: trip.id,
-      cityName: clean,
-      startDate: stopStartDate.trim() || undefined,
-      endDate: stopEndDate.trim() || undefined,
-      sortOrder: stops.length,
-      createdAt: new Date().toISOString(),
-    });
-    // If adding a stop while Memory modal is open, auto-select it!
-    if (memoryModal) {
-      setMemStopId(newId);
+    const cleanStart = stopStartDate.trim() || undefined;
+    const cleanEnd = stopEndDate.trim() || undefined;
+    if (editingStopId) {
+      const existing = stops.find((s) => s.id === editingStopId);
+      editTripStop({
+        id: editingStopId,
+        tripId: trip.id,
+        cityName: clean,
+        startDate: cleanStart,
+        endDate: cleanEnd,
+        sortOrder: existing?.sortOrder ?? stops.length,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+      });
+    } else {
+      const newId = generateId('stop');
+      addTripStop({
+        id: newId,
+        tripId: trip.id,
+        cityName: clean,
+        startDate: cleanStart,
+        endDate: cleanEnd,
+        sortOrder: stops.length,
+        createdAt: new Date().toISOString(),
+      });
+      // If adding a stop while Memory modal is open, auto-select it!
+      if (memoryModal) {
+        setMemStopId(newId);
+      }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEditingStopId(null);
     setStopModal(false);
   };
 
@@ -1796,21 +1824,38 @@ export const TripDetailScreen: React.FC<Props> = ({
 
               {stops.length > 0 && (
                 <View style={styles.stopsChipsWrap}>
-                  {stops.map((s) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      onLongPress={() => handleDeleteStop(s.id, s.cityName)}
-                      onPress={() => handleDeleteStop(s.id, s.cityName)}
-                      style={styles.stopChip}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.stopChipText}>
-                        📍 {s.cityName}
-                        {s.startDate ? ` • ${s.startDate.slice(5)}` : ''}
-                      </Text>
-                      <Text style={styles.stopChipX}>✕</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {stops.map((s) => {
+                    const datePart =
+                      s.startDate && s.endDate && s.endDate !== s.startDate
+                        ? ` • ${s.startDate.slice(5)} → ${s.endDate.slice(5)}`
+                        : s.startDate
+                          ? ` • ${s.startDate.slice(5)}`
+                          : '';
+                    return (
+                      <View key={s.id} style={styles.stopChip}>
+                        <TouchableOpacity
+                          onPress={() => openEditStopModal(s)}
+                          onLongPress={() => handleDeleteStop(s.id, s.cityName)}
+                          activeOpacity={0.75}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        >
+                          <Text style={styles.stopChipText}>
+                            📍 {s.cityName}
+                            {datePart}
+                          </Text>
+                          <Text style={styles.stopChipX}>✏️</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteStop(s.id, s.cityName)}
+                          hitSlop={{ top: 8, bottom: 8, left: 6, right: 8 }}
+                          activeOpacity={0.7}
+                          accessibilityLabel={`Remove ${s.cityName} stop`}
+                        >
+                          <Text style={styles.stopChipX}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
 
@@ -1824,7 +1869,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                   >
                     {suggestedStops.map((sug) => (
                       <TouchableOpacity
-                        key={sug.cityName}
+                        key={`${sug.cityName}-${sug.startDate || 'nodate'}`}
                         onPress={() =>
                           handleAcceptSuggestedStop(sug.cityName, sug.startDate, sug.endDate)
                         }
@@ -1833,6 +1878,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                       >
                         <Text style={styles.suggestChipText}>
                           + 📍 {sug.cityName}
+                          {sug.startDate ? ` • ${sug.startDate.slice(5)}` : ''}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -3034,19 +3080,24 @@ export const TripDetailScreen: React.FC<Props> = ({
         )}
       </BottomSheetModal>
 
-      {/* ADD STOP / HOP MODAL */}
+      {/* ADD / EDIT STOP / HOP MODAL */}
       <BottomSheetModal
         visible={stopModal}
-        title="📍 Add Trip Stop / Hop"
-        onClose={() => setStopModal(false)}
+        title={editingStopId ? '✏️ Edit Trip Stop / Hop' : '📍 Add Trip Stop / Hop'}
+        onClose={() => {
+          setStopModal(false);
+          setEditingStopId(null);
+        }}
         footer={
           <TouchableOpacity onPress={handleSaveStop} style={styles.modalPrimaryBtn} activeOpacity={0.9}>
-            <Text style={styles.modalPrimaryText}>Add Stop to Trip 📍</Text>
+            <Text style={styles.modalPrimaryText}>
+              {editingStopId ? 'Save Stop Changes ✓' : 'Add Stop to Trip 📍'}
+            </Text>
           </TouchableOpacity>
         }
       >
         <Text style={styles.tinyNote}>
-          Add cities or stops on multi-hop trips. Adding dates lets Wanderer's Ledger auto-match photo memories to the right stop!
+          Tag cities you actually explored (including stopovers on one leg of a trip!). Adding dates keeps earlier layovers stitched and auto-matches photos to the right stop.
         </Text>
         <Text style={styles.fieldLabel}>City / Stop Name</Text>
         <TextInput
