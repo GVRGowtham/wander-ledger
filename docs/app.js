@@ -129,15 +129,15 @@ const EARLY_ACCESS_CONFIG = {
       points: [
         [
           '5,333 Airports, 249 Countries & Year Map Filters',
-          'Accent-insensitive offline search covers 988 airlines and airports worldwide, while your World Map filters cleanly by year with compact multi-country chips.',
+          'Offline search covers 5,333 airports, 249 countries, and 988 airlines worldwide, while your World Map filters cleanly by year with compact multi-country chips.',
         ],
         [
           'Short Layovers Stay Separate',
           'Airside airport connections under 24 hours appear as hollow Transit Hub rings without inflating your visited country count.',
         ],
         [
-          'Midnight Passport Dark Mode & Offline Alerts',
-          'Switch instantly between Paper Light, Midnight Dark, or Follow System across every screen — plus offline departure reminders and automatic miles tracking.',
+          'Light & Dark Mode + Offline Alerts',
+          'Choose Light Mode, Dark Mode, or match your phone automatically — plus offline departure reminders and automatic miles tracking.',
         ],
       ],
     },
