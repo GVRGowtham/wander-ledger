@@ -1,4 +1,9 @@
-import { AIRPORTS, lookupAirport } from '../db/airportsData';
+import {
+  findCityAirportInText,
+  findCountryInText,
+  lookupAirport,
+  normalizeSearchText,
+} from '../db/airportsData';
 import { Flight, TransportLeg, Trip, TripStop } from '../types/models';
 
 export interface GeoPlace {
@@ -128,7 +133,7 @@ export function resolvePlaceLocation(raw: string, date?: string): GeoPlace | nul
   const trimmed = (raw || '').trim();
   if (!trimmed || trimmed.length < 2) return null;
 
-  // 1. Exact 3-letter IATA airport code
+  // 1. Exact 3-letter IATA airport code (covers all 5,333 global airports, e.g. WAW, WMI, FCO, CIA)
   if (/^[A-Za-z]{3}$/.test(trimmed)) {
     const ap = lookupAirport(trimmed);
     if (ap) {
@@ -145,53 +150,42 @@ export function resolvePlaceLocation(raw: string, date?: string): GeoPlace | nul
     }
   }
 
-  const lower = trimmed.toLowerCase();
+  const lower = normalizeSearchText(trimmed);
 
-  // 2. Check curated extra travel cities first (handles Lucerne, Interlaken, Kyoto, etc.)
+  // 2. Check curated extra travel cities first (handles Lucerne, Interlaken, Kyoto, Coorg, etc.)
   for (const [key, info] of Object.entries(EXTRA_CITIES)) {
     if (lower === key || new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower)) {
       return { ...info, date };
     }
   }
 
-  // 3. Check airport cities and countries
-  for (const ap of Object.values(AIRPORTS)) {
-    const primaryCity = ap.city.split('/')[0].trim().toLowerCase();
-    if (
-      primaryCity.length >= 3 &&
-      (lower === primaryCity ||
-        new RegExp(`\\b${primaryCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower))
-    ) {
-      return {
-        city: ap.city.split('/')[0].trim(),
-        country: ap.country,
-        countryCode: ap.countryCode,
-        flag: ap.flag,
-        lat: ap.lat,
-        lng: ap.lng,
-        iata: ap.iata,
-        date,
-      };
-    }
+  // 3. Fast O(words) lookup against all 5,333 global airport cities (accent-insensitive, hub-prioritized)
+  const cityHit = findCityAirportInText(trimmed, 3);
+  if (cityHit) {
+    return {
+      city: cityHit.city.split('/')[0].trim(),
+      country: cityHit.country,
+      countryCode: cityHit.countryCode,
+      flag: cityHit.flag,
+      lat: cityHit.lat,
+      lng: cityHit.lng,
+      iata: cityHit.iata,
+      date,
+    };
   }
 
-  for (const ap of Object.values(AIRPORTS)) {
-    const countryLower = ap.country.toLowerCase();
-    if (
-      countryLower.length >= 3 &&
-      (lower === countryLower ||
-        new RegExp(`\\b${countryLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lower))
-    ) {
-      return {
-        city: ap.country,
-        country: ap.country,
-        countryCode: ap.countryCode,
-        flag: ap.flag,
-        lat: ap.lat,
-        lng: ap.lng,
-        date,
-      };
-    }
+  // 4. Fast O(words) fallback against all 249 ISO countries & common aliases (e.g. Poland, Czech Republic, UAE)
+  const countryHit = findCountryInText(trimmed, 3);
+  if (countryHit) {
+    return {
+      city: countryHit.name,
+      country: countryHit.name,
+      countryCode: countryHit.code,
+      flag: countryHit.flag,
+      lat: countryHit.lat,
+      lng: countryHit.lng,
+      date,
+    };
   }
 
   return null;

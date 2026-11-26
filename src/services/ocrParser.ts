@@ -3,8 +3,12 @@ import {
   AIRPORTS,
   calculateDistanceMiles,
   estimateFlightDurationMinutes,
+  findCityAirportInText,
+  findCityAirportsInOrder,
+  findCountryInText,
   lookupAirline,
   lookupAirport,
+  MAJOR_OCR_AIRLINE_CODES,
 } from '../db/airportsData';
 import {
   ExpenseCategory,
@@ -733,23 +737,40 @@ function extractAirportRouteFromText(text: string): ExtractedRoute | null {
   // 2. Parenthesized or standalone known IATA airport codes in order of appearance (e.g. "Bengaluru (BLR) ... Goa (GOI)")
   const foundCodes: string[] = [];
   const tokenRegex = /\(([A-Z]{3})\)|\b([A-Z]{3})\b/g;
-  // Common 3-letter non-airport English/travel words to skip when scanning bare tokens
-  const STOP_WORDS = new Set([
-    'THE', 'AND', 'FOR', 'YOU', 'ARE', 'ALL', 'AIR', 'PNR', 'TAX', 'FEE', 'USD',
-    'INR', 'EUR', 'GBP', 'JPY', 'AED', 'AUD', 'CAD', 'SGD', 'CHF', 'KRW', 'THB',
-    'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'JAN', 'FEB', 'MAR', 'APR',
-    'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'DEP', 'ARR', 'NON',
-    'BAG', 'HRS', 'MIN', 'SEC', 'EST', 'IST', 'PST', 'UTC', 'GMT', 'YES', 'NOT',
-    'ONE', 'TWO', 'DAY', 'PER', 'REF', 'WEB', 'APP', 'PDF', 'VIA', 'OUT', 'NEW',
-    'PAY', 'ETD', 'ETA', 'STD', 'STA', 'ADT', 'CHD', 'INF', 'DOC', 'TKT', 'TTL',
-    'NET', 'VAT', 'GST', 'ROE', 'NUC', 'END', 'INT', 'DOM', 'ECO', 'BUS', 'FIR',
-    'KGS', 'LBS', 'PCS',
+  // Unambiguous non-airport codes (currencies, months, weekdays, travel/unit abbreviations) skipped even in parentheses
+  const ALWAYS_SKIP_CODES = new Set([
+    'PNR', 'TAX', 'FEE', 'VAT', 'GST', 'USD', 'INR', 'EUR', 'GBP', 'JPY', 'AED',
+    'AUD', 'CAD', 'SGD', 'CHF', 'KRW', 'THB', 'PLN', 'CZK', 'HUF', 'SEK', 'NOK',
+    'DKK', 'TRY', 'ZAR', 'BRL', 'MXN', 'NZD', 'MON', 'TUE', 'WED', 'THU', 'FRI',
+    'SAT', 'SUN', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP',
+    'OCT', 'NOV', 'DEC', 'DEP', 'ARR', 'ETD', 'ETA', 'STD', 'STA', 'ADT', 'CHD',
+    'INF', 'UTC', 'GMT', 'EST', 'PST', 'PDF', 'APP', 'WEB', 'REF', 'TKT', 'DOC',
+    'TTL', 'NET', 'KGS', 'LBS', 'PCS', 'HRS', 'MIN', 'SEC',
+  ]);
+  // Common 3-letter English / document / ISO-3 tokens skipped only when bare (unparenthesized);
+  // never include major IATA hubs like FRA, ORD, PHL, AUS, IND here.
+  const BARE_ONLY_STOP_WORDS = new Set([
+    'THE', 'AND', 'FOR', 'YOU', 'ARE', 'ALL', 'AIR', 'NON', 'BAG', 'YES', 'NOT',
+    'BUT', 'ONE', 'TWO', 'DAY', 'PER', 'VIA', 'OUT', 'NEW', 'PAY', 'ROE', 'NUC',
+    'END', 'INT', 'DOM', 'ECO', 'BUS', 'FIR', 'CAR', 'CAB', 'BAR', 'SPA', 'GYM',
+    'BED', 'KEY', 'MAP', 'MAX', 'LOW', 'TOP', 'BOX', 'ROW', 'PIN', 'ZIP', 'FAX',
+    'TEL', 'EXT', 'INC', 'LTD', 'LLC', 'INV', 'POS', 'ATM', 'CHK', 'BAL', 'AMT',
+    'QTY', 'SUB', 'TOT', 'TIP', 'SVC', 'CHG', 'NUM', 'PAX', 'FLT', 'SEG', 'SEQ',
+    'BKG', 'RES', 'CNF', 'OPT', 'REQ', 'LOC', 'ORG', 'DST', 'NOW', 'OUR', 'ANY',
+    'OLD', 'BIG', 'RUN', 'WAY', 'WHO', 'HOW', 'WHY', 'TOO', 'OFF', 'DUE', 'GET',
+    'SET', 'HAS', 'CAN', 'USE', 'ADD', 'FLY', 'USA', 'UAE', 'GBR', 'ITA', 'DEU',
+    'ESP', 'POL', 'JPN', 'CHN', 'SGP', 'IDN', 'THA', 'VNM', 'MYS',
   ]);
 
   for (const m of text.matchAll(tokenRegex)) {
+    const isParenthesized = Boolean(m[1]);
     const code = m[1] || m[2];
-    if (!code || STOP_WORDS.has(code)) continue;
-    if (AIRPORTS[code] && !foundCodes.includes(code)) {
+    if (!code) continue;
+    if (ALWAYS_SKIP_CODES.has(code)) continue;
+    if (!isParenthesized && BARE_ONLY_STOP_WORDS.has(code)) continue;
+    const ap = AIRPORTS[code];
+    // For bare (unparenthesized) tokens, require major/medium commercial airports to avoid random English-word collisions
+    if (ap && (isParenthesized || ap.sizeRank >= 1) && !foundCodes.includes(code)) {
       foundCodes.push(code);
       if (foundCodes.length >= 2) break;
     }
@@ -759,20 +780,8 @@ function extractAirportRouteFromText(text: string): ExtractedRoute | null {
     return { originIata: foundCodes[0], destIata: foundCodes[1] };
   }
 
-  // 3. Fallback: match known airport city names in order of appearance (e.g. "Bengaluru ... Abu Dhabi")
-  const cityHits: Array<{ iata: string; index: number }> = [];
-  const seenCityIatas = new Set<string>(foundCodes);
-  for (const ap of Object.values(AIRPORTS)) {
-    const primaryCity = ap.city.split('/')[0].trim();
-    if (primaryCity.length < 4 || seenCityIatas.has(ap.iata)) continue;
-    const escaped = primaryCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const cm = text.match(new RegExp(`\\b${escaped}\\b`, 'i'));
-    if (cm && cm.index !== undefined) {
-      cityHits.push({ iata: ap.iata, index: cm.index });
-      seenCityIatas.add(ap.iata);
-    }
-  }
-  cityHits.sort((a, b) => a.index - b.index);
+  // 3. Fallback: match known airport city names in order of appearance (e.g. "Rome ... Warsaw")
+  const cityHits = findCityAirportsInOrder(text, 4).filter((h) => !foundCodes.includes(h.iata));
   const combined = [...foundCodes, ...cityHits.map((h) => h.iata)];
   if (combined.length >= 2 && combined[0] !== combined[1]) {
     return { originIata: combined[0], destIata: combined[1] };
@@ -782,10 +791,8 @@ function extractAirportRouteFromText(text: string): ExtractedRoute | null {
 }
 
 function extractFlightNumberFromText(text: string): { airlineCode: string; flightNumber: string } | null {
-  const knownCodes = Object.keys(AIRLINES);
-
-  // 1. Look for known airline codes followed by 1–4 digits (e.g. "6E 412", "NH105", "AI-506", "UA 875")
-  for (const code of knownCodes) {
+  // 1. Look for curated major commercial airline codes followed by 2–4 digits (e.g. "6E 412", "LO 314", "FR 1234", "NH105")
+  for (const code of MAJOR_OCR_AIRLINE_CODES) {
     const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = new RegExp(`\\b(${escaped})\\s*[-]?\\s*(\\d{2,4})\\b`, 'i');
     const m = text.match(rx);
@@ -797,7 +804,7 @@ function extractFlightNumberFromText(text: string): { airlineCode: string; fligh
     }
   }
 
-  // 2. Look after explicit "Flight" label (e.g. "Flight: SG 192" or "Flight No. UK 811")
+  // 2. Look after explicit "Flight" label (supports ALL 988 IATA carriers, e.g. "Flight: LO 314" or "Flight No. W6 1442")
   const explicit = text.match(/\bflight\s*(?:no\.?|number|#|:)?\s*([A-Z0-9]{2})\s*[-]?\s*(\d{1,4})\b/i);
   if (explicit) {
     const ac = explicit[1].toUpperCase();
@@ -809,9 +816,11 @@ function extractFlightNumberFromText(text: string): { airlineCode: string; fligh
 
 function extractAirlineByName(text: string): string | null {
   const lower = text.toLowerCase();
-  for (const info of Object.values(AIRLINES)) {
+  for (const code of MAJOR_OCR_AIRLINE_CODES) {
+    const info = AIRLINES[code];
+    if (!info) continue;
     const primaryWord = info.name.split('(')[0].trim().toLowerCase();
-    if (primaryWord.length >= 3 && lower.includes(primaryWord)) {
+    if (primaryWord.length >= 4 && lower.includes(primaryWord)) {
       return info.code;
     }
   }
@@ -1084,7 +1093,7 @@ function buildParsedFlightLeg(
 }
 
 function findAllFlightSegmentAnchors(lines: string[]): FlightSegmentAnchor[] {
-  const knownCodes = Object.keys(AIRLINES)
+  const knownCodes = MAJOR_OCR_AIRLINE_CODES
     .map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|');
   // Case-sensitive for bare airline codes so lowercase prose ("as 30 kg") never false-matches
@@ -1843,25 +1852,15 @@ export function parseDocumentOcrText(
       }
     }
     if (!cityHint) {
-      for (const ap of Object.values(AIRPORTS)) {
-        if (ap.city.length >= 3) {
-          const escaped = ap.city.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
-            cityHint = ap.city;
-            break;
-          }
-        }
+      const cityHit = findCityAirportInText(lowerAll, 3);
+      if (cityHit) {
+        cityHint = cityHit.city;
       }
     }
     if (!cityHint) {
-      for (const ap of Object.values(AIRPORTS)) {
-        if (ap.country.length >= 4) {
-          const escaped = ap.country.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          if (new RegExp(`\\b${escaped}\\b`, 'i').test(lowerAll)) {
-            cityHint = ap.country;
-            break;
-          }
-        }
+      const countryHit = findCountryInText(lowerAll, 4);
+      if (countryHit) {
+        cityHint = countryHit.name;
       }
     }
 

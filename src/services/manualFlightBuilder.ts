@@ -1,10 +1,12 @@
 import {
-  AIRPORTS,
+  AIRPORTS_BY_RANK,
   AirportInfo,
   calculateDistanceMiles,
   estimateFlightDurationMinutes,
   lookupAirline,
   lookupAirport,
+  lookupAirportByCity,
+  normalizeSearchText,
 } from '../db/airportsData';
 import { Flight } from '../types/models';
 
@@ -47,31 +49,35 @@ export interface ResolvedLocation {
 }
 
 /**
- * Search bundled offline airports by IATA code, city, airport name, or country.
+ * Search bundled offline airports (5,300+ global commercial airports) by IATA code,
+ * city, airport name, or country — accent-insensitive and ranked with major hubs first.
  */
 export function searchAirports(query: string, limit = 5): AirportInfo[] {
-  const q = query.trim().toLowerCase();
+  const q = normalizeSearchText(query);
   if (!q) return [];
 
-  const all = Object.values(AIRPORTS);
   const scored: Array<{ ap: AirportInfo; score: number }> = [];
 
-  for (const ap of all) {
+  for (const ap of AIRPORTS_BY_RANK) {
     const iata = ap.iata.toLowerCase();
-    const city = ap.city.toLowerCase();
-    const name = ap.name.toLowerCase();
-    const country = ap.country.toLowerCase();
+    const city = normalizeSearchText(ap.city);
+    const name = normalizeSearchText(ap.name);
+    const country = normalizeSearchText(ap.country);
+    // Boost major international hubs above tiny regional airfields
+    const hubBoost = ap.sizeRank * 6;
 
     if (iata === q) {
-      scored.push({ ap, score: 100 });
+      scored.push({ ap, score: 200 + hubBoost });
+    } else if (city === q) {
+      scored.push({ ap, score: 170 + hubBoost });
     } else if (iata.startsWith(q)) {
-      scored.push({ ap, score: 85 });
+      scored.push({ ap, score: 140 + hubBoost });
     } else if (city.startsWith(q)) {
-      scored.push({ ap, score: 75 });
+      scored.push({ ap, score: 120 + hubBoost });
     } else if (city.includes(q) || name.includes(q)) {
-      scored.push({ ap, score: 60 });
+      scored.push({ ap, score: 90 + hubBoost });
     } else if (country.startsWith(q) || country.includes(q)) {
-      scored.push({ ap, score: 45 });
+      scored.push({ ap, score: 60 + hubBoost });
     }
   }
 
@@ -89,16 +95,22 @@ export function resolveAirportOrCity(raw?: string): ResolvedLocation | null {
   const clean = (raw || '').trim();
   if (!clean) return null;
 
-  // 1. Direct 3-letter IATA match or "BLR - Bengaluru" format
-  const leadingCode = clean.match(/^([A-Za-z]{3})(?:\s*[-·,(\s]|$)/);
-  if (leadingCode) {
-    const exact = lookupAirport(leadingCode[1]);
+  // 1. Explicit "BLR - Bengaluru" or "WAW (Warsaw)" leading uppercase 3-letter IATA format
+  const leadingExplicitCode = clean.match(/^([A-Z]{3})\s*(?:[-·,(]|$)/);
+  if (leadingExplicitCode) {
+    const exact = lookupAirport(leadingExplicitCode[1]);
     if (exact) {
       return { iata: exact.iata, city: exact.city, airport: exact };
     }
   }
 
-  // 2. Exact known IATA lookup
+  // 2. Exact city match FIRST for multi-word / lowercase city names (prevents "San Francisco" -> SAN or "Los Angeles" -> LOS or "New York" -> NEW)
+  const exactCity = lookupAirportByCity(clean);
+  if (exactCity && !/^[A-Z]{3}$/.test(clean)) {
+    return { iata: exactCity.iata, city: exactCity.city, airport: exactCity };
+  }
+
+  // 3. Exact 3-letter IATA lookup (case-insensitive, e.g. "waw" or "FCO")
   if (/^[A-Za-z]{3}$/.test(clean)) {
     const exact = lookupAirport(clean);
     if (exact) {
@@ -106,26 +118,28 @@ export function resolveAirportOrCity(raw?: string): ResolvedLocation | null {
     }
   }
 
-  // 3. Fuzzy match against city/airport name (handles 3-letter cities like "Goa" -> GOI)
+  // 4. Accent-insensitive match against city/airport name (e.g. "Krakow", "Warsaw Modlin")
   const matches = searchAirports(clean, 1);
   if (matches.length > 0) {
     const best = matches[0];
-    const qLower = clean.toLowerCase();
+    const qNorm = normalizeSearchText(clean);
+    const cityNorm = normalizeSearchText(best.city);
+    const nameNorm = normalizeSearchText(best.name);
     if (
-      best.city.toLowerCase().includes(qLower) ||
-      qLower.includes(best.city.toLowerCase()) ||
-      best.name.toLowerCase().includes(qLower)
+      cityNorm.includes(qNorm) ||
+      qNorm.includes(cityNorm) ||
+      nameNorm.includes(qNorm)
     ) {
       return { iata: best.iata, city: best.city, airport: best };
     }
   }
 
-  // 4. Unknown 3-letter IATA code
+  // 5. Unknown 3-letter IATA code
   if (/^[A-Za-z]{3}$/.test(clean)) {
     return { iata: clean.toUpperCase(), city: clean.toUpperCase() };
   }
 
-  // 4. Custom city fallback (e.g. "Udaipur", "Interlaken")
+  // 6. Custom city fallback (e.g. "Coorg", "Interlaken")
   const letters = clean.replace(/[^A-Za-z]/g, '').toUpperCase();
   const pseudoIata = (letters.slice(0, 3) || 'DST').padEnd(3, 'X');
   return { iata: pseudoIata, city: clean };

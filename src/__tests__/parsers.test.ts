@@ -170,14 +170,33 @@ describe('Manual Flight Builder (Lost / Missing Boarding Pass)', () => {
     expect(parsed?.loyaltyProgram).toBe('IndiGo BluChip');
   });
 
-  it('searches bundled offline airports by code and city name', () => {
+  it('searches bundled offline airports by code and city name (including global hubs like Warsaw & Udaipur)', () => {
     const byCode = searchAirports('BLR');
     expect(byCode[0]?.iata).toBe('BLR');
     const byCity = searchAirports('Tokyo');
     expect(byCity.some((a) => a.iata === 'HND')).toBe(true);
-    const custom = resolveAirportOrCity('Udaipur');
-    expect(custom?.iata).toBe('UDA');
-    expect(custom?.city).toBe('Udaipur');
+
+    // Rome -> Warsaw (Poland) & diacritic-insensitive Krakow
+    const warsawHits = searchAirports('Warsaw');
+    expect(warsawHits[0]?.iata).toBe('WAW');
+    expect(warsawHits[0]?.country).toBe('Poland');
+    expect(warsawHits[0]?.flag).toBe('🇵🇱');
+    expect(warsawHits.some((a) => a.iata === 'WMI')).toBe(true);
+
+    expect(resolveAirportOrCity('Warsaw')?.iata).toBe('WAW');
+    expect(resolveAirportOrCity('Rome')?.iata).toBe('FCO');
+    expect(resolveAirportOrCity('Krakow')?.iata).toBe('KRK');
+    expect(resolveAirportOrCity('San Francisco')?.iata).toBe('SFO');
+    expect(resolveAirportOrCity('Los Angeles')?.iata).toBe('LAX');
+    expect(resolveAirportOrCity('New York')?.iata).toBe('JFK');
+
+    // Udaipur is now a real commercial airport (UDR) in the 5,300+ global catalog!
+    expect(resolveAirportOrCity('Udaipur')?.iata).toBe('UDR');
+
+    // Truly non-airport town still falls back gracefully
+    const custom = resolveAirportOrCity('Coorg');
+    expect(custom?.iata).toBe('COO');
+    expect(custom?.city).toBe('Coorg');
   });
 
   it('builds a flight cleanly when user only remembers flight number and date', () => {
@@ -2293,6 +2312,53 @@ describe('v0.6.9 Passport Stamp Formatting & Last-Visited Tracking', () => {
     expect(
       formatCompactFlags([{ flag: '🇮🇳' }, { flag: '🇮🇳' }], '🌍', 3)
     ).toEqual({ flagsText: '🇮🇳', overflowCount: 0 });
+  });
+
+  it('resolves Rome -> Warsaw flight (FCO -> WAW) and stamps Poland in Passport & World Map', () => {
+    const leg1 = buildManualFlight({
+      tripId: 't_eu_pl',
+      flightNumber: 'AZ 769',
+      originInput: 'BLR',
+      destInput: 'Rome',
+      flightDate: '2025-11-05',
+    });
+    const leg2 = buildManualFlight({
+      tripId: 't_eu_pl',
+      flightNumber: 'LO 314',
+      originInput: 'Rome',
+      destInput: 'Warsaw',
+      flightDate: '2025-11-12',
+    });
+
+    expect(leg2.originIata).toBe('FCO');
+    expect(leg2.destIata).toBe('WAW');
+    expect(leg2.airlineName).toBe('LOT Polish Airlines');
+    expect(leg2.distanceMiles).toBeGreaterThan(750);
+
+    const trip: Trip = {
+      id: 't_eu_pl',
+      ownerId: 'local',
+      title: 'Europe Trip',
+      destinationCity: 'Europe',
+      destinationCountry: 'Europe',
+      countryCode: 'EU',
+      flagEmoji: '🇪🇺',
+      startDate: '2025-11-01',
+      endDate: '2025-11-20',
+      budget: 0,
+      homeCurrency: 'INR',
+      vibe: 'city',
+      lat: 48.0,
+      lng: 12.0,
+      coTravelers: [],
+      isShared: false,
+      createdAt: '2025-11-01T00:00:00Z',
+      updatedAt: '2025-11-01T00:00:00Z',
+    };
+
+    const geo = deriveTripGeography(trip, [leg1, leg2], [], []);
+    expect(geo.visitedCountries.some((c) => c.code === 'PL' && c.country === 'Poland' && c.flag === '🇵🇱')).toBe(true);
+    expect(geo.visitedCountries.some((c) => c.code === 'IT' && c.country === 'Italy' && c.flag === '🇮🇹')).toBe(true);
   });
 });
 
