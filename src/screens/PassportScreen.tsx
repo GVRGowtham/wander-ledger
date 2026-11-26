@@ -40,10 +40,10 @@ const DARK_STAMP_STYLES = [
   { border: '#A78BFA', bg: '#221B3E', text: '#C4B5FD', tilt: '5deg' },
 ];
 
-const APPEARANCE_OPTIONS: ReadonlyArray<{ id: ThemePreference; label: string }> = [
-  { id: 'system', label: '📱 System' },
-  { id: 'light', label: '☀️ Light' },
-  { id: 'dark', label: '🌙 Dark' },
+const APPEARANCE_OPTIONS: ReadonlyArray<{ id: ThemePreference; icon: string; label: string }> = [
+  { id: 'system', icon: '📱', label: 'System' },
+  { id: 'light', icon: '☀️', label: 'Light' },
+  { id: 'dark', icon: '🌙', label: 'Dark' },
 ];
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
@@ -795,11 +795,10 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 style={[styles.themePill, active && styles.themePillActive]}
                 activeOpacity={0.85}
               >
+                <Text style={styles.themePillIcon}>{opt.icon}</Text>
                 <Text
                   style={[styles.themePillText, active && styles.themePillTextActive]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.84}
                 >
                   {opt.label}
                 </Text>
@@ -996,10 +995,12 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
     },
     themePill: {
       flex: 1,
+      flexDirection: 'row',
+      gap: 5,
       backgroundColor: COLORS.canvas,
       borderWidth: 1,
       borderColor: COLORS.border,
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
       paddingVertical: 9,
       borderRadius: 99,
       alignItems: 'center',
@@ -1008,6 +1009,10 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
     themePillActive: {
       backgroundColor: COLORS.coral,
       borderColor: COLORS.coral,
+    },
+    themePillIcon: {
+      fontSize: 13,
+      lineHeight: 16,
     },
     themePillText: {
       fontSize: 12,
