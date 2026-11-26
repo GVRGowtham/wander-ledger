@@ -102,21 +102,21 @@ const EARLY_ACCESS_CONFIG = {
     drive: {
       img: 'assets/screen-passport.webp',
       alt: "Wanderer's Ledger Passport screen showing Private Google Drive Backup and Auto Daily Sync",
-      heading: 'Private Google Drive backup — strictly in your own Drive.',
+      heading: 'Completely private to you — stored only in your own Drive.',
       summary:
-        'Stay 100% offline-first with optional personal cloud backup directly to your own hidden Google Drive app folder. Trips, expenses, FX snapshots, and compressed travel photos back up incrementally — with zero developer servers in between.',
+        'Your trips, expenses, and photos stay strictly yours and never pass through our servers. Optional personal backups save directly from your phone into your own hidden Google Drive app folder — giving you full privacy and effortless backup.',
       points: [
+        [
+          'Stored Strictly in Your Google Drive',
+          'Uses only Google’s isolated drive.appdata folder — Wanderer’s Ledger never sees your other Drive files, and your data never touches our servers.',
+        ],
         [
           'Auto Daily Backup & Wi-Fi-Only Full Photos',
           'Enable quiet daily background backups while keeping full photo uploads on Wi-Fi only so roaming cellular data stays safe.',
         ],
         [
-          '1-Tap Restore on a New Phone',
-          'Sign in with Google on a new or reinstalled device to detect your existing backup and restore your entire travelogue in one tap.',
-        ],
-        [
-          'Private App Folder & Instant Cloud Delete',
-          'Uses only Google’s narrow drive.appdata scope — Wanderer’s Ledger never sees your other Drive files, and Delete Cloud Backup works anytime.',
+          '1-Tap Restore & Instant Cloud Delete',
+          'Restore your entire travelogue and photos anytime in one tap, or tap Delete Cloud Backup inside Passport to erase your Drive copy immediately.',
         ],
       ],
     },
