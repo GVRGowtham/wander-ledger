@@ -59,7 +59,7 @@
     <section class="hero" id="story">
       <div class="container hero-grid">
         <div>
-          <p class="hero-eyebrow">Offline-First Pocket Travelogue · v0.6.9</p>
+          <p class="hero-eyebrow">Offline-First Pocket Travelogue · v0.7.2</p>
           <h1>Every mile, every stamp, every memory — kept offline.</h1>
           <p class="hero-lead">
             Trips fade faster than we think — from your first boarding pass to the last sunset photo, Wanderer's Ledger holds your entire journey in one quiet place: private, sunlit, and built to stay with you even at 35,000 feet.
@@ -67,7 +67,7 @@
 
           <div class="hero-cta-row">
             <a href="#early-access" class="btn btn-primary" id="hero-cta-access">Apply for Early Access</a>
-            <a href="Wanderers_Ledger_User_Manual_v0.6.8.pdf" class="btn btn-secondary" id="hero-cta-manual" target="_blank" rel="noopener">
+            <a href="Wanderers_Ledger_User_Manual_v0.7.2.pdf" class="btn btn-secondary" id="hero-cta-manual" target="_blank" rel="noopener">
               Read User Manual (PDF)
             </a>
           </div>
@@ -82,8 +82,8 @@
               <span>On-device OCR &amp; SQLite storage</span>
             </div>
             <div class="fact-item">
-              <strong>Zero Ads &amp; Zero Tracking</strong>
-              <span>Private spend never leaks</span>
+              <strong>Private Google Drive Backup</strong>
+              <span>Optional auto-sync to your own Drive</span>
             </div>
           </div>
         </div>
@@ -122,16 +122,16 @@
         <div class="section-head">
           <p class="section-kicker">Inside the App</p>
           <h2 class="section-title">Everything a trip creates, organized without the busywork.</h2>
-          <p class="section-desc">Tap any chapter below to see how Wanderer's Ledger handles bookings, geography, multi-currency spend, safe sharing, and printable keepsakes.</p>
+          <p class="section-desc">Tap any chapter below to see how Wanderer's Ledger handles bookings, private Google Drive backup, geography, multi-currency spend, and the dedicated Studio tab.</p>
         </div>
 
         <div class="feature-tabs" role="tablist" aria-label="App feature walkthrough tabs">
           <button type="button" class="feature-tab is-active" role="tab" aria-selected="true" data-feature="scan" id="tab-scan">Smart Magic Scan</button>
+          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="drive" id="tab-drive">Google Drive Backup</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="passport" id="tab-passport">Map &amp; Ink Stamps</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="spend" id="tab-spend">Historical FX Spend</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="bookings" id="tab-bookings">Bookings &amp; Maps</button>
-          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="shared" id="tab-shared">Co-Traveler Roles</button>
-          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="keepsake" id="tab-keepsake">Keepsake PDF</button>
+          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="studio" id="tab-studio">Studio &amp; Keepsake PDF</button>
         </div>
 
         <div class="feature-stage" role="tabpanel" id="feature-panel">
@@ -274,24 +274,24 @@ Logged offline with Wanderer's Ledger.
       </div>
     </section>
 
-    <!-- PRIVACY & OFFLINE-FIRST MANIFESTO -->
+    <!-- PRIVACY, OFFLINE-FIRST & GOOGLE DRIVE BACKUP MANIFESTO -->
     <section class="section section-warm" id="privacy-promise">
       <div class="container">
         <div class="manifesto-grid">
           <div class="manifesto-item">
             <div class="manifesto-index">01 / OFFLINE BY DESIGN</div>
             <h3>Built for airplane mode.</h3>
-            <p>Your SQLite journal, PDF rendering, ML Kit OCR, 150+ airport database, historical FX snapshots, local travel reminders, and Keepsake PDF generator all run on your phone without needing signal.</p>
+            <p>Your SQLite journal, PDF rendering, ML Kit OCR, 150+ airport database, historical FX snapshots, local travel reminders, and Studio exports all run on your phone without needing signal.</p>
           </div>
           <div class="manifesto-item">
-            <div class="manifesto-index">02 / ZERO NOISE</div>
-            <h3>No ads, no tracking, no paywalls.</h3>
-            <p>Start logging in seconds with no forced sign-up. Optional portable JSON backups let you carry every trip, flight, stay, and FX snapshot to a new device whenever you like.</p>
+            <div class="manifesto-index">02 / PRIVATE GOOGLE DRIVE BACKUP</div>
+            <h3>Your own Drive. Never our servers.</h3>
+            <p>Optionally back up every trip, expense, FX snapshot, and compressed photo straight to your own hidden Google Drive app folder (<code>drive.appdata</code>) — with Auto Daily Backup, Wi-Fi-only full photo uploads, 1-tap restore on a new phone, and instant Cloud Delete.</p>
           </div>
           <div class="manifesto-item">
             <div class="manifesto-index">03 / SPEND SHIELD</div>
             <h3>Memories share. Receipts never do.</h3>
-            <p>Every Keepsake Magazine PDF, Instagram caption, Family Postcard, and read-only Viewer link automatically strips all fares, budgets, hotel costs, and receipt photos.</p>
+            <p>Every Keepsake Magazine PDF, Instagram Studio collage and caption, and 1-tap Family Postcard automatically strips all fares, budgets, hotel costs, and receipt photos.</p>
           </div>
         </div>
       </div>
@@ -307,16 +307,16 @@ Logged offline with Wanderer's Ledger.
             Android Closed Beta is open on Google Play right now, and our iOS TestFlight waitlist is open too. Drop your details and we'll send your personal invite link directly.
           </p>
           <ul class="access-perks">
-            <li>Private access to the latest Google Play Early Access builds (currently <strong>v0.6.9</strong>).</li>
+            <li>Private access to the latest Google Play Early Access builds (currently <strong>v0.7.2</strong>).</li>
             <li>Shape upcoming features — founding traveler feedback directly guides what ships next.</li>
-            <li>100% free during Early Access with full offline ownership of your journal and JSON exports.</li>
+            <li>100% free during Early Access with full offline ownership and private Google Drive backup.</li>
           </ul>
         </div>
 
         <div class="boarding-card">
           <div class="boarding-top">
             <span>EARLY ACCESS PASS</span>
-            <strong>BUILD v0.6.9</strong>
+            <strong>BUILD v0.7.2</strong>
           </div>
 
           <div class="boarding-body">
@@ -375,7 +375,7 @@ Logged offline with Wanderer's Ledger.
                 We're unlocking early access for you — watch your inbox for your private Google Play invite and be among the first travelers inside.
               </p>
               <div style="margin-top:22px;">
-                <a href="Wanderers_Ledger_User_Manual_v0.6.8.pdf" class="btn btn-secondary" target="_blank" rel="noopener">
+                <a href="Wanderers_Ledger_User_Manual_v0.7.2.pdf" class="btn btn-secondary" target="_blank" rel="noopener">
                   Download 16-Page User Manual (PDF)
                 </a>
               </div>
@@ -389,21 +389,21 @@ Logged offline with Wanderer's Ledger.
     <section class="section section-warm" id="manual">
       <div class="container extras-grid">
         <div class="manual-card">
-          <span class="manual-meta">16-Page Illustrated Guide · A4 PDF · 4.75 MB</span>
+          <span class="manual-meta">16-Page Illustrated Guide · v0.7.2 A4 PDF · 4.8 MB</span>
           <h3>The Complete User Manual</h3>
           <p>
-            Prefer to browse every screen at your own pace? Download the full illustrated manual covering multi-leg flight OCR, Historical FX rates, Keepsake Studio, offline reminders, and portable backups.
+            Prefer to browse every screen at your own pace? Download the updated illustrated manual covering Welcome &amp; 1-tap Drive Restore, multi-leg flight OCR, Historical FX rates, the Studio tab, Keepsake PDFs, and private Google Drive backup.
           </p>
           <ul class="manual-chapters">
-            <li>01 · 60-Second Quick Start</li>
+            <li>01 · Welcome &amp; 1-Tap Drive Restore</li>
             <li>02 · Smart Magic Scan OCR</li>
-            <li>03 · Multi-Hop Routes &amp; Maps</li>
+            <li>03 · Editable Routes, Trains &amp; Maps</li>
             <li>04 · Historical FX &amp; Pay Later</li>
-            <li>05 · Map, Stamps &amp; Reminders</li>
-            <li>06 · 3-Theme Keepsake Studio</li>
+            <li>05 · Passport &amp; Google Drive Backup</li>
+            <li>06 · Studio Tab &amp; Keepsake PDF</li>
           </ul>
           <div class="manual-actions">
-            <a href="Wanderers_Ledger_User_Manual_v0.6.8.pdf" class="btn btn-primary" id="manual-download-btn" target="_blank" rel="noopener">
+            <a href="Wanderers_Ledger_User_Manual_v0.7.2.pdf" class="btn btn-primary" id="manual-download-btn" target="_blank" rel="noopener">
               Download PDF Manual
             </a>
             <a href="#story" class="btn btn-secondary" style="background:rgba(255,255,255,0.1);color:#FFF;border-color:rgba(255,255,255,0.28);">
@@ -414,14 +414,21 @@ Logged offline with Wanderer's Ledger.
 
         <div id="changelog">
           <p class="section-kicker">Actively Built</p>
-          <h2 class="section-title" style="font-size:clamp(26px,3vw,34px);margin-bottom:20px;">What's New &amp; Roadmap</h2>
+          <h2 class="section-title" style="font-size:clamp(26px,3vw,34px);margin-bottom:20px;">What's New &amp; Pipeline</h2>
 
           <div class="changelog-list">
+            <div class="release-row">
+              <span class="release-tag">v0.7.2</span>
+              <div class="release-info">
+                <strong>Private Google Drive Backup, Auto-Sync &amp; Dedicated Studio Tab</strong>
+                <p>Back up and restore your entire travelogue (trips, bookings, spend &amp; full photos) straight to your own hidden Google Drive app folder with Auto Daily Backup, Wi-Fi-only photo uploads, 1-tap restore on Welcome, and a dedicated bottom-bar Studio tab for Keepsake PDFs, IG collages &amp; postcards.</p>
+              </div>
+            </div>
             <div class="release-row">
               <span class="release-tag">v0.6.9</span>
               <div class="release-info">
                 <strong>Editable Trains, Buses &amp; Cars, Year Map Filters &amp; Crisp Passport Stamps</strong>
-                <p>Edit any train, bus, ferry, or car booking (with instant Spend sync), filter your World Map by year with compact multi-country chips, clearer Passport stamps, and smarter bottom-tab navigation.</p>
+                <p>Edit any train, bus, ferry, or car booking (with instant Spend sync), filter your World Map by year with compact multi-country chips, and enjoy clearer Passport ink stamps.</p>
               </div>
             </div>
             <div class="release-row">
@@ -446,10 +453,10 @@ Logged offline with Wanderer's Ledger.
               </div>
             </div>
             <div class="release-row">
-              <span class="release-tag">v0.6.0</span>
+              <span class="release-tag is-upcoming">IN PIPELINE</span>
               <div class="release-info">
-                <strong>Trip Search, Year Filters, Offline Reminders &amp; JSON Restore</strong>
-                <p>Find any trip instantly, schedule local 24h check-in &amp; 3h flight alerts offline, and export/import full portable JSON backups.</p>
+                <strong>Midnight Passport Dark Mode (System / Light / Dark)</strong>
+                <p>A handcrafted warm twilight dark theme with instant System, Light, and Dark switching across every screen, card, form, and modal — currently in final testing and launching next.</p>
               </div>
             </div>
             <div class="release-row">
@@ -499,7 +506,27 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Yes — 100%. Your SQLite trip database, PDF rendering, ML Kit text recognition, barcode scanning, 150+ airport directory, Haversine distance math, cached FX snapshots, local travel reminders, and Keepsake Magazine PDF exports all run directly on your device.
+              Yes — 100%. Signing in with Google is completely optional. Your SQLite trip database, PDF rendering, ML Kit text recognition, barcode scanning, 150+ airport directory, Haversine distance math, cached FX snapshots, local travel reminders, and Studio PDF/collage exports all run directly on your device.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false">
+              <span>How does Google Drive Backup work — can the app see my other Drive files?</span>
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-panel">
+              Never. Wanderer's Ledger uses only Google's restricted hidden app folder (<code>drive.appdata</code>), which is completely isolated from your personal Google Drive files and folders. Your trips, spend snapshots, and compressed photos back up directly from your phone to your own Drive — our developer never sees your data. You can enable Auto Daily Backup, keep full photo uploads on Wi-Fi only, or tap <strong>Delete Cloud Backup</strong> inside Passport anytime.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button type="button" class="faq-trigger" aria-expanded="false">
+              <span>How do I move my trips and photos if I switch phones?</span>
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-panel">
+              Enable <strong>Google Drive Backup</strong> inside the <strong>Passport</strong> tab on your current phone. When you install Wanderer's Ledger on your new phone and tap <strong>Continue with Google</strong>, it automatically detects your personal backup and restores every trip, flight, stay, expense, FX snapshot, and travel photo in one tap.
             </div>
           </div>
 
@@ -509,17 +536,7 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Never. Keepsake Magazine PDFs, Instagram Studio draft captions, Family Postcards, and read-only Viewer co-traveler views strictly exclude every flight fare, hotel price, budget, and receipt thumbnail.
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button type="button" class="faq-trigger" aria-expanded="false">
-              <span>How do I move my trips if I switch phones?</span>
-              <span class="faq-icon" aria-hidden="true">+</span>
-            </button>
-            <div class="faq-panel">
-              Open the Passport tab and tap Export .json to save a portable backup of all your trips, flights, stays, transports, expenses, FX snapshots, and memory metadata — then tap Import .json on your new phone anytime.
+              Never. Every export from the Studio tab — Keepsake Magazine PDFs, Instagram Studio collages and captions, and 1-tap Family Postcards — strictly excludes every flight fare, hotel price, budget, and receipt thumbnail.
             </div>
           </div>
 
@@ -553,7 +570,7 @@ Logged offline with Wanderer's Ledger.
       </div>
       <div class="footer-links">
         <a href="#early-access">Early Access</a>
-        <a href="Wanderers_Ledger_User_Manual_v0.6.8.pdf" target="_blank" rel="noopener">User Manual</a>
+        <a href="Wanderers_Ledger_User_Manual_v0.7.2.pdf" target="_blank" rel="noopener">User Manual</a>
         <a href="privacy.html">Privacy Policy</a>
         <a href="mailto:vg.life.apps@gmail.com">vg.life.apps@gmail.com</a>
       </div>

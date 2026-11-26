@@ -99,24 +99,45 @@ const EARLY_ACCESS_CONFIG = {
         ],
       ],
     },
-    passport: {
+    drive: {
       img: 'assets/screen-passport.webp',
-      alt: "Wanderer's Ledger Digital Passport ink stamps and offline reminders",
-      heading: 'Real ink stamps for places you truly explored.',
+      alt: "Wanderer's Ledger Passport screen showing Private Google Drive Backup and Auto Daily Sync",
+      heading: 'Private Google Drive backup — strictly in your own Drive.',
       summary:
-        'Your World Map draws curved geodesic flight arcs across every trip, while your Digital Passport collects vintage country ink stamps — derived strictly from your logged flights, trains, drives, and city Stops.',
+        'Stay 100% offline-first with optional personal cloud backup directly to your own hidden Google Drive app folder. Trips, expenses, FX snapshots, and compressed travel photos back up incrementally — with zero developer servers in between.',
       points: [
         [
+          'Auto Daily Backup & Wi-Fi-Only Full Photos',
+          'Enable quiet daily background backups while keeping full photo uploads on Wi-Fi only so roaming cellular data stays safe.',
+        ],
+        [
+          '1-Tap Restore on a New Phone',
+          'Sign in with Google on a new or reinstalled device to detect your existing backup and restore your entire travelogue in one tap.',
+        ],
+        [
+          'Private App Folder & Instant Cloud Delete',
+          'Uses only Google’s narrow drive.appdata scope — Wanderer’s Ledger never sees your other Drive files, and Delete Cloud Backup works anytime.',
+        ],
+      ],
+    },
+    passport: {
+      img: 'assets/screen-map.webp',
+      alt: "Wanderer's Ledger World Map with year filters, flight arcs, and transit hubs",
+      heading: 'Real ink stamps & year-filtered maps for places you truly explored.',
+      summary:
+        'Your World Map draws curved geodesic flight arcs across every trip and filters cleanly by year, while your Digital Passport collects crisp vintage country ink stamps derived strictly from logged flights, trains, drives, and city Stops.',
+      points: [
+        [
+          'Year Filters & Compact Multi-Country Chips',
+          'Slice your global footprint by year (All Years, 2026, 2025…) and tap any pin or trip chip to preview highlight quotes and stats.',
+        ],
+        [
           'Short Layovers Stay Separate',
-          'Airside airport connections under 24 hours appear as hollow Transit Hub rings without inflating your country count.',
+          'Airside airport connections under 24 hours appear as hollow Transit Hub rings without inflating your visited country count.',
         ],
         [
-          '100% Offline Travel Reminders',
-          'Optional on-device alerts for 24-hour flight check-in, 3-hour airport departures, and hotel check-in mornings.',
-        ],
-        [
-          'Portable .json Backup & Loyalty Vault',
-          'Export or import your entire travelogue offline anytime, and watch airline miles accumulate automatically.',
+          '100% Offline Travel Reminders & Miles Vault',
+          'Optional on-device alerts for 24-hour flight check-in, 3-hour departures, and hotel mornings — plus automatic airline miles tracking.',
         ],
       ],
     },
@@ -143,18 +164,18 @@ const EARLY_ACCESS_CONFIG = {
     },
     bookings: {
       img: 'assets/screen-bookings.webp',
-      alt: "Wanderer's Ledger chronological Bookings timeline with Google Maps",
-      heading: 'Every flight, train, drive & hotel in one timeline.',
+      alt: "Wanderer's Ledger chronological Bookings timeline with editable trains and Google Maps",
+      heading: 'Every flight, train, drive & hotel in one editable timeline.',
       summary:
-        'See your entire journey unfold chronologically from departure to return — with connecting flights stitched cleanly together and every hotel card one tap away from Google Maps directions.',
+        'See your entire journey unfold chronologically from departure to return — with connecting flights stitched cleanly together, editable trains, buses, cars, and stays, and 1-tap Google Maps navigation.',
       points: [
         [
           'Revisit-Preserving Multi-Hop Routes',
           'Connecting layovers stitch cleanly (BOM → ZRH via DXB) while hub-and-spoke city revisits stay in exact travel order.',
         ],
         [
-          'Editable Stay Locations & Address Lookup',
-          'Edit any saved stay anytime with zero-cost OpenStreetMap address lookup or verify directly on Google Maps.',
+          'Editable Trains, Buses, Cars & Stays',
+          'Tap Edit on any transport or hotel card to adjust dates, routes, or cost (with instant Spend sync) and free OpenStreetMap address lookup.',
         ],
         [
           '1-Tap Google Maps Directions',
@@ -162,45 +183,24 @@ const EARLY_ACCESS_CONFIG = {
         ],
       ],
     },
-    shared: {
-      img: 'assets/screen-shared.webp',
-      alt: "Wanderer's Ledger co-traveler Editor/Viewer roles and family postcards",
-      heading: 'Co-log trips together without exposing personal bills.',
+    studio: {
+      img: 'assets/screen-studio.webp',
+      alt: "Wanderer's Ledger dedicated Studio tab with IG Studio, Keepsake PDF Book, and Postcard actions",
+      heading: 'One dedicated Studio tab for every spend-free keepsake.',
       summary:
-        'Cleanly separate collaborative Co-Traveler trips from one-tap Family Postcards — with built-in role permissions that keep your private spending strictly on your device.',
+        'Browse every trip from the new bottom-bar Studio tab and craft a printable 3-theme A4 Keepsake Magazine PDF, a 1080p Instagram collage or Story, or a 1-tap Family Postcard — 100% offline with zero prices ever shown.',
       points: [
         [
-          'Editor vs. Read-Only Viewer Roles',
-          'Editors co-log Polaroids, bookings, and Shared group expenses; Viewers browse Memories & Bookings with Spend hidden.',
+          '3-Theme Printable A4 Keepsake Books',
+          'Switch between Magazine, Art Book, and Passport folios with 1:1 WYSIWYG drag-and-zoom cover framing.',
         ],
         [
-          'Personal vs. Shared Expense Split',
-          'Mark shared hotel rooms or group dinners as Shared while keeping flights and shopping strictly Personal.',
+          '1080p Instagram Studio & Spend-Free Captions',
+          'Build 4:5 Feed collages, 9:16 Stories, and Carousels paired with offline captions that never mention fares or budgets.',
         ],
         [
-          'One-Tap Family Postcards',
-          'Share clean trip snapshots with parents and friends without ever sending boarding numbers or receipts.',
-        ],
-      ],
-    },
-    keepsake: {
-      img: 'assets/screen-keepsake.webp',
-      alt: "Wanderer's Ledger Keepsake Magazine A4 PDF Studio screen",
-      heading: 'Turn any journey into a printable A4 travel book.',
-      summary:
-        'When the trip wraps up, craft a timeless A4 PDF travelogue right on your phone — with three complete end-to-end themes, 1:1 WYSIWYG drag-and-zoom covers, grouped boarding passes, and Polaroid spreads.',
-      points: [
-        [
-          'Three Complete End-to-End Themes',
-          'Switch between Magazine, Art Book, and Passport folios — styling covers, headers, stamps, and memory pages cohesively.',
-        ],
-        [
-          '1:1 WYSIWYG Cover Framing',
-          'Drag and pinch-zoom your favorite cover photo so the exported A4 PDF matches your preview down to the pixel.',
-        ],
-        [
-          '100% Offline & Spend-Free Forever',
-          'Every fare, hotel bill, budget, and receipt is automatically left out — ready to print or gift to family.',
+          '1-Tap Family Postcards',
+          'Share crisp route & photo postcards straight to WhatsApp or Messages in a single tap — guaranteed receipt-free.',
         ],
       ],
     },
