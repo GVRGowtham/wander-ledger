@@ -125,19 +125,19 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger World Map with year filters, flight arcs, and transit hubs",
       heading: 'Real ink stamps & year-filtered maps for places you truly explored.',
       summary:
-        'Your World Map draws curved geodesic flight arcs across every trip and filters cleanly by year, while your Digital Passport collects crisp vintage country ink stamps derived strictly from logged flights, trains, drives, and city Stops.',
+        'Your World Map draws curved geodesic flight arcs across 5,333 commercial airports and 249 countries completely offline, while your Digital Passport collects crisp vintage country ink stamps from logged flights, trains, drives, and city Stops.',
       points: [
         [
-          'Year Filters & Compact Multi-Country Chips',
-          'Slice your global footprint by year (All Years, 2026, 2025…) and tap any pin or trip chip to preview highlight quotes and stats.',
+          '5,333 Airports, 249 Countries & Year Map Filters',
+          'Accent-insensitive offline search covers 988 airlines and airports worldwide, while your World Map filters cleanly by year with compact multi-country chips.',
         ],
         [
           'Short Layovers Stay Separate',
           'Airside airport connections under 24 hours appear as hollow Transit Hub rings without inflating your visited country count.',
         ],
         [
-          '100% Offline Travel Reminders & Miles Vault',
-          'Optional on-device alerts for 24-hour flight check-in, 3-hour departures, and hotel mornings — plus automatic airline miles tracking.',
+          'Midnight Passport Dark Mode & Offline Alerts',
+          'Switch instantly between Paper Light, Midnight Dark, or Follow System across every screen — plus offline departure reminders and automatic miles tracking.',
         ],
       ],
     },
