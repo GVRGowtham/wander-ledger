@@ -1466,16 +1466,269 @@ button, input, select {
 }
 
 /* --------------------------------------------------------------------------
+   3-Step "How It Works" Strip
+   -------------------------------------------------------------------------- */
+.how-strip {
+  padding: 52px 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.how-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.how-head h2 {
+  font-family: var(--font-display);
+  font-size: clamp(24px, 2.8vw, 32px);
+  color: var(--navy);
+  letter-spacing: -0.02em;
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.how-step {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.how-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--coral);
+  letter-spacing: 0.1em;
+}
+
+.how-step h3 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--navy);
+  letter-spacing: -0.015em;
+}
+
+.how-step p {
+  font-size: 14.5px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+/* --------------------------------------------------------------------------
+   Interactive Light / Midnight Dark Showcase (Idea A)
+   -------------------------------------------------------------------------- */
+.appearance-showcase {
+  border-radius: var(--radius-lg);
+  padding: 44px;
+  border: 1px solid var(--line);
+  background: linear-gradient(145deg, #FFFFFF 0%, #FBF5EC 100%);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 48px;
+  align-items: center;
+  transition: background 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.45s ease,
+    box-shadow 0.45s ease,
+    color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] {
+  background: linear-gradient(145deg, #0B0F1A 0%, #131A2B 52%, #1D2542 100%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 28px 64px rgba(9, 13, 22, 0.34);
+}
+
+.appearance-kicker {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--coral);
+  margin-bottom: 12px;
+  transition: color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-kicker {
+  color: #FBBF24;
+}
+
+.appearance-title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--navy);
+  margin-bottom: 14px;
+  transition: color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-title {
+  color: #F8FAFC;
+}
+
+.appearance-desc {
+  font-size: 15.5px;
+  line-height: 1.66;
+  color: var(--ink-muted);
+  margin-bottom: 24px;
+  transition: color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-desc {
+  color: #CBD5E1;
+}
+
+.mode-switch {
+  display: inline-flex;
+  padding: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-warm);
+  border: 1px solid var(--line-strong);
+  gap: 6px;
+  margin-bottom: 24px;
+  transition: background-color 0.35s ease, border-color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .mode-switch {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.mode-switch-btn {
+  border: none;
+  background: transparent;
+  padding: 10px 20px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.mode-switch-btn.is-active {
+  background: var(--navy);
+  color: #FFFFFF;
+  box-shadow: 0 6px 16px rgba(27, 35, 64, 0.22);
+}
+
+.appearance-showcase[data-mode="dark"] .mode-switch-btn {
+  color: #94A3B8;
+}
+
+.appearance-showcase[data-mode="dark"] .mode-switch-btn.is-active {
+  background: #F59E0B;
+  color: #0B0F1A;
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.32);
+}
+
+.appearance-bullets {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.appearance-bullets li {
+  font-size: 14.5px;
+  color: var(--ink-muted);
+  padding-left: 22px;
+  position: relative;
+  line-height: 1.55;
+  transition: color 0.35s ease;
+}
+
+.appearance-bullets li::before {
+  content: '✦';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--coral);
+  font-size: 12px;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-bullets li {
+  color: #E2E8F0;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-bullets li::before {
+  color: #FBBF24;
+}
+
+.appearance-phone-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.appearance-phone {
+  width: min(296px, 100%);
+  background: #0B0F1A;
+  border-radius: 38px;
+  padding: 10px;
+  box-shadow: var(--shadow-phone);
+  transition: box-shadow 0.45s ease, transform 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-phone {
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.65), 0 0 0 1.5px rgba(251, 191, 36, 0.34);
+}
+
+.appearance-phone img {
+  width: 100%;
+  border-radius: 29px;
+  transition: opacity 0.18s ease;
+}
+
+.appearance-caption {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  transition: color 0.35s ease;
+}
+
+.appearance-showcase[data-mode="dark"] .appearance-caption {
+  color: #94A3B8;
+}
+
+/* --------------------------------------------------------------------------
    Responsive Breakpoints (Mobile-First Polish)
    -------------------------------------------------------------------------- */
 @media (max-width: 960px) {
   .hero-grid,
+  .how-grid,
   .feature-stage,
+  .appearance-showcase,
   .studio-stage,
   .access-grid,
   .extras-grid {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  .appearance-showcase {
+    padding: 28px 20px;
   }
 
   .hero {
@@ -1549,6 +1802,18 @@ button, input, select {
   .theme-btn {
     padding: 7px 12px;
     font-size: 12.5px;
+  }
+
+  .mode-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mode-switch-btn {
+    flex: 1;
+    padding: 9px 12px;
+    font-size: 13px;
+    text-align: center;
   }
 
   .ig-card[data-format="collage"] {

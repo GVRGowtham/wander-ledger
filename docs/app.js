@@ -74,7 +74,7 @@ const EARLY_ACCESS_CONFIG = {
 })();
 
 /* --------------------------------------------------------------------------
-   3. Interactive 5-Tab Feature Explorer
+   3. Interactive 6-Tab Feature Explorer
    -------------------------------------------------------------------------- */
 (function initFeatureTabs() {
   const FEATURES = {
@@ -83,32 +83,32 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger Smart Magic Scan multi-leg review screen",
       heading: 'Share one PDF. Every leg falls into place.',
       summary:
-        'Forward multi-page airline e-tickets, hotel vouchers, train tickets, or restaurant receipts straight from Gmail or WhatsApp. On-device ML Kit OCR reads routes, times, addresses, and totals offline — with every field editable before you save.',
+        'Forward multi-page airline e-tickets, hotel vouchers, train tickets, or restaurant receipts straight from Gmail or WhatsApp. Built-in offline scanning reads routes, times, hotel locations, and totals right on your phone — with every field editable before you save.',
       points: [
         [
-          'Multi-Leg & Open-Jaw Flight PDFs',
-          'Splits 4-leg itineraries into individual chronological flights while creating only one combined Spend entry.',
+          'Multi-City & Connecting Flight PDFs',
+          'Splits 4-flight itineraries — even flying into one city and home from another — into clean chronological flights while creating only one combined Spend entry.',
         ],
         [
-          'Clean Hotel Name & Address Extraction',
-          'Extracts real property names and PIN-code addresses while ignoring greetings and boilerplate disclaimers.',
+          'Clean Hotel Names & One-Click Google Maps Navigation',
+          'Pulls out real property names and locations without email clutter, ready for one-click Google Maps navigation.',
         ],
         [
-          '1-Tap Amount Chips & Auto HH:MM',
-          'Swap between Base Fare and Grand Total in a tap, and type 4 digits to auto-format departure times cleanly.',
+          'Quick Fare Picker & Easy Time Entry',
+          'Switch between Base Fare and Grand Total in one tap, and type 4 digits like 0915 to auto-format departure times cleanly.',
         ],
       ],
     },
     drive: {
       img: 'assets/screen-passport.webp',
-      alt: "Wanderer's Ledger Passport screen showing Private Google Drive Backup and Auto Daily Sync",
+      alt: "Wanderer's Ledger Passport screen showing Private Google Drive Backup and Appearance switcher",
       heading: 'Completely private to you — stored only in your own Drive.',
       summary:
-        'Your trips, expenses, and photos stay strictly yours and never pass through our servers. Optional personal backups save directly from your phone into your own hidden Google Drive app folder — giving you full privacy and effortless backup.',
+        'Your trips, expenses, and photos stay strictly yours and never pass through our servers. Optional personal backups save directly from your phone into Google Drive’s private hidden app folder — giving you full privacy and effortless backup.',
       points: [
         [
           'Stored Strictly in Your Google Drive',
-          'Uses only Google’s isolated drive.appdata folder — Wanderer’s Ledger never sees your other Drive files, and your data never touches our servers.',
+          'Uses only Google Drive’s isolated hidden app folder — Wanderer’s Ledger never sees your other Drive files, and your data never touches our servers.',
         ],
         [
           'Auto Daily Backup & Wi-Fi-Only Full Photos',
@@ -122,14 +122,14 @@ const EARLY_ACCESS_CONFIG = {
     },
     passport: {
       img: 'assets/screen-map.webp',
-      alt: "Wanderer's Ledger World Map with year filters, flight arcs, and transit hubs",
+      alt: "Wanderer's Ledger World Map with year filters, flight paths, and transit hubs",
       heading: 'Real ink stamps & year-filtered maps for places you truly explored.',
       summary:
-        'Your World Map draws curved geodesic flight arcs across 5,333 commercial airports and 249 countries completely offline, while your Digital Passport collects crisp vintage country ink stamps from logged flights, trains, drives, and city Stops.',
+        'Your World Map draws sweeping flight paths across 5,333 airports and 249 countries completely offline, while your Digital Passport collects crisp vintage country ink stamps earned from the places you actually visit.',
       points: [
         [
           '5,333 Airports, 249 Countries & Year Map Filters',
-          'Offline search covers 5,333 airports, 249 countries, and 988 airlines worldwide, while your World Map filters cleanly by year with compact multi-country chips.',
+          'Offline search covers 5,333 airports, 249 countries, and 988 airlines worldwide, while your World Map filters cleanly by year with quick trip summaries.',
         ],
         [
           'Short Layovers Stay Separate',
@@ -143,22 +143,22 @@ const EARLY_ACCESS_CONFIG = {
     },
     spend: {
       img: 'assets/screen-spend.webp',
-      alt: "Wanderer's Ledger unified multi-currency spend ledger with historical FX",
+      alt: "Wanderer's Ledger multi-currency spend ledger locked to payment date exchange rates",
       heading: 'Private multi-currency spend, locked to the day you paid.',
       summary:
-        'Log meals, trains, hotels, and tickets in CHF, EUR, JPY, USD, or INR. Wanderer’s Ledger converts everything into your Home Currency using historical date-locked FX snapshots stored right on your phone.',
+        'Log meals, trains, hotels, and tickets in CHF, EUR, JPY, USD, or INR. Wanderer’s Ledger converts everything into your Home Currency using the exchange rate from the day you paid — saved right on your phone.',
       points: [
         [
           'Bookings Auto-Sync With Zero Duplication',
           'Priced trains, buses, ferries, rentals, and hotel stays logged in Bookings automatically flow into Spend.',
         ],
         [
-          'Historical FX & Optional Pay Later',
+          'Date-Locked Rates & Optional Pay Later',
           'Prepaid bookings lock to their payment date; toggle Pay Later on check-in hotels to track live rates until arrival.',
         ],
         [
           'Instant Currency Switch & CSV Export',
-          'Change your Home Currency in Passport to re-calculate every trip live, or export clean CSV spreadsheets anytime.',
+          'Change your Home Currency in Passport to recalculate every trip live, or export clean CSV spreadsheets anytime.',
         ],
       ],
     },
@@ -167,19 +167,19 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger chronological Bookings timeline with editable trains and Google Maps",
       heading: 'Every flight, train, drive & hotel in one editable timeline.',
       summary:
-        'See your entire journey unfold chronologically from departure to return — with connecting flights stitched cleanly together, editable trains, buses, cars, and stays, and 1-tap Google Maps navigation.',
+        'See your entire journey unfold chronologically from departure to return — with connecting flights grouped cleanly together, editable trains, buses, cars, and stays, and one-click Google Maps navigation.',
       points: [
         [
-          'Revisit-Preserving Multi-Hop Routes',
-          'Connecting layovers stitch cleanly (BOM → ZRH via DXB) while hub-and-spoke city revisits stay in exact travel order.',
+          'Smart Connecting & Multi-City Routes',
+          'Connecting layovers stay neatly grouped (BOM → ZRH via DXB) while multi-city loops keep every stop in exact travel order.',
         ],
         [
           'Editable Trains, Buses, Cars & Stays',
-          'Tap Edit on any transport or hotel card to adjust dates, routes, or cost (with instant Spend sync) and free OpenStreetMap address lookup.',
+          'Tap Edit on any transport or hotel card to adjust dates, routes, or cost (with instant Spend sync) plus built-in hotel address search.',
         ],
         [
-          '1-Tap Google Maps Directions',
-          'Tap Maps on any stay card while traveling to launch native turn-by-turn navigation instantly.',
+          'One-Click Google Maps Navigation',
+          'Tap Maps on any stay card while traveling to launch turn-by-turn Google Maps directions instantly.',
         ],
       ],
     },
@@ -188,11 +188,11 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger dedicated Studio tab with IG Studio, Keepsake PDF Book, and Postcard actions",
       heading: 'One dedicated Studio tab for every spend-free keepsake.',
       summary:
-        'Browse every trip from the new bottom-bar Studio tab and craft a printable 3-theme A4 Keepsake Magazine PDF, a 1080p Instagram collage or Story, or a 1-tap Family Postcard — 100% offline with zero prices ever shown.',
+        'Browse every trip from the dedicated Studio tab and craft a printable 3-theme A4 Keepsake Magazine PDF, a 1080p Instagram collage or Story, or a 1-tap Family Postcard — 100% offline with zero prices ever shown.',
       points: [
         [
           '3-Theme Printable A4 Keepsake Books',
-          'Switch between Magazine, Art Book, and Passport folios with 1:1 WYSIWYG drag-and-zoom cover framing.',
+          'Switch between Magazine, Art Book, and Passport folios with drag-and-zoom cover framing that prints exactly as previewed.',
         ],
         [
           '1080p Instagram Studio & Spend-Free Captions',
@@ -246,6 +246,53 @@ const EARLY_ACCESS_CONFIG = {
           </li>`
         )
         .join('');
+    });
+  });
+})();
+
+/* --------------------------------------------------------------------------
+   3b. Interactive Light / Midnight Dark Mode Showcase (Idea A)
+   -------------------------------------------------------------------------- */
+(function initAppearanceShowcase() {
+  const card = document.getElementById('appearance-showcase');
+  const btns = document.querySelectorAll('.mode-switch-btn');
+  const img = document.getElementById('appearance-phone-img');
+  const caption = document.getElementById('appearance-caption');
+  if (!card || !btns.length || !img) return;
+
+  const MODES = {
+    light: {
+      src: 'assets/screen-trips.webp',
+      alt: "Wanderer's Ledger Trips Hub in Sunlit Light Mode",
+      caption: 'SUNLIT LIGHT MODE · CRISP IN DAYLIGHT',
+    },
+    dark: {
+      src: 'assets/screen-trips-dark.webp',
+      alt: "Wanderer's Ledger Trips Hub in Midnight Dark Mode",
+      caption: 'MIDNIGHT DARK MODE · EASY ON YOUR EYES AT NIGHT',
+    },
+  };
+
+  btns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-mode') === 'light' ? 'light' : 'dark';
+      const data = MODES[mode];
+      card.setAttribute('data-mode', mode);
+
+      btns.forEach((b) => {
+        const active = b === btn;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-pressed', String(active));
+      });
+
+      img.style.opacity = '0.35';
+      setTimeout(() => {
+        img.src = data.src;
+        img.alt = data.alt;
+        img.style.opacity = '1';
+      }, 110);
+
+      if (caption) caption.textContent = data.caption;
     });
   });
 })();

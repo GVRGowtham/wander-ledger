@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Wanderer's Ledger — Offline-First Pocket Travelogue &amp; Journey Journal</title>
-  <meta name="description" content="Scan multi-leg flight PDFs offline, collect real country passport ink stamps, track private multi-currency spend with historical FX, and export printable Keepsake Magazine PDFs." />
+  <meta name="description" content="Scan multi-leg flight PDFs offline across 5,333 global airports, collect real country passport ink stamps, track private multi-currency spend, switch between Light &amp; Midnight Dark Mode, and print Keepsake Magazine PDFs." />
 
   <!-- Open Graph / WhatsApp / Social Preview -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://wanderers-ledger.web.app/" />
   <meta property="og:title" content="Wanderer's Ledger — Every mile, every stamp, every memory." />
-  <meta property="og:description" content="Your sunlit, offline-first pocket travelogue. Scan bookings offline, earn real passport stamps, keep spend private &amp; print A4 travel magazines." />
+  <meta property="og:description" content="Your offline-first pocket travelogue in Light &amp; Midnight Dark Mode. Scan bookings offline across 5,333 airports, earn real passport stamps, keep spend private &amp; print travel magazines." />
   <meta property="og:image" content="https://wanderers-ledger.web.app/assets/og-preview.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Wanderer's Ledger — Offline-First Pocket Travelogue" />
-  <meta name="twitter:description" content="Scan flights &amp; hotels offline, collect vintage passport ink stamps, track private historical-FX spend, and craft printable Keepsake Magazines." />
+  <meta name="twitter:description" content="Scan flights &amp; hotels offline across 5,333 airports, collect vintage passport ink stamps, switch between Light &amp; Midnight Dark, and craft printable Keepsake Magazines." />
   <meta name="twitter:image" content="https://wanderers-ledger.web.app/assets/og-preview.png" />
 
   <link rel="icon" type="image/png" href="assets/favicon.png" />
@@ -37,9 +37,9 @@
 
       <nav class="nav-links" id="primary-nav" aria-label="Primary Navigation">
         <a href="#features">Features</a>
+        <a href="#dark-mode">Dark Mode</a>
         <a href="#studio">Instagram Studio</a>
         <a href="#manual">User Manual</a>
-        <a href="#changelog">What's New</a>
         <a href="#faq">FAQ</a>
       </nav>
 
@@ -62,7 +62,7 @@
           <p class="hero-eyebrow">Offline-First Pocket Travelogue · v0.8.0</p>
           <h1>Every mile, every stamp, every memory — kept offline.</h1>
           <p class="hero-lead">
-            Trips fade faster than we think — from your first boarding pass to the last sunset photo, Wanderer's Ledger holds your entire journey in one quiet place: private, sunlit, and built to stay with you even at 35,000 feet.
+            Trips fade faster than we think — from your first boarding pass to the last sunset photo, Wanderer's Ledger holds your entire journey in one quiet place: private, crafted for day or night, and built to stay with you even at 35,000 feet.
           </p>
 
           <div class="hero-cta-row">
@@ -79,7 +79,7 @@
             </div>
             <div class="fact-item">
               <strong>100% Offline-First</strong>
-              <span>On-device OCR &amp; SQLite storage</span>
+              <span>5,333 airports &amp; 249 countries — no signal needed</span>
             </div>
             <div class="fact-item">
               <strong>Private Google Drive Backup</strong>
@@ -116,6 +116,32 @@
       </div>
     </section>
 
+    <!-- 3-STEP HOW IT WORKS STRIP -->
+    <section class="how-strip" id="how-it-works" aria-label="How Wanderer's Ledger works">
+      <div class="container">
+        <div class="how-head">
+          <h2>From scattered tickets to a finished travelogue in three steps.</h2>
+        </div>
+        <div class="how-grid">
+          <div class="how-step">
+            <span class="how-num">STEP 01</span>
+            <h3>Forward any ticket or receipt</h3>
+            <p>Share flight PDFs, hotel confirmations, train tickets, or meal bills straight from Gmail or WhatsApp — scanned privately on your phone, even offline.</p>
+          </div>
+          <div class="how-step">
+            <span class="how-num">STEP 02</span>
+            <h3>Watch your journey assemble itself</h3>
+            <p>Your timeline, World Map paths, country passport ink stamps, and private multi-currency spend all organize automatically with zero busywork.</p>
+          </div>
+          <div class="how-step">
+            <span class="how-num">STEP 03</span>
+            <h3>Keep it private, or share the story</h3>
+            <p>Back up to your own private Google Drive anytime, and turn your favorite memories into a printable Keepsake Magazine or Instagram Story — with every price left out.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- INTERACTIVE 6-TAB FEATURE EXPLORER -->
     <section class="section section-warm" id="features">
       <div class="container">
@@ -129,7 +155,7 @@
           <button type="button" class="feature-tab is-active" role="tab" aria-selected="true" data-feature="scan" id="tab-scan">Smart Magic Scan</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="drive" id="tab-drive">Google Drive Backup</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="passport" id="tab-passport">Map &amp; Ink Stamps</button>
-          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="spend" id="tab-spend">Historical FX Spend</button>
+          <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="spend" id="tab-spend">Multi-Currency Spend</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="bookings" id="tab-bookings">Bookings &amp; Maps</button>
           <button type="button" class="feature-tab" role="tab" aria-selected="false" data-feature="studio" id="tab-studio">Studio &amp; Keepsake PDF</button>
         </div>
@@ -144,28 +170,28 @@
           <div class="feature-copy">
             <h3 id="feature-heading">Share one PDF. Every leg falls into place.</h3>
             <p id="feature-summary">
-              Forward multi-page airline e-tickets, hotel vouchers, train tickets, or restaurant receipts straight from Gmail or WhatsApp. On-device ML Kit OCR reads routes, times, addresses, and totals offline — with every field editable before you save.
+              Forward multi-page airline e-tickets, hotel vouchers, train tickets, or restaurant receipts straight from Gmail or WhatsApp. Built-in offline scanning reads routes, times, hotel locations, and totals right on your phone — with every field editable before you save.
             </p>
             <ul class="feature-points" id="feature-points">
               <li>
                 <span class="pt-num">01</span>
                 <div>
-                  <strong>Multi-Leg &amp; Open-Jaw Flight PDFs</strong>
-                  <span>Splits 4-leg itineraries into individual chronological flights while creating only one combined Spend entry.</span>
+                  <strong>Multi-City &amp; Connecting Flight PDFs</strong>
+                  <span>Splits 4-flight itineraries — even flying into one city and home from another — into clean chronological flights while creating only one combined Spend entry.</span>
                 </div>
               </li>
               <li>
                 <span class="pt-num">02</span>
                 <div>
-                  <strong>Clean Hotel Name &amp; Address Extraction</strong>
-                  <span>Extracts real property names and PIN-code addresses while ignoring greetings and boilerplate disclaimers.</span>
+                  <strong>Clean Hotel Names &amp; One-Click Google Maps Navigation</strong>
+                  <span>Pulls out real property names and locations without email clutter, ready for one-click Google Maps navigation.</span>
                 </div>
               </li>
               <li>
                 <span class="pt-num">03</span>
                 <div>
-                  <strong>1-Tap Amount Chips &amp; Auto HH:MM</strong>
-                  <span>Swap between Base Fare and Grand Total in a tap, and type 4 digits to auto-format departure times cleanly.</span>
+                  <strong>Quick Fare Picker &amp; Easy Time Entry</strong>
+                  <span>Switch between Base Fare and Grand Total in one tap, and type 4 digits like 0915 to auto-format departure times cleanly.</span>
                 </div>
               </li>
             </ul>
@@ -174,8 +200,41 @@
       </div>
     </section>
 
+    <!-- INTERACTIVE LIGHT / MIDNIGHT DARK SHOWCASE (IDEA A) -->
+    <section class="section" id="dark-mode">
+      <div class="container">
+        <div class="appearance-showcase" id="appearance-showcase" data-mode="dark">
+          <div>
+            <p class="appearance-kicker">New in v0.8.0 · Appearance</p>
+            <h2 class="appearance-title">Sunlit by day. Midnight by night.</h2>
+            <p class="appearance-desc">
+              Tap the switch below to preview both looks. Whether you're journaling in a sunny café or checking your gate on a red-eye flight, choose Light Mode, Midnight Dark Mode, or match your phone's theme automatically.
+            </p>
+
+            <div class="mode-switch" role="group" aria-label="Preview app appearance mode">
+              <button type="button" class="mode-switch-btn" data-mode="light" aria-pressed="false" id="mode-btn-light">☀️ Light Mode</button>
+              <button type="button" class="mode-switch-btn is-active" data-mode="dark" aria-pressed="true" id="mode-btn-dark">🌙 Midnight Dark</button>
+            </div>
+
+            <ul class="appearance-bullets">
+              <li><strong>Gentle on cabin lights-off flights:</strong> Deep twilight surfaces with warm amber highlights reduce glare at night.</li>
+              <li><strong>Automatic or manual:</strong> Match your phone's system schedule, or lock Light or Dark anytime inside Passport.</li>
+              <li><strong>Print exports stay crisp:</strong> Switching to Dark Mode never darkens your printable Keepsake Magazine PDFs or postcards.</li>
+            </ul>
+          </div>
+
+          <div class="appearance-phone-col">
+            <div class="appearance-phone">
+              <img id="appearance-phone-img" src="assets/screen-trips-dark.webp" alt="Wanderer's Ledger Trips Hub in Midnight Dark Mode" width="520" height="1125" />
+            </div>
+            <span class="appearance-caption" id="appearance-caption">MIDNIGHT DARK MODE · EASY ON YOUR EYES AT NIGHT</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- INTERACTIVE INSTAGRAM STUDIO -->
-    <section class="section" id="studio">
+    <section class="section section-warm" id="studio">
       <div class="container">
         <div class="section-head">
           <p class="section-kicker">Instagram Studio</p>
@@ -275,18 +334,18 @@ Logged offline with Wanderer's Ledger.
     </section>
 
     <!-- PRIVACY, OFFLINE-FIRST & GOOGLE DRIVE BACKUP MANIFESTO -->
-    <section class="section section-warm" id="privacy-promise">
+    <section class="section" id="privacy-promise">
       <div class="container">
         <div class="manifesto-grid">
           <div class="manifesto-item">
             <div class="manifesto-index">01 / OFFLINE BY DESIGN</div>
             <h3>Built for airplane mode.</h3>
-            <p>Your SQLite journal, PDF rendering, ML Kit OCR, 5,333-airport, 249-country &amp; 988-airline database, historical FX snapshots, local travel reminders, and Studio exports all run on your phone without needing signal.</p>
+            <p>Your entire journal, ticket scanner, 5,333-airport &amp; 249-country directory, flight distance tracker, saved exchange rates, travel reminders, and Studio exports all run right on your phone without needing signal.</p>
           </div>
           <div class="manifesto-item">
             <div class="manifesto-index">02 / COMPLETE DATA PRIVACY</div>
             <h3>Your memories belong only to you.</h3>
-            <p>Your travel data never passes through our servers. Everything stays completely private on your device — with optional backups stored strictly inside your own hidden Google Drive app folder (<code>drive.appdata</code>), complete with Auto Daily Backup, Wi-Fi-only photo uploads, and instant Cloud Delete.</p>
+            <p>Your travel data never passes through our servers. Everything stays completely private on your device — with optional backups stored strictly inside Google Drive's private hidden app folder, complete with Auto Daily Backup, Wi-Fi-only photo uploads, and instant Cloud Delete.</p>
           </div>
           <div class="manifesto-item">
             <div class="manifesto-index">03 / SPEND SHIELD</div>
@@ -298,7 +357,7 @@ Logged offline with Wanderer's Ledger.
     </section>
 
     <!-- NATIVE EARLY ACCESS APPLICATION (GOOGLE FORMS BACKEND, ZERO GOOGLE FEEL) -->
-    <section class="section" id="early-access">
+    <section class="section section-warm" id="early-access">
       <div class="container access-grid">
         <div>
           <p class="section-kicker">Early Access · Open Now</p>
@@ -386,20 +445,20 @@ Logged offline with Wanderer's Ledger.
     </section>
 
     <!-- USER MANUAL + WHAT'S NEW CHANGELOG & ROADMAP -->
-    <section class="section section-warm" id="manual">
+    <section class="section" id="manual">
       <div class="container extras-grid">
         <div class="manual-card">
           <span class="manual-meta">17-Page Illustrated Guide · v0.8.0 A4 PDF · 5.2 MB</span>
           <h3>The Complete User Manual</h3>
           <p>
-            Prefer to browse every screen at your own pace? Download the updated illustrated manual covering Welcome &amp; 1-tap Drive Restore, 5,333-airport offline OCR, Historical FX rates, Midnight Passport Dark Mode, private Google Drive backup, and the Studio tab.
+            Prefer to browse every screen at your own pace? Download the updated illustrated manual covering Welcome &amp; 1-tap Drive Restore, offline ticket scanning across 5,333 airports, automatic currency conversion, Midnight Dark Mode, private Google Drive backup, and the Studio tab.
           </p>
           <ul class="manual-chapters">
             <li>01 · Welcome &amp; 1-Tap Drive Restore</li>
             <li>02 · Smart Magic Scan &amp; Global Airports</li>
-            <li>03 · Routes, Stays &amp; Historical FX</li>
+            <li>03 · Routes, Stays &amp; Multi-Currency Spend</li>
             <li>04 · Passport &amp; Google Drive Backup</li>
-            <li>05 · Midnight Passport Dark Mode</li>
+            <li>05 · Midnight Dark Mode</li>
             <li>06 · Studio Tab &amp; Keepsake PDF</li>
           </ul>
           <div class="manual-actions">
@@ -428,28 +487,28 @@ Logged offline with Wanderer's Ledger.
               <span class="release-tag">v0.7.2</span>
               <div class="release-info">
                 <strong>Private Google Drive Backup, Auto-Sync &amp; Dedicated Studio Tab</strong>
-                <p>Back up and restore your entire travelogue (trips, bookings, spend &amp; full photos) straight to your own hidden Google Drive app folder with Auto Daily Backup, Wi-Fi-only photo uploads, 1-tap restore on Welcome, and a dedicated bottom-bar Studio tab for Keepsake PDFs, IG collages &amp; postcards.</p>
+                <p>Back up and restore your entire travelogue (trips, bookings, spend &amp; full photos) straight to Google Drive's private hidden app folder with Auto Daily Backup, Wi-Fi-only photo uploads, 1-tap restore on Welcome, and a dedicated Studio tab for Keepsake PDFs, IG collages &amp; postcards.</p>
               </div>
             </div>
             <div class="release-row">
               <span class="release-tag">v0.6.9</span>
               <div class="release-info">
                 <strong>Editable Trains, Buses &amp; Cars, Year Map Filters &amp; Crisp Passport Stamps</strong>
-                <p>Edit any train, bus, ferry, or car booking (with instant Spend sync), filter your World Map by year with compact multi-country chips, and enjoy clearer Passport ink stamps.</p>
+                <p>Edit any train, bus, ferry, or car booking (with instant Spend sync), filter your World Map by year with quick trip summaries, and enjoy clearer Passport ink stamps.</p>
               </div>
             </div>
             <div class="release-row">
               <span class="release-tag">v0.6.8</span>
               <div class="release-info">
-                <strong>Smarter Hotel OCR, Editable Stay Locations &amp; 1-Tap Google Maps</strong>
-                <p>Accurate property &amp; PIN-code address parsing, editable Stay cards, free OpenStreetMap address lookup, and direct Google Maps navigation.</p>
+                <strong>Smarter Hotel Scanning, Editable Stay Locations &amp; One-Click Google Maps</strong>
+                <p>Clean hotel name and location capture, editable Stay cards, built-in hotel address search, and one-click Google Maps navigation.</p>
               </div>
             </div>
             <div class="release-row">
               <span class="release-tag">v0.6.5</span>
               <div class="release-info">
                 <strong>3-Theme Keepsake Magazine PDF Studio</strong>
-                <p>Full end-to-end A4 themes (Magazine, Art Book, Passport) with 1:1 WYSIWYG drag &amp; zoom covers, grouped boarding passes, and zero spend shown.</p>
+                <p>Full end-to-end A4 themes (Magazine, Art Book, Passport) with drag-and-zoom cover framing that prints exactly as previewed, grouped boarding passes, and zero spend shown.</p>
               </div>
             </div>
             <div class="release-row">
@@ -465,7 +524,7 @@ Logged offline with Wanderer's Ledger.
     </section>
 
     <!-- FAQ ACCORDION -->
-    <section class="section" id="faq">
+    <section class="section section-warm" id="faq">
       <div class="container">
         <div class="section-head">
           <p class="section-kicker">Questions</p>
@@ -499,7 +558,7 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Yes — 100%. Signing in with Google is completely optional. Your SQLite trip database, PDF rendering, ML Kit text recognition, barcode scanning, 5,333-airport, 249-country &amp; 988-airline directory, Haversine distance math, cached FX snapshots, local travel reminders, and Studio PDF/collage exports all run directly on your device.
+              Yes — 100%. Signing in with Google is completely optional. Your entire journal, ticket &amp; barcode scanner, 5,333-airport &amp; 249-country directory, flight distance tracker, saved exchange rates, travel reminders, and Studio PDF/collage exports all run directly on your phone — no signal needed.
             </div>
           </div>
 
@@ -509,7 +568,7 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Never. Wanderer's Ledger uses only Google's restricted hidden app folder (<code>drive.appdata</code>), which is completely isolated from your personal Google Drive files and folders. Your trips, spend snapshots, and compressed photos back up directly from your phone to your own Drive — our developer never sees your data. You can enable Auto Daily Backup, keep full photo uploads on Wi-Fi only, or tap <strong>Delete Cloud Backup</strong> inside Passport anytime.
+              Never. Wanderer's Ledger uses only Google Drive's private hidden app folder, which is completely isolated from your personal Google Drive files and folders. Your trips, expenses, and photos back up directly from your phone to your own Drive — our developer never sees your data. You can enable Auto Daily Backup, keep full photo uploads on Wi-Fi only, or tap <strong>Delete Cloud Backup</strong> inside Passport anytime.
             </div>
           </div>
 
@@ -519,7 +578,7 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Enable <strong>Google Drive Backup</strong> inside the <strong>Passport</strong> tab on your current phone. When you install Wanderer's Ledger on your new phone and tap <strong>Continue with Google</strong>, it automatically detects your personal backup and restores every trip, flight, stay, expense, FX snapshot, and travel photo in one tap.
+              Enable <strong>Google Drive Backup</strong> inside the <strong>Passport</strong> tab on your current phone. When you install Wanderer's Ledger on your new phone and tap <strong>Continue with Google</strong>, it automatically detects your personal backup and restores every trip, flight, stay, expense, saved exchange rate, and travel photo in one tap.
             </div>
           </div>
 
@@ -539,7 +598,7 @@ Logged offline with Wanderer's Ledger.
               <span class="faq-icon" aria-hidden="true">+</span>
             </button>
             <div class="faq-panel">
-              Wanderer's Ledger is built cross-platform with native iOS PDFKit and Share Extension support already in the codebase. Select "iOS" in the Early Access form above and you'll be first in line when TestFlight opens.
+              Wanderer's Ledger is already built for iPhone with native PDF scanning and iOS Share Sheet support. Select "iOS" in the Early Access form above and you'll be first in line when TestFlight opens.
             </div>
           </div>
         </div>
