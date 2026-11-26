@@ -27,7 +27,7 @@ import {
   remapSnapshotMediaToDevice,
 } from './driveBackupHelpers';
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 
@@ -134,10 +134,14 @@ export function configureGoogleDriveAuth(): boolean {
   const mod = getGoogleSigninModule();
   if (!mod?.GoogleSignin) return false;
   if (!googleConfigured) {
-    mod.GoogleSignin.configure({
-      scopes: [DRIVE_APP_DATA_SCOPE],
-    });
-    googleConfigured = true;
+    try {
+      mod.GoogleSignin.configure({
+        scopes: [DRIVE_APP_DATA_SCOPE],
+      });
+      googleConfigured = true;
+    } catch {
+      return false;
+    }
   }
   return true;
 }

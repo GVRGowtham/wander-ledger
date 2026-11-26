@@ -677,7 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setDriveRemoteBackup({
             exists: true,
             updatedAt: res.updatedAt,
-            appVersion: '0.7.0',
+            appVersion: '0.7.1',
             tripsCount: res.tripsCount ?? 0,
             flightsCount: allFlights.length,
             memoriesCount: res.memoriesCount ?? 0,
@@ -928,14 +928,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     };
 
-    const netSub = Network.addNetworkStateListener((event) => {
-      const isWifiOrEth =
-        event.type === Network.NetworkStateType.WIFI ||
-        event.type === Network.NetworkStateType.ETHERNET;
-      if (event.isConnected && event.isInternetReachable !== false && isWifiOrEth) {
-        runCatchUp();
-      }
-    });
+    let netSub: { remove: () => void } | null = null;
+    try {
+      netSub = Network.addNetworkStateListener((event) => {
+        const isWifiOrEth =
+          event.type === Network.NetworkStateType.WIFI ||
+          event.type === Network.NetworkStateType.ETHERNET;
+        if (event.isConnected && event.isInternetReachable !== false && isWifiOrEth) {
+          runCatchUp();
+        }
+      });
+    } catch {
+      netSub = null;
+    }
 
     const appStateSub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
@@ -944,7 +949,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => {
-      netSub.remove();
+      try {
+        netSub?.remove();
+      } catch {
+        // Non-fatal cleanup error
+      }
       appStateSub.remove();
     };
   }, [refreshDriveMetaFromDb]);
