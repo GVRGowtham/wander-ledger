@@ -489,3 +489,40 @@ export function deriveGlobalTravelGeography(
     byTripId,
   };
 }
+
+/**
+ * Formats a compact flag list for narrow trip cards so multi-country trips
+ * (e.g. 5+ countries in Europe) stay on a single line and never push right-aligned
+ * photo/status badges outside the card bounds.
+ *
+ * - Up to `maxVisible` flags: shows all flags with `overflowCount: 0`.
+ * - More than `maxVisible` flags: shows `maxVisible - 1` flags plus `overflowCount`
+ *   so the flags + `+N` pill occupy roughly the same width as `maxVisible` flags.
+ */
+export function formatCompactFlags(
+  visitedCountries: ReadonlyArray<{ flag: string }> | undefined,
+  fallbackFlag: string,
+  maxVisible = 3
+): { flagsText: string; overflowCount: number } {
+  const uniqueFlags: string[] = [];
+  if (visitedCountries && visitedCountries.length > 0) {
+    for (const c of visitedCountries) {
+      if (c.flag && !uniqueFlags.includes(c.flag)) {
+        uniqueFlags.push(c.flag);
+      }
+    }
+  }
+  if (uniqueFlags.length === 0) {
+    return { flagsText: fallbackFlag || '🌍', overflowCount: 0 };
+  }
+  const safeMax = Math.max(1, maxVisible);
+  if (uniqueFlags.length <= safeMax) {
+    return { flagsText: uniqueFlags.join(' '), overflowCount: 0 };
+  }
+  const shownCount = Math.max(1, safeMax - 1);
+  return {
+    flagsText: uniqueFlags.slice(0, shownCount).join(' '),
+    overflowCount: uniqueFlags.length - shownCount,
+  };
+}
+

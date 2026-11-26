@@ -13,7 +13,10 @@ import { useApp } from '../context/AppContext';
 import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { getTripDayProgress, getTripStatus } from '../db/database';
 import { formatDistance, milesToKm } from '../services/distanceUtils';
-import { deriveGlobalTravelGeography } from '../services/travelGeography';
+import {
+  deriveGlobalTravelGeography,
+  formatCompactFlags,
+} from '../services/travelGeography';
 import {
   extractTripYears,
   filterTripsBySearchAndYear,
@@ -198,7 +201,11 @@ export const TripsHubScreen: React.FC<Props> = ({
               {filteredTrips.map((trip, idx) => {
                 const stats = getSummaryForTrip(trip.id);
                 const status = getTripStatus(trip);
-                const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                const compactFlags = formatCompactFlags(
+                  geography.byTripId[trip.id]?.visitedCountries,
+                  trip.flagEmoji,
+                  3
+                );
                 const bgTint =
                   status === 'active'
                     ? isDark
@@ -234,9 +241,20 @@ export const TripsHubScreen: React.FC<Props> = ({
                     activeOpacity={0.85}
                   >
                     <View style={styles.pastTopRow}>
-                      <Text style={styles.flagLg}>{flags}</Text>
+                      <View style={styles.flagRow}>
+                        <Text style={styles.flagCompact} numberOfLines={1}>
+                          {compactFlags.flagsText}
+                        </Text>
+                        {compactFlags.overflowCount > 0 && (
+                          <View style={styles.flagMorePill}>
+                            <Text style={styles.flagMoreText}>
+                              +{compactFlags.overflowCount}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       <View style={styles.photoCountBadge}>
-                        <Text style={styles.photoCountText}>
+                        <Text style={styles.photoCountText} numberOfLines={1}>
                           {status === 'active'
                             ? '☀️ Live'
                             : status === 'upcoming'
@@ -287,7 +305,7 @@ export const TripsHubScreen: React.FC<Props> = ({
           ) : nextUpcoming ? (
             <CountdownHeroCard
               trip={nextUpcoming}
-              flagsLabel={geography.byTripId[nextUpcoming.id]?.flagsLabel || nextUpcoming.flagEmoji}
+              visitedCountries={geography.byTripId[nextUpcoming.id]?.visitedCountries}
               countriesLabel={geography.byTripId[nextUpcoming.id]?.countriesLabel || ''}
               onOpen={() => onOpenTrip(nextUpcoming.id)}
               onScan={onOpenScanner}
@@ -330,7 +348,11 @@ export const TripsHubScreen: React.FC<Props> = ({
                   const { daysUntil } = getTripDayProgress(trip);
                   const stats = getSummaryForTrip(trip.id);
                   const legsCount = stats.flightsCount + stats.transportsCount;
-                  const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                  const compactFlags = formatCompactFlags(
+                    geography.byTripId[trip.id]?.visitedCountries,
+                    trip.flagEmoji,
+                    3
+                  );
                   return (
                     <TouchableOpacity
                       key={trip.id}
@@ -340,9 +362,22 @@ export const TripsHubScreen: React.FC<Props> = ({
                     >
                       <View style={styles.upcomingTop}>
                         <View style={styles.countdownBadge}>
-                          <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
+                          <Text style={styles.countdownBadgeText}>
+                            In {daysUntil} {daysUntil === 1 ? 'day' : 'days'}
+                          </Text>
                         </View>
-                        <Text style={styles.flagLg}>{flags}</Text>
+                        <View style={styles.flagRowEnd}>
+                          <Text style={styles.flagCompact} numberOfLines={1}>
+                            {compactFlags.flagsText}
+                          </Text>
+                          {compactFlags.overflowCount > 0 && (
+                            <View style={styles.flagMorePill}>
+                              <Text style={styles.flagMoreText}>
+                                +{compactFlags.overflowCount}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
                       <Text style={styles.upcomingTitle} numberOfLines={1}>
                         {trip.title}
@@ -371,13 +406,19 @@ export const TripsHubScreen: React.FC<Props> = ({
             <View style={styles.section}>
               <View style={styles.sectionHead}>
                 <Text style={styles.sectionTitle}>📖 Memory Shelf (Past)</Text>
-                <Text style={styles.sectionMeta}>{pastTrips.length} stories</Text>
+                <Text style={styles.sectionMeta}>
+                  {pastTrips.length} {pastTrips.length === 1 ? 'story' : 'stories'}
+                </Text>
               </View>
 
               <View style={styles.pastGrid}>
                 {pastTrips.map((trip, idx) => {
                   const stats = getSummaryForTrip(trip.id);
-                  const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                  const compactFlags = formatCompactFlags(
+                    geography.byTripId[trip.id]?.visitedCountries,
+                    trip.flagEmoji,
+                    3
+                  );
                   const bgTint =
                     idx % 2 === 0
                       ? isDark
@@ -398,15 +439,28 @@ export const TripsHubScreen: React.FC<Props> = ({
                       activeOpacity={0.85}
                     >
                       <View style={styles.pastTopRow}>
-                        <Text style={styles.flagLg}>{flags}</Text>
+                        <View style={styles.flagRow}>
+                          <Text style={styles.flagCompact} numberOfLines={1}>
+                            {compactFlags.flagsText}
+                          </Text>
+                          {compactFlags.overflowCount > 0 && (
+                            <View style={styles.flagMorePill}>
+                              <Text style={styles.flagMoreText}>
+                                +{compactFlags.overflowCount}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={styles.photoCountBadge}>
-                          <Text style={styles.photoCountText}>{stats.memoriesCount} 📸</Text>
+                          <Text style={styles.photoCountText} numberOfLines={1}>
+                            {stats.memoriesCount} 📸
+                          </Text>
                         </View>
                       </View>
                       <Text style={styles.pastTitle} numberOfLines={1}>
                         {trip.title}
                       </Text>
-                      <Text style={styles.pastSub}>
+                      <Text style={styles.pastSub} numberOfLines={1}>
                         {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, preferredCurrency)}
                       </Text>
                       <Text style={styles.pastMiles}>
@@ -566,14 +620,15 @@ const ActiveHeroCard: React.FC<{
 
 const CountdownHeroCard: React.FC<{
   trip: Trip;
-  flagsLabel: string;
+  visitedCountries?: ReadonlyArray<{ flag: string }>;
   countriesLabel: string;
   onOpen: () => void;
   onScan: () => void;
   onNewTrip: () => void;
-}> = ({ trip, flagsLabel, countriesLabel, onOpen, onScan, onNewTrip }) => {
+}> = ({ trip, visitedCountries, countriesLabel, onOpen, onScan, onNewTrip }) => {
   const styles = useThemedStyles(createStyles);
   const { daysUntil } = getTripDayProgress(trip);
+  const compactFlags = formatCompactFlags(visitedCountries, trip.flagEmoji, 4);
   return (
     <TouchableOpacity onPress={onOpen} activeOpacity={0.92}>
       <LinearGradient
@@ -584,9 +639,20 @@ const CountdownHeroCard: React.FC<{
       >
         <View style={styles.upcomingTop}>
           <View style={styles.cdBadge}>
-            <Text style={styles.cdBadgeText}>🎒 PACKING SOON • {daysUntil} DAYS</Text>
+            <Text style={styles.cdBadgeText}>
+              🎒 PACKING SOON • {daysUntil} {daysUntil === 1 ? 'DAY' : 'DAYS'}
+            </Text>
           </View>
-          <Text style={{ fontSize: 22 }}>{flagsLabel}</Text>
+          <View style={styles.flagRowEnd}>
+            <Text style={{ fontSize: 20 }} numberOfLines={1}>
+              {compactFlags.flagsText}
+            </Text>
+            {compactFlags.overflowCount > 0 && (
+              <View style={styles.cdFlagMorePill}>
+                <Text style={styles.cdFlagMoreText}>+{compactFlags.overflowCount}</Text>
+              </View>
+            )}
+          </View>
         </View>
         <Text style={styles.cdTitle}>{trip.title}</Text>
         <Text style={styles.cdSub}>
@@ -815,17 +881,58 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
       borderColor: COLORS.indigoBorder,
       padding: 14,
       gap: 5,
+      overflow: 'hidden',
       ...SHADOWS.card,
     },
-    upcomingTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    upcomingTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 6,
+    },
     countdownBadge: {
       backgroundColor: COLORS.indigoSoft,
       paddingHorizontal: 9,
       paddingVertical: 4,
       borderRadius: 99,
+      flexShrink: 0,
     },
     countdownBadgeText: { color: COLORS.indigo, fontSize: 11, fontWeight: '800' },
     flagLg: { fontSize: 22 },
+    flagRow: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    flagRowEnd: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 4,
+    },
+    flagCompact: { fontSize: 18, lineHeight: 22, flexShrink: 1 },
+    flagMorePill: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.72)' : 'rgba(255,255,255,0.85)',
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 99,
+      flexShrink: 0,
+    },
+    flagMoreText: { fontSize: 10, fontWeight: '900', color: COLORS.inkMuted },
+    cdFlagMorePill: {
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 99,
+      flexShrink: 0,
+    },
+    cdFlagMoreText: { fontSize: 11, fontWeight: '900', color: '#FFFFFF' },
     upcomingTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
     upcomingSub: { fontSize: 12, color: COLORS.inkMuted },
     planNewCard: {
@@ -850,13 +957,20 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
       borderWidth: 1,
       padding: 14,
       gap: 4,
+      overflow: 'hidden',
     },
-    pastTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    pastTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 6,
+    },
     photoCountBadge: {
       backgroundColor: isDark ? 'rgba(14,17,27,0.72)' : 'rgba(255,255,255,0.85)',
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: 99,
+      flexShrink: 0,
     },
     photoCountText: { fontSize: 11, fontWeight: '800', color: COLORS.ink },
     pastTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },

@@ -2262,6 +2262,38 @@ describe('v0.6.9 Passport Stamp Formatting & Last-Visited Tracking', () => {
     expect(ch?.lastVisitedDate).toBe('2025-11-05');
     expect(formatPassportStampMonthYear(ch?.lastVisitedDate)).toBe('Nov 2025');
   });
+
+  it('caps compact multi-country flags cleanly with an overflow +N count', () => {
+    const { formatCompactFlags } = require('../services/travelGeography');
+
+    // Empty falls back to trip flag
+    expect(formatCompactFlags([], '🌍', 3)).toEqual({ flagsText: '🌍', overflowCount: 0 });
+
+    // Up to maxVisible (3) shows all flags with no overflow
+    expect(
+      formatCompactFlags([{ flag: '🇨🇭' }, { flag: '🇮🇹' }, { flag: '🇫🇷' }], '🌍', 3)
+    ).toEqual({ flagsText: '🇨🇭 🇮🇹 🇫🇷', overflowCount: 0 });
+
+    // 5-country Europe trip caps to 2 flags + "+3" so photo badge stays inside card
+    expect(
+      formatCompactFlags(
+        [
+          { flag: '🇦🇪' },
+          { flag: '🇨🇭' },
+          { flag: '🇮🇹' },
+          { flag: '🇫🇷' },
+          { flag: '🇮🇳' },
+        ],
+        '🌍',
+        3
+      )
+    ).toEqual({ flagsText: '🇦🇪 🇨🇭', overflowCount: 3 });
+
+    // Deduplicates repeated flags
+    expect(
+      formatCompactFlags([{ flag: '🇮🇳' }, { flag: '🇮🇳' }], '🌍', 3)
+    ).toEqual({ flagsText: '🇮🇳', overflowCount: 0 });
+  });
 });
 
 
