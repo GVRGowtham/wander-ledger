@@ -677,7 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setDriveRemoteBackup({
             exists: true,
             updatedAt: res.updatedAt,
-            appVersion: '0.7.1',
+            appVersion: '0.7.2',
             tripsCount: res.tripsCount ?? 0,
             flightsCount: allFlights.length,
             memoriesCount: res.memoriesCount ?? 0,

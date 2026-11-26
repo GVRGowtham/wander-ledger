@@ -11,15 +11,9 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
-import {
-  buildLocalBackupSnapshot,
-  restoreFromBackupSnapshot,
-  validateBackupSnapshot,
-} from '../services/cloudSyncService';
 import { DriveBackupMetadata, formatBytes } from '../services/driveBackupHelpers';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { shareLocalFileSafely } from '../services/shareMediaService';
@@ -77,7 +71,6 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     remindersEnabled,
     scheduledRemindersCount,
     toggleTravelReminders,
-    refreshAll,
     updateProfileSettings,
     clearAllData,
   } = useApp();
@@ -317,84 +310,6 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         },
       ]
     );
-  };
-
-  const handleExportLocalBackup = async () => {
-    try {
-      const snapshot = buildLocalBackupSnapshot();
-      const dateTag = new Date().toISOString().slice(0, 10);
-      const baseDir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
-      const uri = `${baseDir}wanderers_ledger_backup_${dateTag}.json`;
-      await FileSystem.writeAsStringAsync(uri, JSON.stringify(snapshot, null, 2));
-      const shared = await shareLocalFileSafely({
-        fileUri: uri,
-        mimeType: 'application/json',
-        uti: 'public.json',
-        title: "Export Wanderer's Ledger Backup (.json)",
-      });
-      if (!shared) {
-        Alert.alert(
-          'Backup Ready 📦',
-          `Saved ${snapshot.trips.length} trips and ${snapshot.flights.length + snapshot.transports.length} travel legs.`
-        );
-      }
-    } catch {
-      Alert.alert('Backup Error', 'Unable to export local backup file on this device.');
-    }
-  };
-
-  const handleImportLocalBackup = async () => {
-    try {
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: ['application/json', 'text/plain', '*/*'],
-        copyToCacheDirectory: true,
-      });
-      if (picked.canceled || !picked.assets?.[0]?.uri) return;
-
-      const rawText = await FileSystem.readAsStringAsync(picked.assets[0].uri);
-      const parsed = JSON.parse(rawText);
-      const snapshot = validateBackupSnapshot(parsed);
-      if (!snapshot) {
-        Alert.alert(
-          'Invalid Backup File',
-          "Please select a valid Wanderer's Ledger (.json) backup exported from this app."
-        );
-        return;
-      }
-
-      const itemCount =
-        snapshot.flights.length +
-        snapshot.transports.length +
-        snapshot.stops.length +
-        snapshot.stays.length +
-        snapshot.expenses.length +
-        snapshot.memories.length +
-        snapshot.loyaltyAccounts.length;
-
-      Alert.alert(
-        'Restore Local Backup? 📥',
-        `Found ${snapshot.trips.length} ${snapshot.trips.length === 1 ? 'trip' : 'trips'} and ${itemCount} bookings, memories & loyalty entries.\n\nExisting trips on this device will be kept and merged cleanly.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Restore',
-            onPress: () => {
-              const res = restoreFromBackupSnapshot(snapshot);
-              refreshAll();
-              Alert.alert(
-                'Backup Restored ✨',
-                `Restored ${res.tripsRestored} ${res.tripsRestored === 1 ? 'trip' : 'trips'} and ${res.itemsRestored} entries onto this device.`
-              );
-            },
-          },
-        ]
-      );
-    } catch {
-      Alert.alert(
-        'Import Failed',
-        "Could not read that file. Make sure you pick a Wanderer's Ledger .json backup file."
-      );
-    }
   };
 
   const handleToggleReminders = async (val: boolean) => {
@@ -696,27 +611,6 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 </View>
               )}
             </TouchableOpacity>
-
-            <View style={styles.footerSubRow}>
-              <TouchableOpacity
-                onPress={handleExportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📦 Export (.json)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleImportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📥 Import (.json)
-                </Text>
-              </TouchableOpacity>
-            </View>
           </>
         ) : (
           <>
@@ -828,28 +722,6 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                     📥 Restore
                   </Text>
                 )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Portable Offline JSON Export / Import */}
-            <View style={styles.footerSubRow}>
-              <TouchableOpacity
-                onPress={handleExportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📦 Export (.json)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleImportLocalBackup}
-                style={[styles.backupBtn, { flex: 1 }]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backupBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  📥 Import (.json)
-                </Text>
               </TouchableOpacity>
             </View>
 
@@ -1298,17 +1170,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   disconnectBtnText: { color: COLORS.inkMuted, fontWeight: '800', fontSize: 12 },
-  backupBtn: {
-    backgroundColor: COLORS.cardWarm,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backupBtnText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 12.5 },
   driveSubActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

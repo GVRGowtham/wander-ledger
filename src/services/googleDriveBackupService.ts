@@ -27,7 +27,7 @@ import {
   remapSnapshotMediaToDevice,
 } from './driveBackupHelpers';
 
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.7.2';
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 

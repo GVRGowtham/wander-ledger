@@ -240,6 +240,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
             onPress={handleRestoreFromPending}
             disabled={restoring}
             activeOpacity={0.9}
+            style={styles.fullWidthBtn}
           >
             <LinearGradient
               colors={['#F97316', '#F43F5E', '#EC4899']}
@@ -250,7 +251,14 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
               {restoring ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.ctaBtnText}>📥 Restore My Travelogue</Text>
+                <Text
+                  style={styles.ctaBtnText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                >
+                  📥 Restore My Travelogue
+                </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -261,8 +269,8 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
             style={styles.secondaryGhostBtn}
             activeOpacity={0.85}
           >
-            <Text style={styles.secondaryGhostBtnText}>
-              ✨ Start Fresh (Keep Cloud Backup Safe)
+            <Text style={styles.secondaryGhostBtnText} numberOfLines={2}>
+              ✨ Start Fresh (Keep Cloud Backup)
             </Text>
           </TouchableOpacity>
         </View>
@@ -315,7 +323,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
             {isGoogleBusy ? (
               <View style={styles.googleBtnRow}>
                 <ActivityIndicator color={COLORS.navy} size="small" />
-                <Text style={styles.googleBtnTitle}>
+                <Text style={[styles.googleBtnTitle, { flex: 1 }]}>
                   {driveProgress?.label || 'Signing in with Google…'}
                 </Text>
               </View>
@@ -344,6 +352,7 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
             onPress={handleStartOffline}
             disabled={loadingOffline || isGoogleBusy}
             activeOpacity={0.9}
+            style={styles.fullWidthBtn}
           >
             <LinearGradient
               colors={['#F97316', '#F43F5E', '#EC4899']}
@@ -354,7 +363,14 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
               {loadingOffline ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.ctaBtnText}>✈️ Continue Offline (No Account)</Text>
+                <Text
+                  style={styles.ctaBtnText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                >
+                  ✈️ Continue Offline (No Account)
+                </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -438,7 +454,12 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
       </View>
 
       {isRevisit && (
-        <TouchableOpacity onPress={handleStartOffline} disabled={loadingOffline} activeOpacity={0.9}>
+        <TouchableOpacity
+          onPress={handleStartOffline}
+          disabled={loadingOffline}
+          activeOpacity={0.9}
+          style={styles.fullWidthBtn}
+        >
           <LinearGradient
             colors={['#F97316', '#F43F5E', '#EC4899']}
             start={{ x: 0, y: 0 }}
@@ -448,7 +469,14 @@ export const WelcomeScreen: React.FC<Props> = ({ isRevisit = false, onDone }) =>
             {loadingOffline ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.ctaBtnText}>✈️ Back to My Travelogue</Text>
+              <Text
+                style={styles.ctaBtnText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                ✈️ Back to My Travelogue
+              </Text>
             )}
           </LinearGradient>
         </TouchableOpacity>
@@ -596,6 +624,7 @@ const styles = StyleSheet.create({
   },
   restoreBadge: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     backgroundColor: '#ECFDF5',
     borderWidth: 1,
     borderColor: '#A7F3D0',
@@ -608,6 +637,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#047857',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   restoreHeadline: {
     fontSize: 20,
@@ -636,7 +666,11 @@ const styles = StyleSheet.create({
     color: COLORS.coralDark,
     flex: 1,
   },
+  fullWidthBtn: {
+    width: '100%',
+  },
   secondaryGhostBtn: {
+    width: '100%',
     backgroundColor: COLORS.canvas,
     borderRadius: 16,
     borderWidth: 1,
@@ -644,11 +678,17 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     paddingHorizontal: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   secondaryGhostBtnText: {
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.inkMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    width: '100%',
+    includeFontPadding: false,
   },
 
   guideSection: {
@@ -750,11 +790,14 @@ const styles = StyleSheet.create({
   },
 
   ctaBtn: {
+    width: '100%',
+    minHeight: 52,
     borderRadius: 18,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     ...SHADOWS.fab,
   },
   ctaBtnText: {
@@ -762,6 +805,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 15,
     letterSpacing: 0.2,
+    textAlign: 'center',
+    width: '100%',
+    includeFontPadding: false,
   },
   footnote: {
     fontSize: 12,
