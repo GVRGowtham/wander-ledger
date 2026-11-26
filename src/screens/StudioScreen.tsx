@@ -24,6 +24,7 @@ import {
   KeepsakeStudioModal,
 } from '../components/keepsake/KeepsakeStudioModal';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { generateOfflineIgCaption } from '../services/igCaptionService';
 import {
   CollageLayoutId,
@@ -35,7 +36,7 @@ import { exportTripKeepsakePdf } from '../services/keepsakePdfService';
 import { formatTripTitleWithFlags } from '../services/placeLookupService';
 import { shareImageWithCaption } from '../services/shareMediaService';
 import { deriveTripGeography } from '../services/travelGeography';
-import { COLORS, SHADOWS } from '../theme/tokens';
+import { ThemeColors, ThemeShadows } from '../theme/tokens';
 import { DistanceUnit, Flight, Memory, TransportLeg, Trip } from '../types/models';
 
 interface Props {
@@ -82,6 +83,8 @@ export const StudioScreen: React.FC<Props> = ({
     getStaysForTrip,
     getMemoriesForTrip,
   } = useApp();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
 
   const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
   const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -467,7 +470,7 @@ export const StudioScreen: React.FC<Props> = ({
                     activeOpacity={0.85}
                   >
                     {isSharingThisPostcard ? (
-                      <ActivityIndicator size="small" color={COLORS.coralDark} />
+                      <ActivityIndicator size="small" color={colors.coralDark} />
                     ) : (
                       <Text
                         style={styles.postcardActionText}
@@ -535,194 +538,195 @@ export const StudioScreen: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 42, gap: 14 },
-  title: { fontSize: 22, fontWeight: '900', color: COLORS.ink, letterSpacing: -0.3 },
-  subtitle: { fontSize: 12.5, color: COLORS.inkMuted, marginTop: 2 },
-  privacyBanner: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  privacyBannerText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#065F46',
-    lineHeight: 16,
-  },
-  yearRow: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  yearChip: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  yearChipActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
-  yearChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-  },
-  yearChipTextActive: {
-    color: '#FFFFFF',
-  },
-  tripStudioCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    ...SHADOWS.card,
-  },
-  bannerWrap: {
-    position: 'relative',
-    width: '100%',
-    height: 128,
-  },
-  bannerTopRow: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'row',
-    gap: 6,
-  },
-  statBadge: {
-    backgroundColor: 'rgba(15,23,42,0.68)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  statBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  bannerBottom: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    bottom: 12,
-  },
-  cardTripTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  cardTripMeta: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-    backgroundColor: COLORS.card,
-  },
-  studioActionBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  igActionBtn: {
-    backgroundColor: COLORS.coral,
-    borderColor: COLORS.coral,
-  },
-  igActionText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 12,
-  },
-  pdfActionBtn: {
-    backgroundColor: COLORS.indigoSoft,
-    borderColor: '#C7D2FE',
-  },
-  pdfActionText: {
-    color: COLORS.navy,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  postcardActionBtn: {
-    backgroundColor: COLORS.cardWarm,
-    borderColor: '#FED7AA',
-  },
-  postcardActionText: {
-    color: COLORS.coralDark,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  emptyCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    padding: 22,
-    alignItems: 'center',
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  emptyEmoji: { fontSize: 38 },
-  emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
-  emptySub: {
-    fontSize: 12.5,
-    color: COLORS.inkMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  emptyList: {
-    width: '100%',
-    backgroundColor: COLORS.canvas,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    padding: 12,
-    gap: 6,
-    marginVertical: 4,
-  },
-  emptyBullet: {
-    fontSize: 12,
-    color: COLORS.ink,
-    lineHeight: 17,
-  },
-  emptyCta: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    ...SHADOWS.fab,
-  },
-  emptyCtaText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 14.5,
-  },
-  offscreenPostcardHost: {
-    position: 'absolute',
-    left: -12000,
-    top: 0,
-    opacity: 0.01,
-  },
-});
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    content: { padding: 16, paddingBottom: 42, gap: 14 },
+    title: { fontSize: 22, fontWeight: '900', color: COLORS.ink, letterSpacing: -0.3 },
+    subtitle: { fontSize: 12.5, color: COLORS.inkMuted, marginTop: 2 },
+    privacyBanner: {
+      backgroundColor: isDark ? COLORS.emeraldSoft : '#ECFDF5',
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+    },
+    privacyBannerText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: COLORS.emeraldText,
+      lineHeight: 16,
+    },
+    yearRow: {
+      gap: 8,
+      paddingVertical: 2,
+    },
+    yearChip: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    yearChipActive: {
+      backgroundColor: isDark ? COLORS.coral : COLORS.navy,
+      borderColor: isDark ? COLORS.coral : COLORS.navy,
+    },
+    yearChipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+    },
+    yearChipTextActive: {
+      color: '#FFFFFF',
+    },
+    tripStudioCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      overflow: 'hidden',
+      ...SHADOWS.card,
+    },
+    bannerWrap: {
+      position: 'relative',
+      width: '100%',
+      height: 128,
+    },
+    bannerTopRow: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      flexDirection: 'row',
+      gap: 6,
+    },
+    statBadge: {
+      backgroundColor: 'rgba(15,23,42,0.68)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    statBadgeText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+    bannerBottom: {
+      position: 'absolute',
+      left: 14,
+      right: 14,
+      bottom: 12,
+    },
+    cardTripTitle: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: '#FFFFFF',
+      textShadowColor: 'rgba(0,0,0,0.45)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 3,
+    },
+    cardTripMeta: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: 'rgba(255,255,255,0.9)',
+      marginTop: 2,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      padding: 12,
+      backgroundColor: COLORS.card,
+    },
+    studioActionBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+    },
+    igActionBtn: {
+      backgroundColor: COLORS.coral,
+      borderColor: COLORS.coral,
+    },
+    igActionText: {
+      color: '#FFFFFF',
+      fontWeight: '900',
+      fontSize: 12,
+    },
+    pdfActionBtn: {
+      backgroundColor: COLORS.indigoSoft,
+      borderColor: COLORS.indigoBorder,
+    },
+    pdfActionText: {
+      color: COLORS.navyText,
+      fontWeight: '800',
+      fontSize: 12,
+    },
+    postcardActionBtn: {
+      backgroundColor: COLORS.cardWarm,
+      borderColor: COLORS.coralBorder,
+    },
+    postcardActionText: {
+      color: COLORS.coralDark,
+      fontWeight: '800',
+      fontSize: 12,
+    },
+    emptyCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      padding: 22,
+      alignItems: 'center',
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    emptyEmoji: { fontSize: 38 },
+    emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
+    emptySub: {
+      fontSize: 12.5,
+      color: COLORS.inkMuted,
+      textAlign: 'center',
+      lineHeight: 18,
+    },
+    emptyList: {
+      width: '100%',
+      backgroundColor: COLORS.canvas,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      padding: 12,
+      gap: 6,
+      marginVertical: 4,
+    },
+    emptyBullet: {
+      fontSize: 12,
+      color: COLORS.ink,
+      lineHeight: 17,
+    },
+    emptyCta: {
+      borderRadius: 16,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+      ...SHADOWS.fab,
+    },
+    emptyCtaText: {
+      color: '#FFFFFF',
+      fontWeight: '900',
+      fontSize: 14.5,
+    },
+    offscreenPostcardHost: {
+      position: 'absolute',
+      left: -12000,
+      top: 0,
+      opacity: 0.01,
+    },
+  });

@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { getTripDayProgress, getTripStatus } from '../db/database';
 import { formatDistance, milesToKm } from '../services/distanceUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
@@ -20,7 +21,7 @@ import {
 import { convertAmountToPreferred } from '../services/spendCurrencyUtils';
 import { FEATURE_FLAGS } from '../config/featureFlags';
 import { formatTripTitleWithFlags } from '../services/placeLookupService';
-import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
+import { formatMoney, ThemeColors, ThemeShadows } from '../theme/tokens';
 import { DistanceUnit, Trip } from '../types/models';
 
 interface Props {
@@ -47,6 +48,8 @@ export const TripsHubScreen: React.FC<Props> = ({
     fxRates,
     getSummaryForTrip,
   } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
 
   const preferredCurrency = (profile?.homeCurrency || 'USD').toUpperCase();
 
@@ -124,7 +127,7 @@ export const TripsHubScreen: React.FC<Props> = ({
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search trips, cities, flights, memories..."
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.searchInput}
               returnKeyType="search"
             />
@@ -198,20 +201,28 @@ export const TripsHubScreen: React.FC<Props> = ({
                 const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
                 const bgTint =
                   status === 'active'
-                    ? '#FFF7ED'
+                    ? isDark
+                      ? colors.coralSoft
+                      : '#FFF7ED'
                     : status === 'upcoming'
-                      ? '#EEF2FF'
+                      ? isDark
+                        ? colors.indigoSoft
+                        : '#EEF2FF'
                       : idx % 2 === 0
-                        ? '#F0F9FF'
-                        : '#ECFDF5';
+                        ? isDark
+                          ? colors.skySoft
+                          : '#F0F9FF'
+                        : isDark
+                          ? colors.emeraldSoft
+                          : '#ECFDF5';
                 const borderTint =
                   status === 'active'
-                    ? '#FDBA74'
+                    ? colors.coralBorder
                     : status === 'upcoming'
-                      ? '#C7D2FE'
+                      ? colors.indigoBorder
                       : idx % 2 === 0
-                        ? '#BAE6FD'
-                        : '#A7F3D0';
+                        ? colors.skyBorder
+                        : colors.emeraldBorder;
                 return (
                   <TouchableOpacity
                     key={trip.id}
@@ -310,96 +321,103 @@ export const TripsHubScreen: React.FC<Props> = ({
                 <Text style={styles.sectionMeta}>{upcomingTrips.length} planned</Text>
               </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalList}
-          >
-            {upcomingTrips.map((trip) => {
-              const { daysUntil } = getTripDayProgress(trip);
-              const stats = getSummaryForTrip(trip.id);
-              const legsCount = stats.flightsCount + stats.transportsCount;
-              const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
-              return (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalList}
+              >
+                {upcomingTrips.map((trip) => {
+                  const { daysUntil } = getTripDayProgress(trip);
+                  const stats = getSummaryForTrip(trip.id);
+                  const legsCount = stats.flightsCount + stats.transportsCount;
+                  const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                  return (
+                    <TouchableOpacity
+                      key={trip.id}
+                      onPress={() => onOpenTrip(trip.id)}
+                      style={styles.upcomingCard}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.upcomingTop}>
+                        <View style={styles.countdownBadge}>
+                          <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
+                        </View>
+                        <Text style={styles.flagLg}>{flags}</Text>
+                      </View>
+                      <Text style={styles.upcomingTitle} numberOfLines={1}>
+                        {trip.title}
+                      </Text>
+                      <Text style={styles.upcomingSub} numberOfLines={1}>
+                        {trip.startDate} • {legsCount} {legsCount === 1 ? 'leg' : 'legs'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
                 <TouchableOpacity
-                  key={trip.id}
-                  onPress={() => onOpenTrip(trip.id)}
-                  style={styles.upcomingCard}
+                  onPress={onNewTrip}
+                  style={styles.planNewCard}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.upcomingTop}>
-                    <View style={styles.countdownBadge}>
-                      <Text style={styles.countdownBadgeText}>In {daysUntil} days</Text>
-                    </View>
-                    <Text style={styles.flagLg}>{flags}</Text>
-                  </View>
-                  <Text style={styles.upcomingTitle} numberOfLines={1}>
-                    {trip.title}
-                  </Text>
-                  <Text style={styles.upcomingSub} numberOfLines={1}>
-                    {trip.startDate} • {legsCount} {legsCount === 1 ? 'leg' : 'legs'}
-                  </Text>
+                  <Text style={{ fontSize: 22 }}>🗺️</Text>
+                  <Text style={styles.planNewText}>Dream a Trip</Text>
                 </TouchableOpacity>
-              );
-            })}
+              </ScrollView>
+            </View>
+          )}
 
-            <TouchableOpacity
-              onPress={onNewTrip}
-              style={styles.planNewCard}
-              activeOpacity={0.85}
-            >
-              <Text style={{ fontSize: 22 }}>🗺️</Text>
-              <Text style={styles.planNewText}>Dream a Trip</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      )}
+          {/* PAST MEMORY SHELF */}
+          {pastTrips.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>📖 Memory Shelf (Past)</Text>
+                <Text style={styles.sectionMeta}>{pastTrips.length} stories</Text>
+              </View>
 
-      {/* PAST MEMORY SHELF */}
-      {pastTrips.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>📖 Memory Shelf (Past)</Text>
-            <Text style={styles.sectionMeta}>{pastTrips.length} stories</Text>
-          </View>
-
-          <View style={styles.pastGrid}>
-            {pastTrips.map((trip, idx) => {
-              const stats = getSummaryForTrip(trip.id);
-              const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
-              const bgTint = idx % 2 === 0 ? '#F0F9FF' : '#ECFDF5';
-              const borderTint = idx % 2 === 0 ? '#BAE6FD' : '#A7F3D0';
-              return (
-                <TouchableOpacity
-                  key={trip.id}
-                  onPress={() => onOpenTrip(trip.id)}
-                  style={[
-                    styles.pastCard,
-                    { backgroundColor: bgTint, borderColor: borderTint },
-                  ]}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.pastTopRow}>
-                    <Text style={styles.flagLg}>{flags}</Text>
-                    <View style={styles.photoCountBadge}>
-                      <Text style={styles.photoCountText}>{stats.memoriesCount} 📸</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.pastTitle} numberOfLines={1}>
-                    {trip.title}
-                  </Text>
-                  <Text style={styles.pastSub}>
-                    {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, preferredCurrency)}
-                  </Text>
-                  <Text style={styles.pastMiles}>
-                    🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
+              <View style={styles.pastGrid}>
+                {pastTrips.map((trip, idx) => {
+                  const stats = getSummaryForTrip(trip.id);
+                  const flags = geography.byTripId[trip.id]?.flagsLabel || trip.flagEmoji;
+                  const bgTint =
+                    idx % 2 === 0
+                      ? isDark
+                        ? colors.skySoft
+                        : '#F0F9FF'
+                      : isDark
+                        ? colors.emeraldSoft
+                        : '#ECFDF5';
+                  const borderTint = idx % 2 === 0 ? colors.skyBorder : colors.emeraldBorder;
+                  return (
+                    <TouchableOpacity
+                      key={trip.id}
+                      onPress={() => onOpenTrip(trip.id)}
+                      style={[
+                        styles.pastCard,
+                        { backgroundColor: bgTint, borderColor: borderTint },
+                      ]}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.pastTopRow}>
+                        <Text style={styles.flagLg}>{flags}</Text>
+                        <View style={styles.photoCountBadge}>
+                          <Text style={styles.photoCountText}>{stats.memoriesCount} 📸</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.pastTitle} numberOfLines={1}>
+                        {trip.title}
+                      </Text>
+                      <Text style={styles.pastSub}>
+                        {trip.startDate.slice(0, 7)} • {formatMoney(stats.totalSpentHome, preferredCurrency)}
+                      </Text>
+                      <Text style={styles.pastMiles}>
+                        🧭 {formatDistance(stats.totalDistanceKm, distanceUnit)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
         </>
       )}
     </ScrollView>
@@ -427,6 +445,8 @@ const ActiveHeroCard: React.FC<{
   onOpen,
   onScan,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { currentDay, totalDays } = getTripDayProgress(trip);
   const pct =
     convertedBudget > 0
@@ -467,7 +487,15 @@ const ActiveHeroCard: React.FC<{
         </View>
 
         <View style={styles.metricsRow}>
-          <View style={[styles.metricBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+          <View
+            style={[
+              styles.metricBox,
+              {
+                backgroundColor: isDark ? colors.coralSoft : '#FFF7ED',
+                borderColor: colors.coralBorder,
+              },
+            ]}
+          >
             <Text style={styles.metricLabel}>Trip Spend</Text>
             <Text style={styles.metricValue}>
               {formatMoney(summary.totalSpentHome, preferredCurrency)}
@@ -482,9 +510,17 @@ const ActiveHeroCard: React.FC<{
             )}
           </View>
 
-          <View style={[styles.metricBox, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
+          <View
+            style={[
+              styles.metricBox,
+              {
+                backgroundColor: isDark ? colors.skySoft : '#F0F9FF',
+                borderColor: colors.skyBorder,
+              },
+            ]}
+          >
             <Text style={styles.metricLabel}>Distance & Pts</Text>
-            <Text style={[styles.metricValue, { color: '#0369A1' }]}>
+            <Text style={[styles.metricValue, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>
               {formatDistance(summary.totalDistanceKm, distanceUnit)}
             </Text>
             <Text style={styles.metricSub}>
@@ -536,6 +572,7 @@ const CountdownHeroCard: React.FC<{
   onScan: () => void;
   onNewTrip: () => void;
 }> = ({ trip, flagsLabel, countriesLabel, onOpen, onScan, onNewTrip }) => {
+  const styles = useThemedStyles(createStyles);
   const { daysUntil } = getTripDayProgress(trip);
   return (
     <TouchableOpacity onPress={onOpen} activeOpacity={0.92}>
@@ -572,318 +609,319 @@ const CountdownHeroCard: React.FC<{
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 48, gap: 18 },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-  greeting: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
-  subGreeting: { fontSize: 12, color: COLORS.inkMuted, marginTop: 1 },
-  newTripPill: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 15,
-    paddingVertical: 9,
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  newTripPillText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 13 },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    content: { padding: 16, paddingBottom: 48, gap: 18 },
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    userRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    avatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: COLORS.card,
+    },
+    avatarText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+    greeting: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+    subGreeting: { fontSize: 12, color: COLORS.inkMuted, marginTop: 1 },
+    newTripPill: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 15,
+      paddingVertical: 9,
+      borderRadius: 99,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+    },
+    newTripPillText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 13 },
 
-  // Active Hero
-  heroCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 26,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    ...SHADOWS.card,
-  },
-  bannerWrap: { position: 'relative' },
-  bannerTopBadges: {
-    position: 'absolute',
-    top: 10,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  dayPill: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  dayPillText: { fontSize: 11, fontWeight: '900', color: COLORS.coralDark },
-  sharedPill: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  sharedPillText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
-  heroBody: { padding: 16, gap: 12 },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  heroTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
-  heroSubtitle: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
-  openArrow: { fontSize: 13, fontWeight: '800', color: COLORS.coral, marginTop: 2 },
-  metricsRow: { flexDirection: 'row', gap: 10 },
-  metricBox: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
-  },
-  metricLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
-  metricValue: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
-  metricMuted: { fontSize: 11, fontWeight: '600', color: COLORS.inkSoft },
-  metricSub: { fontSize: 11, color: '#0284C7', marginTop: 2, fontWeight: '600' },
-  progressTrack: {
-    height: 5,
-    borderRadius: 99,
-    backgroundColor: '#FED7AA',
-    marginTop: 6,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: COLORS.coral, borderRadius: 99 },
-  heroActions: { flexDirection: 'row', gap: 10 },
-  heroActionPrimary: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroActionPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  heroActionSecondary: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: COLORS.amberSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  heroActionSecondaryText: { color: '#92400E', fontWeight: '800', fontSize: 13 },
+    // Active Hero
+    heroCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 26,
+      overflow: 'hidden',
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      ...SHADOWS.card,
+    },
+    bannerWrap: { position: 'relative' },
+    bannerTopBadges: {
+      position: 'absolute',
+      top: 10,
+      left: 12,
+      right: 12,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    dayPill: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.84)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    dayPillText: { fontSize: 11, fontWeight: '900', color: COLORS.coralDark },
+    sharedPill: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.84)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    sharedPillText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
+    heroBody: { padding: 16, gap: 12 },
+    heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+    heroTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
+    heroSubtitle: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
+    openArrow: { fontSize: 13, fontWeight: '800', color: COLORS.coral, marginTop: 2 },
+    metricsRow: { flexDirection: 'row', gap: 10 },
+    metricBox: {
+      flex: 1,
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+    },
+    metricLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
+    metricValue: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
+    metricMuted: { fontSize: 11, fontWeight: '600', color: COLORS.inkSoft },
+    metricSub: { fontSize: 11, color: isDark ? '#7DD3FC' : '#0284C7', marginTop: 2, fontWeight: '600' },
+    progressTrack: {
+      height: 5,
+      borderRadius: 99,
+      backgroundColor: COLORS.coralBorder,
+      marginTop: 6,
+      overflow: 'hidden',
+    },
+    progressFill: { height: '100%', backgroundColor: COLORS.coral, borderRadius: 99 },
+    heroActions: { flexDirection: 'row', gap: 10 },
+    heroActionPrimary: {
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    heroActionPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    heroActionSecondary: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      backgroundColor: COLORS.amberSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+    },
+    heroActionSecondaryText: { color: COLORS.amberText, fontWeight: '800', fontSize: 13 },
 
-  // Countdown Hero
-  countdownHero: {
-    borderRadius: 26,
-    padding: 18,
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  cdBadge: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  cdBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  cdTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' },
-  cdSub: { color: '#E0F2FE', fontSize: 13 },
-  cdBtnWhite: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cdBtnWhiteText: { color: '#4338CA', fontWeight: '800', fontSize: 13 },
-  cdBtnGhost: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cdBtnGhostText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    // Countdown Hero
+    countdownHero: {
+      borderRadius: 26,
+      padding: 18,
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    cdBadge: {
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    cdBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+    cdTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' },
+    cdSub: { color: '#E0F2FE', fontSize: 13 },
+    cdBtnWhite: {
+      flex: 1,
+      backgroundColor: '#FFFFFF',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cdBtnWhiteText: { color: '#4338CA', fontWeight: '800', fontSize: 13 },
+    cdBtnGhost: {
+      flex: 1,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cdBtnGhostText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
-  // Empty
-  emptyCard: {
-    backgroundColor: COLORS.cardWarm,
-    borderRadius: 26,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: '#FDBA74',
-    padding: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyEmoji: { fontSize: 36 },
-  emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
-  emptySub: { fontSize: 13, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 19 },
-  emptyPrimaryBtn: {
-    width: '100%',
-    backgroundColor: COLORS.coral,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  emptyPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
-  emptySecondaryBtn: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptySecondaryText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 14 },
+    // Empty
+    emptyCard: {
+      backgroundColor: COLORS.cardWarm,
+      borderRadius: 26,
+      borderWidth: 2,
+      borderStyle: 'dashed',
+      borderColor: COLORS.coralBorder,
+      padding: 24,
+      alignItems: 'center',
+      gap: 12,
+    },
+    emptyEmoji: { fontSize: 36 },
+    emptyTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
+    emptySub: { fontSize: 13, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 19 },
+    emptyPrimaryBtn: {
+      width: '100%',
+      backgroundColor: COLORS.coral,
+      paddingVertical: 14,
+      paddingHorizontal: 18,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    emptyPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
+    emptySecondaryBtn: {
+      width: '100%',
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      paddingVertical: 14,
+      paddingHorizontal: 18,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptySecondaryText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 14 },
 
-  // Sections
-  section: { gap: 10 },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
-  sectionMeta: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
-  horizontalList: { gap: 12, paddingRight: 8 },
-  upcomingCard: {
-    width: 195,
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    padding: 14,
-    gap: 5,
-    ...SHADOWS.card,
-  },
-  upcomingTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  countdownBadge: {
-    backgroundColor: COLORS.indigoSoft,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  countdownBadgeText: { color: COLORS.indigo, fontSize: 11, fontWeight: '800' },
-  flagLg: { fontSize: 22 },
-  upcomingTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
-  upcomingSub: { fontSize: 12, color: COLORS.inkMuted },
-  planNewCard: {
-    width: 126,
-    backgroundColor: '#FFFBEB',
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#FCD34D',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    padding: 12,
-  },
-  planNewText: { fontSize: 12, fontWeight: '800', color: '#92400E', textAlign: 'center' },
+    // Sections
+    section: { gap: 10 },
+    sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    sectionTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
+    sectionMeta: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
+    horizontalList: { gap: 12, paddingRight: 8 },
+    upcomingCard: {
+      width: 195,
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.indigoBorder,
+      padding: 14,
+      gap: 5,
+      ...SHADOWS.card,
+    },
+    upcomingTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    countdownBadge: {
+      backgroundColor: COLORS.indigoSoft,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    countdownBadgeText: { color: COLORS.indigo, fontSize: 11, fontWeight: '800' },
+    flagLg: { fontSize: 22 },
+    upcomingTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
+    upcomingSub: { fontSize: 12, color: COLORS.inkMuted },
+    planNewCard: {
+      width: 126,
+      backgroundColor: isDark ? COLORS.amberSoft : '#FFFBEB',
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: COLORS.amberBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      padding: 12,
+    },
+    planNewText: { fontSize: 12, fontWeight: '800', color: COLORS.amberText, textAlign: 'center' },
 
-  // Past Memory Shelf
-  pastGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  pastCard: {
-    width: '47.5%',
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-    gap: 4,
-  },
-  pastTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  photoCountBadge: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 99,
-  },
-  photoCountText: { fontSize: 11, fontWeight: '800', color: COLORS.ink },
-  pastTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
-  pastSub: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
-  pastMiles: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
-  searchSection: { gap: 8 },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  searchIcon: { fontSize: 14 },
-  searchInput: {
-    flex: 1,
-    fontSize: 13.5,
-    fontWeight: '600',
-    color: COLORS.ink,
-    paddingVertical: 2,
-  },
-  searchClearBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchClearText: { fontSize: 11, fontWeight: '900', color: COLORS.inkMuted },
-  yearChipsRow: { gap: 8, paddingVertical: 2 },
-  yearChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 99,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  yearChipActive: {
-    backgroundColor: COLORS.ink,
-    borderColor: COLORS.ink,
-  },
-  yearChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
-  yearChipTextActive: { color: '#FFFFFF' },
-  clearFilterLink: { fontSize: 12, fontWeight: '800', color: COLORS.coral },
-  filterEmptyBox: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: COLORS.border,
-    padding: 22,
-    alignItems: 'center',
-    gap: 6,
-  },
-  filterEmptyTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  filterEmptySub: {
-    fontSize: 12,
-    color: COLORS.inkMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-});
+    // Past Memory Shelf
+    pastGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    pastCard: {
+      width: '47.5%',
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 14,
+      gap: 4,
+    },
+    pastTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    photoCountBadge: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.72)' : 'rgba(255,255,255,0.85)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 99,
+    },
+    photoCountText: { fontSize: 11, fontWeight: '800', color: COLORS.ink },
+    pastTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink, marginTop: 4 },
+    pastSub: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '600' },
+    pastMiles: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
+    searchSection: { gap: 8 },
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      gap: 8,
+    },
+    searchIcon: { fontSize: 14 },
+    searchInput: {
+      flex: 1,
+      fontSize: 13.5,
+      fontWeight: '600',
+      color: COLORS.ink,
+      paddingVertical: 2,
+    },
+    searchClearBtn: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#F3F4F6',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchClearText: { fontSize: 11, fontWeight: '900', color: COLORS.inkMuted },
+    yearChipsRow: { gap: 8, paddingVertical: 2 },
+    yearChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 99,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    yearChipActive: {
+      backgroundColor: isDark ? COLORS.coral : COLORS.ink,
+      borderColor: isDark ? COLORS.coral : COLORS.ink,
+    },
+    yearChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    yearChipTextActive: { color: '#FFFFFF' },
+    clearFilterLink: { fontSize: 12, fontWeight: '800', color: COLORS.coral },
+    filterEmptyBox: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: COLORS.border,
+      padding: 22,
+      alignItems: 'center',
+      gap: 6,
+    },
+    filterEmptyTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+    filterEmptySub: {
+      fontSize: 12,
+      color: COLORS.inkMuted,
+      textAlign: 'center',
+      lineHeight: 18,
+    },
+  });

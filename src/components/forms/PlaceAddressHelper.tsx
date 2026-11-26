@@ -8,7 +8,8 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { COLORS } from '../../theme/tokens';
+import { useTheme, useThemedStyles } from '../../context/ThemeContext';
+import { ThemeColors } from '../../theme/tokens';
 import {
   lookupPropertyAddresses,
   openPropertyInGoogleMaps,
@@ -38,6 +39,8 @@ export const PlaceAddressHelper: React.FC<Props> = ({
   onChangeText,
   placeholder = 'e.g., Madikeri, Coorg (or tap Find)',
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [searching, setSearching] = useState(false);
   const [lookupResult, setLookupResult] = useState<{
     forName: string;
@@ -105,7 +108,7 @@ export const PlaceAddressHelper: React.FC<Props> = ({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
           multiline={false}
           returnKeyType="done"
@@ -132,7 +135,7 @@ export const PlaceAddressHelper: React.FC<Props> = ({
           activeOpacity={0.82}
         >
           {searching ? (
-            <ActivityIndicator size="small" color="#0369A1" />
+            <ActivityIndicator size="small" color={isDark ? '#7DD3FC' : '#0369A1'} />
           ) : (
             <Text style={styles.findChipText}>🔍 Find Address</Text>
           )}
@@ -176,109 +179,110 @@ export const PlaceAddressHelper: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  wrap: { gap: 6 },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.inkSoft,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 13.5,
-    fontWeight: '600',
-    color: COLORS.ink,
-  },
-  clearBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#E7E5E4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-  },
-  clearBtnText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.inkMuted,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    minHeight: 34,
-  },
-  findChip: {
-    backgroundColor: '#F0F9FF',
-    borderColor: '#BAE6FD',
-  },
-  findChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0369A1',
-  },
-  mapsChip: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  mapsChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#047857',
-  },
-  suggestionsBox: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: 12,
-    padding: 8,
-    gap: 6,
-  },
-  suggestionsHeader: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: '#0369A1',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  suggestionRow: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 9,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  suggestionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.ink,
-    lineHeight: 16,
-  },
-  statusHint: {
-    fontSize: 11.5,
-    color: COLORS.inkMuted,
-    fontStyle: 'italic',
-    lineHeight: 16,
-  },
-});
+const createStyles = (COLORS: ThemeColors, _SHADOWS: unknown, isDark: boolean) =>
+  StyleSheet.create({
+    wrap: { gap: 6 },
+    label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.inkSoft,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+    },
+    input: {
+      flex: 1,
+      paddingVertical: 10,
+      fontSize: 13.5,
+      fontWeight: '600',
+      color: COLORS.ink,
+    },
+    clearBtn: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: COLORS.surfaceMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 6,
+    },
+    clearBtnText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: COLORS.inkMuted,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    actionChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      minHeight: 34,
+    },
+    findChip: {
+      backgroundColor: COLORS.skySoft,
+      borderColor: COLORS.skyBorder,
+    },
+    findChipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+    },
+    mapsChip: {
+      backgroundColor: COLORS.emeraldSoft,
+      borderColor: COLORS.emeraldBorder,
+    },
+    mapsChipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.emeraldText,
+    },
+    suggestionsBox: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      borderRadius: 12,
+      padding: 8,
+      gap: 6,
+    },
+    suggestionsHeader: {
+      fontSize: 10.5,
+      fontWeight: '800',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    suggestionRow: {
+      backgroundColor: COLORS.surfaceMuted,
+      borderRadius: 9,
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+    },
+    suggestionText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: COLORS.ink,
+      lineHeight: 16,
+    },
+    statusHint: {
+      fontSize: 11.5,
+      color: COLORS.inkMuted,
+      fontStyle: 'italic',
+      lineHeight: 16,
+    },
+  });

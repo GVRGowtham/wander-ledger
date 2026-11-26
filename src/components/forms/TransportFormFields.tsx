@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { COLORS, TRANSPORT_MODE_META } from '../../theme/tokens';
+import { useTheme, useThemedStyles } from '../../context/ThemeContext';
+import { ThemeColors, TRANSPORT_MODE_META } from '../../theme/tokens';
 import { DistanceUnit, TransportMode } from '../../types/models';
 
 export interface TransportDraft {
@@ -33,6 +34,8 @@ export const TransportFormFields: React.FC<Props> = ({
   onChange,
   distanceUnit,
 }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const isCar = draft.mode === 'rental_car' || draft.mode === 'own_car';
   const isOwnCar = draft.mode === 'own_car';
 
@@ -68,7 +71,7 @@ export const TransportFormFields: React.FC<Props> = ({
             value={draft.origin}
             onChangeText={(v) => onChange({ origin: v })}
             placeholder={isCar ? 'e.g. Bengaluru' : 'e.g. Zurich HB'}
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -78,7 +81,7 @@ export const TransportFormFields: React.FC<Props> = ({
             value={draft.destination}
             onChangeText={(v) => onChange({ destination: v })}
             placeholder={isCar ? 'e.g. Coorg' : 'e.g. Lucerne'}
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -101,7 +104,7 @@ export const TransportFormFields: React.FC<Props> = ({
             ? 'e.g. Sixt VW Golf'
             : 'e.g. SBB InterCity 8 / Vande Bharat'
         }
-        placeholderTextColor={COLORS.inkSoft}
+        placeholderTextColor={colors.inkSoft}
         style={styles.input}
       />
 
@@ -112,7 +115,7 @@ export const TransportFormFields: React.FC<Props> = ({
             value={draft.startDate}
             onChangeText={(v) => onChange({ startDate: v })}
             placeholder="YYYY-MM-DD"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -122,7 +125,7 @@ export const TransportFormFields: React.FC<Props> = ({
             value={draft.endDate}
             onChangeText={(v) => onChange({ endDate: v })}
             placeholder="YYYY-MM-DD"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -138,7 +141,7 @@ export const TransportFormFields: React.FC<Props> = ({
             onChangeText={(v) => onChange({ distanceInput: v })}
             placeholder={distanceUnit === 'mi' ? 'e.g. 160' : 'e.g. 260'}
             keyboardType="numeric"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -148,7 +151,7 @@ export const TransportFormFields: React.FC<Props> = ({
             value={draft.seatOrVehicle}
             onChangeText={(v) => onChange({ seatOrVehicle: v })}
             placeholder={isCar ? 'e.g. SUV / Automatic' : 'e.g. B4 • 32'}
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -163,7 +166,7 @@ export const TransportFormFields: React.FC<Props> = ({
               onChangeText={(v) => onChange({ costAmount: v })}
               placeholder="e.g. 145"
               keyboardType="decimal-pad"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -175,7 +178,7 @@ export const TransportFormFields: React.FC<Props> = ({
               autoCapitalize="characters"
               maxLength={4}
               placeholder="CHF"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -186,7 +189,7 @@ export const TransportFormFields: React.FC<Props> = ({
               onChangeText={(v) => onChange({ referenceCode: v })}
               autoCapitalize="characters"
               placeholder="Optional"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -203,7 +206,7 @@ export const TransportFormFields: React.FC<Props> = ({
                 onPress={() => onChange({ payLater: false })}
                 style={[
                   styles.modeChip,
-                  !draft.payLater && { backgroundColor: COLORS.indigo, borderColor: COLORS.indigo },
+                  !draft.payLater && { backgroundColor: colors.indigo, borderColor: colors.indigo },
                 ]}
                 activeOpacity={0.8}
               >
@@ -215,7 +218,7 @@ export const TransportFormFields: React.FC<Props> = ({
                 onPress={() => onChange({ payLater: true })}
                 style={[
                   styles.modeChip,
-                  draft.payLater && { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+                  draft.payLater && { backgroundColor: colors.coral, borderColor: colors.coral },
                 ]}
                 activeOpacity={0.8}
               >
@@ -238,60 +241,61 @@ export const TransportFormFields: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  wrap: { gap: 10 },
-  label: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  modeWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
-  },
-  modeChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  modeChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  input: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.ink,
-  },
-  tipBox: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 12,
-    padding: 10,
-  },
-  tipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#92400E',
-    lineHeight: 16,
-  },
-});
+const createStyles = (COLORS: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { gap: 10 },
+    label: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    modeWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 4,
+    },
+    modeChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    modeChipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    input: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.ink,
+    },
+    tipBox: {
+      backgroundColor: COLORS.amberSoft,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+      borderRadius: 12,
+      padding: 10,
+    },
+    tipText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.amberText,
+      lineHeight: 16,
+    },
+  });

@@ -1,9 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useThemedStyles } from '../../context/ThemeContext';
 import { formatDuration } from '../../db/airportsData';
 import { formatFlightDistance } from '../../services/distanceUtils';
-import { COLORS, SHADOWS } from '../../theme/tokens';
+import { ThemeColors, ThemeShadows } from '../../theme/tokens';
 import { DistanceUnit, Flight } from '../../types/models';
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export const BoardingPassCard: React.FC<Props> = ({ flight, distanceUnit = 'km' }) => {
+  const styles = useThemedStyles(createStyles);
   const depDateLabel = flight.departureTime.slice(0, 10);
   const rawTime = flight.departureTime.length >= 16 ? flight.departureTime.slice(11, 16) : '';
   const hasRealTime = Boolean(rawTime && rawTime !== '00:00');
@@ -74,10 +76,10 @@ export const BoardingPassCard: React.FC<Props> = ({ flight, distanceUnit = 'km' 
         </View>
 
         <View style={styles.metaRow}>
-          <MetaItem label="DATE" value={hasRealTime ? `${depDateLabel} ${rawTime}` : depDateLabel} />
-          <MetaItem label="SEAT" value={flight.seat || '—'} />
-          <MetaItem label="CABIN" value={flight.cabinClass || '—'} />
-          <MetaItem label="PNR" value={flight.pnr || '—'} />
+          <MetaItem label="DATE" value={hasRealTime ? `${depDateLabel} ${rawTime}` : depDateLabel} styles={styles} />
+          <MetaItem label="SEAT" value={flight.seat || '—'} styles={styles} />
+          <MetaItem label="CABIN" value={flight.cabinClass || '—'} styles={styles} />
+          <MetaItem label="PNR" value={flight.pnr || '—'} styles={styles} />
         </View>
 
         {(flight.aircraft || flight.terminal || flight.gate) && (
@@ -114,182 +116,185 @@ export const BoardingPassCard: React.FC<Props> = ({ flight, distanceUnit = 'km' 
   );
 };
 
-const MetaItem = ({ label, value }: { label: string; value: string }) => (
+type BoardingStyles = ReturnType<typeof createStyles>;
+
+const MetaItem = ({ label, value, styles }: { label: string; value: string; styles: BoardingStyles }) => (
   <View>
     <Text style={styles.metaLabel}>{label}</Text>
     <Text style={styles.metaValue}>{value}</Text>
   </View>
 );
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    overflow: 'hidden',
-    ...SHADOWS.card,
-  },
-  header: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  airlineTitle: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-    flex: 1,
-    marginRight: 8,
-  },
-  badge: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  body: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  endpoint: {
-    minWidth: 74,
-    maxWidth: 96,
-  },
-  iata: {
-    fontSize: 23,
-    fontWeight: '900',
-    color: COLORS.ink,
-    letterSpacing: 0.5,
-  },
-  city: {
-    fontSize: 12,
-    color: COLORS.inkMuted,
-    marginTop: 1,
-  },
-  midCol: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  durationText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.sky,
-  },
-  dashLineWrap: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  dashLine: {
-    width: '100%',
-    borderTopWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#7DD3FC',
-  },
-  planeMini: {
-    position: 'absolute',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 4,
-    fontSize: 13,
-  },
-  milesText: {
-    fontSize: 11,
-    color: COLORS.inkMuted,
-    fontWeight: '600',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 14,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  metaLabel: {
-    fontSize: 10,
-    color: COLORS.inkSoft,
-    fontWeight: '700',
-  },
-  metaValue: {
-    fontSize: 12,
-    color: COLORS.ink,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  extraStrip: {
-    marginTop: 10,
-    backgroundColor: '#F0F9FF',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  extraText: {
-    fontSize: 11,
-    color: '#0369A1',
-    fontWeight: '600',
-  },
-  perforationWrap: {
-    height: 16,
-    justifyContent: 'center',
-    position: 'relative',
-    backgroundColor: '#F8FAFC',
-  },
-  perforatedLine: {
-    borderTopWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
-    marginHorizontal: 12,
-  },
-  notch: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  notchLeft: { left: -9 },
-  notchRight: { right: -9 },
-  footer: {
-    backgroundColor: '#F0F9FF',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  loyaltyLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.inkMuted,
-    flex: 1,
-    marginRight: 8,
-  },
-  loyaltyPoints: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#B45309',
-  },
-});
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      overflow: 'hidden',
+      ...SHADOWS.card,
+    },
+    header: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    rowBetween: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    airlineTitle: {
+      color: '#FFFFFF',
+      fontWeight: '800',
+      fontSize: 13,
+      flex: 1,
+      marginRight: 8,
+    },
+    badge: {
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    badgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
+    body: {
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 12,
+    },
+    routeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    endpoint: {
+      minWidth: 74,
+      maxWidth: 96,
+    },
+    iata: {
+      fontSize: 23,
+      fontWeight: '900',
+      color: COLORS.ink,
+      letterSpacing: 0.5,
+    },
+    city: {
+      fontSize: 12,
+      color: COLORS.inkMuted,
+      marginTop: 1,
+    },
+    midCol: {
+      flex: 1,
+      alignItems: 'center',
+      paddingHorizontal: 8,
+    },
+    durationText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.sky,
+    },
+    dashLineWrap: {
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 4,
+    },
+    dashLine: {
+      width: '100%',
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: isDark ? COLORS.skyBorder : '#7DD3FC',
+    },
+    planeMini: {
+      position: 'absolute',
+      backgroundColor: COLORS.card,
+      paddingHorizontal: 4,
+      fontSize: 13,
+    },
+    milesText: {
+      fontSize: 11,
+      color: COLORS.inkMuted,
+      fontWeight: '600',
+    },
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginTop: 14,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    metaLabel: {
+      fontSize: 10,
+      color: COLORS.inkSoft,
+      fontWeight: '700',
+    },
+    metaValue: {
+      fontSize: 12,
+      color: COLORS.ink,
+      fontWeight: '800',
+      marginTop: 2,
+    },
+    extraStrip: {
+      marginTop: 10,
+      backgroundColor: COLORS.skySoft,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    extraText: {
+      fontSize: 11,
+      color: isDark ? '#7DD3FC' : '#0369A1',
+      fontWeight: '600',
+    },
+    perforationWrap: {
+      height: 16,
+      justifyContent: 'center',
+      position: 'relative',
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#F8FAFC',
+    },
+    perforatedLine: {
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: COLORS.border,
+      marginHorizontal: 12,
+    },
+    notch: {
+      position: 'absolute',
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+    },
+    notchLeft: { left: -9 },
+    notchRight: { right: -9 },
+    footer: {
+      backgroundColor: COLORS.skySoft,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    loyaltyLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.inkMuted,
+      flex: 1,
+      marginRight: 8,
+    },
+    loyaltyPoints: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: COLORS.amberText,
+    },
+  });

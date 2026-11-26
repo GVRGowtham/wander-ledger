@@ -8,10 +8,11 @@ import {
 } from 'react-native';
 import { WorldMapSvg } from '../components/map/WorldMapSvg';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { getTripStatus } from '../db/database';
 import { formatDistance, formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { deriveGlobalTravelGeography } from '../services/travelGeography';
-import { COLORS, formatMoney, SHADOWS } from '../theme/tokens';
+import { formatMoney, ThemeColors, ThemeShadows } from '../theme/tokens';
 
 interface Props {
   onOpenTrip: (tripId: string) => void;
@@ -27,6 +28,8 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
     getSummaryForTrip,
     getMemoriesForTrip,
   } = useApp();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(trips[0]?.id ?? null);
 
@@ -147,7 +150,7 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
 
       {geography.transitHubs.length > 0 && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.inkSoft }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.inkSoft }}>
             ◯ Transit hubs (not counted as countries):{' '}
             {geography.transitHubs.map((h) => `${h.flag} ${h.iata}`).join('  •  ')}
           </Text>
@@ -297,19 +300,19 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
       {/* Lifetime / Year Footprint Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: COLORS.coral }]}>{countriesCount}</Text>
+          <Text style={[styles.statNum, { color: colors.coral }]}>{countriesCount}</Text>
           <Text style={styles.statLabel}>
             {activeYear ? `Countries (${activeYear})` : 'Countries'}
           </Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: COLORS.sky }]}>{citiesCount}</Text>
+          <Text style={[styles.statNum, { color: colors.sky }]}>{citiesCount}</Text>
           <Text style={styles.statLabel}>
             {activeYear ? `Cities (${activeYear})` : 'Cities'}
           </Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statNum, { color: COLORS.emerald }]}>
+          <Text style={[styles.statNum, { color: colors.emerald }]}>
             {totalDistanceDisplay.toLocaleString()}
           </Text>
           <Text style={styles.statLabel}>
@@ -321,155 +324,156 @@ export const WorldMapScreen: React.FC<Props> = ({ onOpenTrip }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 36, gap: 14 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  title: { fontSize: 20, fontWeight: '900', color: COLORS.ink },
-  subtitle: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
-  orbitBadge: {
-    backgroundColor: COLORS.amberSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-  },
-  orbitText: { fontSize: 12, fontWeight: '900', color: '#92400E' },
-  yearRow: { gap: 6, paddingVertical: 2 },
-  yearPill: {
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  yearPillActive: {
-    backgroundColor: COLORS.ink,
-    borderColor: COLORS.ink,
-  },
-  yearText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: COLORS.inkMuted,
-    includeFontPadding: false,
-  },
-  yearTextActive: { color: '#FFFFFF' },
-  chipsRow: { gap: 8, paddingVertical: 2 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    maxWidth: 200,
-  },
-  chipActive: {
-    backgroundColor: COLORS.coral,
-    borderColor: COLORS.coral,
-  },
-  chipFlag: {
-    fontSize: 13,
-    includeFontPadding: false,
-  },
-  chipPlusBadge: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 99,
-  },
-  chipPlusBadgeActive: {
-    backgroundColor: 'rgba(255,255,255,0.24)',
-  },
-  chipPlusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.coralDark,
-    includeFontPadding: false,
-  },
-  chipPlusTextActive: {
-    color: '#FFFFFF',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.ink,
-    flexShrink: 1,
-    includeFontPadding: false,
-  },
-  chipTextActive: { color: '#FFFFFF' },
-  postcard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    padding: 16,
-    gap: 12,
-    ...SHADOWS.card,
-  },
-  postcardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  postcardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  flagWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 38,
-    gap: 2,
-  },
-  flag: { fontSize: 28, includeFontPadding: false },
-  flagPlusPill: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 99,
-  },
-  flagPlusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.coralDark,
-    includeFontPadding: false,
-  },
-  cityTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
-  dateSub: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
-  openBtn: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  openBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
-  quoteBox: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-  },
-  quoteText: { fontSize: 12, color: COLORS.inkMuted, fontStyle: 'italic', lineHeight: 18 },
-  postcardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 4,
-  },
-  footerStat: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', flex: 1 },
-  footerSpend: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  statNum: { fontSize: 18, fontWeight: '900' },
-  statLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
-});
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    content: { padding: 16, paddingBottom: 36, gap: 14 },
+    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    title: { fontSize: 20, fontWeight: '900', color: COLORS.ink },
+    subtitle: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
+    orbitBadge: {
+      backgroundColor: COLORS.amberSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 99,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+    },
+    orbitText: { fontSize: 12, fontWeight: '900', color: COLORS.amberText },
+    yearRow: { gap: 6, paddingVertical: 2 },
+    yearPill: {
+      backgroundColor: COLORS.card,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 99,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    yearPillActive: {
+      backgroundColor: isDark ? COLORS.coral : COLORS.ink,
+      borderColor: isDark ? COLORS.coral : COLORS.ink,
+    },
+    yearText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: COLORS.inkMuted,
+      includeFontPadding: false,
+    },
+    yearTextActive: { color: '#FFFFFF' },
+    chipsRow: { gap: 8, paddingVertical: 2 },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: COLORS.card,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 99,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      maxWidth: 200,
+    },
+    chipActive: {
+      backgroundColor: COLORS.coral,
+      borderColor: COLORS.coral,
+    },
+    chipFlag: {
+      fontSize: 13,
+      includeFontPadding: false,
+    },
+    chipPlusBadge: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 99,
+    },
+    chipPlusBadgeActive: {
+      backgroundColor: 'rgba(255,255,255,0.24)',
+    },
+    chipPlusText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: COLORS.coralDark,
+      includeFontPadding: false,
+    },
+    chipPlusTextActive: {
+      color: '#FFFFFF',
+    },
+    chipText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.ink,
+      flexShrink: 1,
+      includeFontPadding: false,
+    },
+    chipTextActive: { color: '#FFFFFF' },
+    postcard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      padding: 16,
+      gap: 12,
+      ...SHADOWS.card,
+    },
+    postcardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    postcardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    flagWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 38,
+      gap: 2,
+    },
+    flag: { fontSize: 28, includeFontPadding: false },
+    flagPlusPill: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 99,
+    },
+    flagPlusText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: COLORS.coralDark,
+      includeFontPadding: false,
+    },
+    cityTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+    dateSub: { fontSize: 11, color: COLORS.coralDark, fontWeight: '700', marginTop: 2 },
+    openBtn: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    openBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
+    quoteBox: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+    },
+    quoteText: { fontSize: 12, color: COLORS.inkMuted, fontStyle: 'italic', lineHeight: 18 },
+    postcardFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+      paddingTop: 4,
+    },
+    footerStat: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', flex: 1 },
+    footerSpend: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
+    statsRow: { flexDirection: 'row', gap: 10 },
+    statCard: {
+      flex: 1,
+      backgroundColor: COLORS.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingVertical: 14,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+    },
+    statNum: { fontSize: 18, fontWeight: '900' },
+    statLabel: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
+  });

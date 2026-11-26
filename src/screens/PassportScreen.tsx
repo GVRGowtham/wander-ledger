@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
+import { ThemePreference, useTheme, useThemedStyles } from '../context/ThemeContext';
 import { DriveBackupMetadata, formatBytes } from '../services/driveBackupHelpers';
 import { formatDistanceValue, milesToKm } from '../services/distanceUtils';
 import { shareLocalFileSafely } from '../services/shareMediaService';
@@ -22,14 +23,27 @@ import {
   deriveGlobalTravelGeography,
   formatPassportStampMonthYear,
 } from '../services/travelGeography';
-import { COLORS, SHADOWS } from '../theme/tokens';
+import { ThemeColors, ThemeShadows } from '../theme/tokens';
 import { DistanceUnit } from '../types/models';
 
-const STAMP_STYLES = [
+const LIGHT_STAMP_STYLES = [
   { border: '#E11D48', bg: '#FFF1F2', text: '#BE123C', tilt: '-5deg' },
   { border: '#0284C7', bg: '#F0F9FF', text: '#0369A1', tilt: '4deg' },
   { border: '#059669', bg: '#ECFDF5', text: '#047857', tilt: '-3deg' },
   { border: '#7C3AED', bg: '#F5F3FF', text: '#6D28D9', tilt: '5deg' },
+];
+
+const DARK_STAMP_STYLES = [
+  { border: '#FB7185', bg: '#311521', text: '#FDA4AF', tilt: '-5deg' },
+  { border: '#38BDF8', bg: '#102638', text: '#7DD3FC', tilt: '4deg' },
+  { border: '#34D399', bg: '#0F2A23', text: '#6EE7B7', tilt: '-3deg' },
+  { border: '#A78BFA', bg: '#221B3E', text: '#C4B5FD', tilt: '5deg' },
+];
+
+const APPEARANCE_OPTIONS: ReadonlyArray<{ id: ThemePreference; label: string }> = [
+  { id: 'system', label: '📱 System' },
+  { id: 'light', label: '☀️ Light' },
+  { id: 'dark', label: '🌙 Dark' },
 ];
 
 const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
@@ -74,6 +88,15 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
     updateProfileSettings,
     clearAllData,
   } = useApp();
+
+  const {
+    preference: themePref,
+    setThemePreference,
+    isDark,
+    colors,
+  } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const stampStyles = isDark ? DARK_STAMP_STYLES : LIGHT_STAMP_STYLES;
 
   const [renameModal, setRenameModal] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -424,13 +447,13 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       {/* Cumulative Lifetime Strip */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: COLORS.coral }]} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={[styles.statVal, { color: colors.coral }]} numberOfLines={1} adjustsFontSizeToFit>
             {countryStamps.length}
           </Text>
           <Text style={styles.statLbl} numberOfLines={1}>Countries</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: COLORS.sky }]} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={[styles.statVal, { color: colors.sky }]} numberOfLines={1} adjustsFontSizeToFit>
             {totalDistanceDisplay.toLocaleString()}
           </Text>
           <Text style={styles.statLbl} numberOfLines={1}>
@@ -438,7 +461,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
           </Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statVal, { color: '#B45309' }]} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={[styles.statVal, { color: colors.amberText }]} numberOfLines={1} adjustsFontSizeToFit>
             {(totalPoints / 1000).toFixed(1)}k
           </Text>
           <Text style={styles.statLbl} numberOfLines={1}>Vault Pts</Text>
@@ -459,7 +482,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
         ) : (
           <View style={styles.stampsGrid}>
             {countryStamps.map((s, idx) => {
-              const st = STAMP_STYLES[idx % STAMP_STYLES.length];
+              const st = stampStyles[idx % stampStyles.length];
               return (
                 <View
                   key={s.code}
@@ -601,7 +624,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               style={styles.googleConnectBtn}
             >
               {isDriveBusy ? (
-                <ActivityIndicator color={COLORS.navy} size="small" />
+                <ActivityIndicator color={colors.navyText} size="small" />
               ) : (
                 <View style={styles.googleConnectRow}>
                   <View style={styles.googleGBadge}>
@@ -650,7 +673,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
               ) : null}
               {driveProgress ? (
                 <View style={styles.driveProgressRow}>
-                  <ActivityIndicator color={COLORS.coral} size="small" />
+                  <ActivityIndicator color={colors.coral} size="small" />
                   <Text style={styles.driveProgressText}>{driveProgress.label}</Text>
                 </View>
               ) : null}
@@ -671,8 +694,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 value={driveAutoBackupEnabled}
                 disabled={togglingAutoBackup || isDriveBusy}
                 onValueChange={handleToggleAutoBackup}
-                trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-                thumbColor={driveAutoBackupEnabled ? COLORS.coral : '#FFFFFF'}
+                trackColor={{
+                  false: isDark ? '#3B4463' : '#D6D3D1',
+                  true: isDark ? '#9A3412' : '#FDBA74',
+                }}
+                thumbColor={driveAutoBackupEnabled ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
               />
             </View>
 
@@ -688,8 +714,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 value={Boolean(profile?.wifiOnlyPhotoSync ?? true)}
                 disabled={isDriveBusy}
                 onValueChange={(val) => updateProfileSettings({ wifiOnlyPhotoSync: val })}
-                trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-                thumbColor={profile?.wifiOnlyPhotoSync ? COLORS.coral : '#FFFFFF'}
+                trackColor={{
+                  false: isDark ? '#3B4463' : '#D6D3D1',
+                  true: isDark ? '#9A3412' : '#FDBA74',
+                }}
+                thumbColor={profile?.wifiOnlyPhotoSync ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
               />
             </View>
 
@@ -716,7 +745,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
                 activeOpacity={0.85}
               >
                 {driveBusyMode === 'restoring' ? (
-                  <ActivityIndicator color={COLORS.navy} size="small" />
+                  <ActivityIndicator color={colors.navyText} size="small" />
                 ) : (
                   <Text style={styles.restoreDriveBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.84}>
                     📥 Restore
@@ -751,6 +780,33 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
       {/* Preferences & Controls */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>⚙️ Travel Preferences</Text>
+
+        {/* Appearance: System / Light / Dark */}
+        <Text style={styles.prefSub}>
+          Appearance 🌗 (switch between Sunlit Postcard &amp; Midnight Passport)
+        </Text>
+        <View style={styles.themeRow}>
+          {APPEARANCE_OPTIONS.map((opt) => {
+            const active = themePref === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                onPress={() => setThemePreference(opt.id)}
+                style={[styles.themePill, active && styles.themePillActive]}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[styles.themePillText, active && styles.themePillTextActive]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.84}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <Text style={styles.prefSub}>Home Currency (FX rates: {fxSource === 'live' ? 'Live ECB ✓' : 'Cached Offline'})</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
@@ -802,8 +858,11 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             value={remindersEnabled}
             disabled={togglingReminders}
             onValueChange={handleToggleReminders}
-            trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-            thumbColor={remindersEnabled ? COLORS.coral : '#FFFFFF'}
+            trackColor={{
+              false: isDark ? '#3B4463' : '#D6D3D1',
+              true: isDark ? '#9A3412' : '#FDBA74',
+            }}
+            thumbColor={remindersEnabled ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
           />
         </View>
 
@@ -844,7 +903,7 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
           value={draftName}
           onChangeText={setDraftName}
           placeholder="Your first name (optional)"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           autoCapitalize="words"
           style={styles.nameInput}
         />
@@ -853,343 +912,379 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 48, gap: 14 },
-  passportCover: {
-    borderRadius: 24,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(251, 191, 36, 0.45)',
-    ...SHADOWS.card,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontSize: 18, fontWeight: '900', color: '#1C1917' },
-  passportLabel: { fontSize: 10, fontWeight: '900', color: '#FDE047', letterSpacing: 1.2 },
-  userName: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', marginTop: 2 },
-  userEmail: { fontSize: 11, color: '#C7D2FE', marginTop: 2 },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    content: { padding: 16, paddingBottom: 48, gap: 14 },
+    passportCover: {
+      borderRadius: 24,
+      padding: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderWidth: 2,
+      borderColor: 'rgba(251, 191, 36, 0.45)',
+      ...SHADOWS.card,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: { fontSize: 18, fontWeight: '900', color: '#1C1917' },
+    passportLabel: { fontSize: 10, fontWeight: '900', color: '#FDE047', letterSpacing: 1.2 },
+    userName: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', marginTop: 2 },
+    userEmail: { fontSize: 11, color: '#C7D2FE', marginTop: 2 },
 
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statBox: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  statVal: { fontSize: 18, fontWeight: '900' },
-  statLbl: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
+    statsRow: { flexDirection: 'row', gap: 10 },
+    statBox: {
+      flex: 1,
+      backgroundColor: COLORS.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingVertical: 14,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+    },
+    statVal: { fontSize: 18, fontWeight: '900' },
+    statLbl: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700', marginTop: 3 },
 
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
-    gap: 12,
-    ...SHADOWS.card,
-  },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
-  cardMeta: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
+    card: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 18,
+      gap: 12,
+      ...SHADOWS.card,
+    },
+    rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    cardTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flexShrink: 1 },
+    cardMeta: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
 
-  stampsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
-  stamp: {
-    width: '47%',
-    borderWidth: 2,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-  },
-  stampCountry: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
-  stampDate: { fontSize: 10, fontFamily: 'monospace', fontWeight: '700', marginTop: 3 },
+    stampsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
+    stamp: {
+      width: '47%',
+      borderWidth: 2,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+    },
+    stampCountry: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
+    stampDate: { fontSize: 10, fontFamily: 'monospace', fontWeight: '700', marginTop: 3 },
 
-  loyaltyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderSoft,
-  },
-  loyaltyName: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
-  loyaltyNum: { fontSize: 11, color: COLORS.inkSoft, marginTop: 2 },
-  loyaltyBal: { fontSize: 13, fontWeight: '900', color: '#B45309' },
+    loyaltyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.borderSoft,
+    },
+    loyaltyName: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
+    loyaltyNum: { fontSize: 11, color: COLORS.inkSoft, marginTop: 2 },
+    loyaltyBal: { fontSize: 13, fontWeight: '900', color: COLORS.amberText },
 
-  prefSub: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', lineHeight: 17 },
-  currChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  currChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  currText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingTop: 4,
-  },
-  switchTitle: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
-  switchSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2 },
-  footerActions: { gap: 10, marginTop: 6 },
-  footerSubRow: { flexDirection: 'row', gap: 10 },
-  exportBtn: {
-    backgroundColor: COLORS.skySoft,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  exportBtnText: { color: '#0369A1', fontWeight: '800', fontSize: 13 },
-  guideBtn: {
-    flex: 1,
-    backgroundColor: COLORS.indigoSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-  },
-  guideBtnText: { color: COLORS.indigo, fontWeight: '800', fontSize: 13 },
-  resetBtn: {
-    flex: 1,
-    backgroundColor: COLORS.roseSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#FECDD3',
-  },
-  resetBtnText: { color: COLORS.rose, fontWeight: '800', fontSize: 13 },
-  nameInput: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: COLORS.ink,
-    fontWeight: '600',
-  },
-  saveNameBtn: {
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  saveNameBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-  transitBox: {
-    marginTop: 4,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-    gap: 6,
-  },
-  transitTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  transitChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  transitChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#CBD5E1',
-    borderRadius: 99,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  transitChipText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: COLORS.inkMuted,
-  },
-  transitHint: {
-    fontSize: 11,
-    color: COLORS.inkSoft,
-    lineHeight: 15,
-  },
-  syncPillOffline: {
-    backgroundColor: COLORS.emeraldSoft,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  syncPillOfflineText: { fontSize: 11, fontWeight: '800', color: '#047857' },
-  syncPillSynced: {
-    backgroundColor: COLORS.emeraldSoft,
-    borderWidth: 1,
-    borderColor: '#6EE7B7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  syncPillSyncedText: { fontSize: 11, fontWeight: '800', color: '#047857' },
-  syncPillSyncing: {
-    backgroundColor: COLORS.skySoft,
-    borderWidth: 1,
-    borderColor: '#7DD3FC',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  syncPillSyncingText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
-  syncPillPending: {
-    backgroundColor: COLORS.amberSoft,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  syncPillPendingText: { fontSize: 11, fontWeight: '800', color: '#92400E' },
-  syncPillError: {
-    backgroundColor: COLORS.roseSoft,
-    borderWidth: 1,
-    borderColor: '#FECDD3',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  syncPillErrorText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
-  syncMetaBox: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    padding: 11,
-    gap: 3,
-  },
-  syncAccountText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  syncTimeText: { fontSize: 11, color: COLORS.inkMuted },
-  syncSummaryText: { fontSize: 11, fontWeight: '700', color: '#047857', marginTop: 2 },
-  syncPendingWifiText: { fontSize: 11, fontWeight: '700', color: '#B45309', marginTop: 3 },
-  syncHintText: { fontSize: 11, color: COLORS.inkSoft, lineHeight: 15, marginTop: 2 },
-  syncErrorText: { fontSize: 11, fontWeight: '700', color: COLORS.rose, marginTop: 2 },
-  driveProgressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-  },
-  driveProgressText: { fontSize: 11.5, fontWeight: '700', color: COLORS.coralDark, flex: 1 },
-  googleConnectBtn: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleConnectRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  googleGBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#93C5FD',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleGBadgeText: { fontSize: 13, fontWeight: '900', color: '#2563EB' },
-  googleConnectBtnText: { color: COLORS.ink, fontWeight: '900', fontSize: 13.5 },
-  cloudPrimaryBtn: {
-    backgroundColor: COLORS.navy,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cloudPrimaryBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  restoreDriveBtn: {
-    backgroundColor: COLORS.indigoSoft,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  restoreDriveBtnText: { color: COLORS.navy, fontWeight: '800', fontSize: 13 },
-  disconnectBtn: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disconnectBtnText: { color: COLORS.inkMuted, fontWeight: '800', fontSize: 12 },
-  driveSubActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-  },
-  driveSubActionBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  driveSubActionDanger: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: COLORS.rose,
-  },
-  driveSubActionMuted: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-  },
-});
+    prefSub: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600', lineHeight: 17 },
+    themeRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    themePill: {
+      flex: 1,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      borderRadius: 99,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    themePillActive: {
+      backgroundColor: COLORS.coral,
+      borderColor: COLORS.coral,
+    },
+    themePillText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    themePillTextActive: {
+      color: '#FFFFFF',
+    },
+    currChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    currChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+    currText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    switchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingTop: 4,
+    },
+    switchTitle: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
+    switchSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2 },
+    footerActions: { gap: 10, marginTop: 6 },
+    footerSubRow: { flexDirection: 'row', gap: 10 },
+    exportBtn: {
+      backgroundColor: COLORS.skySoft,
+      paddingHorizontal: 18,
+      paddingVertical: 13,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+    },
+    exportBtnText: { color: isDark ? '#7DD3FC' : '#0369A1', fontWeight: '800', fontSize: 13 },
+    guideBtn: {
+      flex: 1,
+      backgroundColor: COLORS.indigoSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.indigoBorder,
+    },
+    guideBtnText: { color: COLORS.indigo, fontWeight: '800', fontSize: 13 },
+    resetBtn: {
+      flex: 1,
+      backgroundColor: COLORS.roseSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.roseBorder,
+    },
+    resetBtnText: { color: COLORS.rose, fontWeight: '800', fontSize: 13 },
+    nameInput: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontSize: 14,
+      color: COLORS.ink,
+      fontWeight: '600',
+    },
+    saveNameBtn: {
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      borderRadius: 16,
+      alignItems: 'center',
+    },
+    saveNameBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+    transitBox: {
+      marginTop: 4,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+      gap: 6,
+    },
+    transitTitle: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    transitChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    transitChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: isDark ? '#3B4463' : '#CBD5E1',
+      borderRadius: 99,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    transitChipText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: COLORS.inkMuted,
+    },
+    transitHint: {
+      fontSize: 11,
+      color: COLORS.inkSoft,
+      lineHeight: 15,
+    },
+    syncPillOffline: {
+      backgroundColor: COLORS.emeraldSoft,
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    syncPillOfflineText: { fontSize: 11, fontWeight: '800', color: COLORS.emeraldText },
+    syncPillSynced: {
+      backgroundColor: COLORS.emeraldSoft,
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    syncPillSyncedText: { fontSize: 11, fontWeight: '800', color: COLORS.emeraldText },
+    syncPillSyncing: {
+      backgroundColor: COLORS.skySoft,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    syncPillSyncingText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+    },
+    syncPillPending: {
+      backgroundColor: COLORS.amberSoft,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    syncPillPendingText: { fontSize: 11, fontWeight: '800', color: COLORS.amberText },
+    syncPillError: {
+      backgroundColor: COLORS.roseSoft,
+      borderWidth: 1,
+      borderColor: COLORS.roseBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    syncPillErrorText: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
+    syncMetaBox: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      padding: 11,
+      gap: 3,
+    },
+    syncAccountText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    syncTimeText: { fontSize: 11, color: COLORS.inkMuted },
+    syncSummaryText: { fontSize: 11, fontWeight: '700', color: COLORS.emeraldText, marginTop: 2 },
+    syncPendingWifiText: { fontSize: 11, fontWeight: '700', color: COLORS.amberText, marginTop: 3 },
+    syncHintText: { fontSize: 11, color: COLORS.inkSoft, lineHeight: 15, marginTop: 2 },
+    syncErrorText: { fontSize: 11, fontWeight: '700', color: COLORS.rose, marginTop: 2 },
+    driveProgressRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 6,
+      paddingTop: 6,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    driveProgressText: { fontSize: 11.5, fontWeight: '700', color: COLORS.coralDark, flex: 1 },
+    googleConnectBtn: {
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#FFFFFF',
+      borderWidth: 1.5,
+      borderColor: isDark ? COLORS.border : '#CBD5E1',
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    googleConnectRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    googleGBadge: {
+      width: 24,
+      height: 24,
+      borderRadius: 8,
+      backgroundColor: isDark ? '#172554' : '#EFF6FF',
+      borderWidth: 1,
+      borderColor: isDark ? '#3B82F6' : '#93C5FD',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    googleGBadgeText: {
+      fontSize: 13,
+      fontWeight: '900',
+      color: isDark ? '#93C5FD' : '#2563EB',
+    },
+    googleConnectBtnText: { color: COLORS.ink, fontWeight: '900', fontSize: 13.5 },
+    cloudPrimaryBtn: {
+      backgroundColor: COLORS.navy,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cloudPrimaryBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    restoreDriveBtn: {
+      backgroundColor: COLORS.indigoSoft,
+      borderWidth: 1,
+      borderColor: COLORS.indigoBorder,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    restoreDriveBtnText: { color: COLORS.navyText, fontWeight: '800', fontSize: 13 },
+    disconnectBtn: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 10,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    disconnectBtnText: { color: COLORS.inkMuted, fontWeight: '800', fontSize: 12 },
+    driveSubActionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: 4,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    driveSubActionBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+    },
+    driveSubActionDanger: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: COLORS.rose,
+    },
+    driveSubActionMuted: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+    },
+  });

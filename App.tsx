@@ -15,6 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { FEATURE_FLAGS } from './src/config/featureFlags';
 import { AppProvider, useApp } from './src/context/AppContext';
+import { ThemeProvider, useTheme, useThemedStyles } from './src/context/ThemeContext';
 import { InstagramStudioScreen } from './src/screens/InstagramStudioScreen';
 import { NewTripScreen } from './src/screens/NewTripScreen';
 import { PassportScreen } from './src/screens/PassportScreen';
@@ -25,7 +26,7 @@ import { TripDetailScreen } from './src/screens/TripDetailScreen';
 import { TripsHubScreen } from './src/screens/TripsHubScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { WorldMapScreen } from './src/screens/WorldMapScreen';
-import { COLORS, SHADOWS } from './src/theme/tokens';
+import { ThemeColors, ThemeShadows } from './src/theme/tokens';
 import { IncomingSharePayload } from './src/types/models';
 
 type MainTab = 'trips' | 'map' | 'shared' | 'studio' | 'passport';
@@ -39,6 +40,8 @@ type OverlayRoute =
 
 const MainShell: React.FC = () => {
   const { ready, profile } = useApp();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState<MainTab>('trips');
   const [overlay, setOverlay] = useState<OverlayRoute>({ name: 'none' });
   const { resolvedSharedPayloads, clearSharedPayloads } = useIncomingShare();
@@ -159,7 +162,7 @@ const MainShell: React.FC = () => {
           style={styles.splashLogo}
           resizeMode="contain"
         />
-        <ActivityIndicator color={COLORS.coral} style={{ marginTop: 14 }} />
+        <ActivityIndicator color={colors.coral} style={{ marginTop: 14 }} />
       </View>
     );
   }
@@ -299,6 +302,7 @@ const MainShell: React.FC = () => {
             emoji="🧳"
             label="Trips"
             active={isTabHighlighted('trips')}
+            styles={styles}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('trips');
@@ -308,6 +312,7 @@ const MainShell: React.FC = () => {
             emoji="🗺️"
             label="Map"
             active={isTabHighlighted('map')}
+            styles={styles}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('map');
@@ -333,6 +338,7 @@ const MainShell: React.FC = () => {
               emoji="💌"
               label="Shared"
               active={isTabHighlighted('shared')}
+              styles={styles}
               onPress={() => {
                 setOverlay({ name: 'none' });
                 setActiveTab('shared');
@@ -343,6 +349,7 @@ const MainShell: React.FC = () => {
               emoji="🎨"
               label="Studio"
               active={isTabHighlighted('studio')}
+              styles={styles}
               onPress={() => {
                 setOverlay({ name: 'none' });
                 setActiveTab('studio');
@@ -353,6 +360,7 @@ const MainShell: React.FC = () => {
             emoji="🛂"
             label="Passport"
             active={isTabHighlighted('passport')}
+            styles={styles}
             onPress={() => {
               setOverlay({ name: 'none' });
               setActiveTab('passport');
@@ -364,15 +372,19 @@ const MainShell: React.FC = () => {
   );
 };
 
+type AppStyles = ReturnType<typeof createStyles>;
+
 const NavButton = ({
   emoji,
   label,
   active,
+  styles,
   onPress,
 }: {
   emoji: string;
   label: string;
   active: boolean;
+  styles: AppStyles;
   onPress: () => void;
 }) => (
   <TouchableOpacity
@@ -395,91 +407,102 @@ const NavButton = ({
   </TouchableOpacity>
 );
 
+const ThemedRoot: React.FC = () => {
+  const { isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <MainShell />
+    </SafeAreaView>
+  );
+};
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-          <StatusBar style="dark" />
-          <MainShell />
-        </SafeAreaView>
-      </AppProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <ThemedRoot />
+        </AppProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  splash: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  splashLogo: {
-    width: 120,
-    height: 120,
-  },
-  shell: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#FDE68A',
-    paddingTop: 6,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
-    shadowColor: '#EA580C',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  navBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-    marginHorizontal: 2,
-    borderRadius: 14,
-    gap: 2,
-  },
-  navBtnActive: {
-    backgroundColor: COLORS.coralSoft,
-  },
-  navEmoji: { fontSize: 20, includeFontPadding: false },
-  navLabel: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft, includeFontPadding: false },
-  navLabelActive: { color: COLORS.coralDark, fontWeight: '900' },
-  navActiveDot: {
-    width: 16,
-    height: 3,
-    borderRadius: 99,
-    backgroundColor: COLORS.coral,
-    marginTop: 1,
-  },
-  fabSlot: {
-    flex: 1,
-    alignItems: 'center',
-    marginTop: -26,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    ...SHADOWS.fab,
-  },
-  fabIcon: { fontSize: 24 },
-});
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: COLORS.canvas,
+    },
+    splash: {
+      flex: 1,
+      backgroundColor: COLORS.canvas,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    splashLogo: {
+      width: 120,
+      height: 120,
+    },
+    shell: {
+      flex: 1,
+      backgroundColor: COLORS.canvas,
+    },
+    bottomNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+      backgroundColor: COLORS.navBg,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.navBorder,
+      paddingTop: 6,
+      paddingBottom: 8,
+      paddingHorizontal: 8,
+      shadowColor: isDark ? '#000000' : '#EA580C',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: isDark ? 0.35 : 0.08,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+    navBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 5,
+      paddingHorizontal: 4,
+      marginHorizontal: 2,
+      borderRadius: 14,
+      gap: 2,
+    },
+    navBtnActive: {
+      backgroundColor: COLORS.coralSoft,
+    },
+    navEmoji: { fontSize: 20, includeFontPadding: false },
+    navLabel: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft, includeFontPadding: false },
+    navLabelActive: { color: COLORS.coralDark, fontWeight: '900' },
+    navActiveDot: {
+      width: 16,
+      height: 3,
+      borderRadius: 99,
+      backgroundColor: COLORS.coral,
+      marginTop: 1,
+    },
+    fabSlot: {
+      flex: 1,
+      alignItems: 'center',
+      marginTop: -26,
+    },
+    fab: {
+      width: 56,
+      height: 56,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 3,
+      borderColor: COLORS.navBg,
+      ...SHADOWS.fab,
+    },
+    fabIcon: { fontSize: 24 },
+  });

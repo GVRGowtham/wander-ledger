@@ -1,8 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme, useThemedStyles } from '../../context/ThemeContext';
 import { formatDistance } from '../../services/distanceUtils';
-import { COLORS, formatMoney, SHADOWS, TRANSPORT_MODE_META } from '../../theme/tokens';
+import {
+  formatMoney,
+  getTransportModeMeta,
+  ThemeColors,
+  ThemeShadows,
+} from '../../theme/tokens';
 import { DistanceUnit, TransportLeg } from '../../types/models';
 
 interface Props {
@@ -22,12 +28,20 @@ const MODE_GRADIENTS: Record<TransportLeg['mode'], [string, string]> = {
   own_car: ['#D97706', '#EA580C'],
 };
 
-const MODE_BORDERS: Record<TransportLeg['mode'], string> = {
+const LIGHT_MODE_BORDERS: Record<TransportLeg['mode'], string> = {
   train: '#99F6E4',
   bus: '#BAE6FD',
   ferry: '#BFDBFE',
   rental_car: '#FED7AA',
   own_car: '#FDE68A',
+};
+
+const DARK_MODE_BORDERS: Record<TransportLeg['mode'], string> = {
+  train: '#1E5450',
+  bus: '#1D4D70',
+  ferry: '#254378',
+  rental_car: '#6B361F',
+  own_car: '#61471A',
 };
 
 export const TransportCard: React.FC<Props> = ({
@@ -38,9 +52,11 @@ export const TransportCard: React.FC<Props> = ({
   fuelCount = 0,
   onLogFuel,
 }) => {
-  const meta = TRANSPORT_MODE_META[transport.mode];
+  const { isDark, colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const meta = getTransportModeMeta(isDark)[transport.mode];
   const gradient = MODE_GRADIENTS[transport.mode];
-  const borderColor = MODE_BORDERS[transport.mode];
+  const borderColor = (isDark ? DARK_MODE_BORDERS : LIGHT_MODE_BORDERS)[transport.mode];
   const isCar = transport.mode === 'rental_car' || transport.mode === 'own_car';
 
   const dateRange =
@@ -98,15 +114,15 @@ export const TransportCard: React.FC<Props> = ({
 
         {/* Meta Grid */}
         <View style={styles.metaRow}>
-          <MetaItem label="DATE" value={dateRange} />
+          <MetaItem label="DATE" value={dateRange} styles={styles} />
           {transport.operatorName ? (
-            <MetaItem label={isCar ? 'COMPANY' : 'OPERATOR'} value={transport.operatorName} />
+            <MetaItem label={isCar ? 'COMPANY' : 'OPERATOR'} value={transport.operatorName} styles={styles} />
           ) : null}
           {transport.seatOrVehicle ? (
-            <MetaItem label={isCar ? 'VEHICLE' : 'COACH / SEAT'} value={transport.seatOrVehicle} />
+            <MetaItem label={isCar ? 'VEHICLE' : 'COACH / SEAT'} value={transport.seatOrVehicle} styles={styles} />
           ) : null}
           {transport.referenceCode ? (
-            <MetaItem label="REF / PNR" value={transport.referenceCode} />
+            <MetaItem label="REF / PNR" value={transport.referenceCode} styles={styles} />
           ) : null}
         </View>
 
@@ -120,7 +136,20 @@ export const TransportCard: React.FC<Props> = ({
       </View>
 
       {/* Footer: Cost + Live Fuel Summary & 1-tap Fuel Shortcut for Car Trips */}
-      <View style={[styles.footer, { backgroundColor: isCar ? '#FFFBEB' : '#F8FAFC' }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            backgroundColor: isCar
+              ? isDark
+                ? colors.amberSoft
+                : '#FFFBEB'
+              : isDark
+                ? colors.surfaceMuted
+                : '#F8FAFC',
+          },
+        ]}
+      >
         {isCar ? (
           <View style={styles.carFooterRow}>
             <View style={{ flex: 1 }}>
@@ -159,7 +188,9 @@ export const TransportCard: React.FC<Props> = ({
   );
 };
 
-const MetaItem = ({ label, value }: { label: string; value: string }) => (
+type TransportStyles = ReturnType<typeof createStyles>;
+
+const MetaItem = ({ label, value, styles }: { label: string; value: string; styles: TransportStyles }) => (
   <View>
     <Text style={styles.metaLabel}>{label}</Text>
     <Text style={styles.metaValue} numberOfLines={1}>
@@ -168,171 +199,172 @@ const MetaItem = ({ label, value }: { label: string; value: string }) => (
   </View>
 );
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...SHADOWS.card,
-  },
-  header: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-    flex: 1,
-  },
-  modeBadge: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  modeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  body: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  endpoint: {
-    flex: 1.15,
-  },
-  endpointLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: COLORS.inkSoft,
-    letterSpacing: 0.6,
-  },
-  endpointCity: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.ink,
-    marginTop: 2,
-  },
-  midCol: {
-    flex: 0.9,
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  dashLineWrap: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  dashLine: {
-    width: '100%',
-    borderTopWidth: 1.5,
-    borderStyle: 'dashed',
-  },
-  modeMini: {
-    position: 'absolute',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 4,
-    fontSize: 14,
-  },
-  distanceText: {
-    fontSize: 11,
-    color: COLORS.inkMuted,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  metaLabel: {
-    fontSize: 9,
-    color: COLORS.inkSoft,
-    fontWeight: '700',
-  },
-  metaValue: {
-    fontSize: 12,
-    color: COLORS.ink,
-    fontWeight: '800',
-    marginTop: 2,
-    maxWidth: 140,
-  },
-  noteStrip: {
-    marginTop: 10,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  noteText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  footer: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-  },
-  footerLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.inkMuted,
-    flex: 1,
-  },
-  footerCost: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.ink,
-  },
-  carFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  costLine: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  fuelSummaryText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#B45309',
-  },
-  fuelBtn: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  fuelBtnText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#92400E',
-  },
-});
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      overflow: 'hidden',
+      ...SHADOWS.card,
+    },
+    header: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    rowBetween: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    headerTitle: {
+      color: '#FFFFFF',
+      fontWeight: '800',
+      fontSize: 13,
+      flex: 1,
+    },
+    modeBadge: {
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    modeBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+    },
+    body: {
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 12,
+    },
+    routeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    endpoint: {
+      flex: 1.15,
+    },
+    endpointLabel: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: COLORS.inkSoft,
+      letterSpacing: 0.6,
+    },
+    endpointCity: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: COLORS.ink,
+      marginTop: 2,
+    },
+    midCol: {
+      flex: 0.9,
+      alignItems: 'center',
+      paddingHorizontal: 6,
+    },
+    dashLineWrap: {
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 4,
+    },
+    dashLine: {
+      width: '100%',
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+    },
+    modeMini: {
+      position: 'absolute',
+      backgroundColor: COLORS.card,
+      paddingHorizontal: 4,
+      fontSize: 14,
+    },
+    distanceText: {
+      fontSize: 11,
+      color: COLORS.inkMuted,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    metaLabel: {
+      fontSize: 9,
+      color: COLORS.inkSoft,
+      fontWeight: '700',
+    },
+    metaValue: {
+      fontSize: 12,
+      color: COLORS.ink,
+      fontWeight: '800',
+      marginTop: 2,
+      maxWidth: 140,
+    },
+    noteStrip: {
+      marginTop: 10,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    noteText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    footer: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    footerLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.inkMuted,
+      flex: 1,
+    },
+    footerCost: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: COLORS.ink,
+    },
+    carFooterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    costLine: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    fuelSummaryText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.amberText,
+    },
+    fuelBtn: {
+      backgroundColor: COLORS.amberSoft,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    fuelBtnText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: COLORS.amberText,
+    },
+  });

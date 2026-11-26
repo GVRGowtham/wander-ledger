@@ -38,6 +38,7 @@ import {
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import {
   calculateDistanceMiles,
   estimateFlightDurationMinutes,
@@ -97,11 +98,12 @@ import {
   normalizeCoTravelerKey,
 } from '../services/sharingHelpers';
 import {
-  CATEGORY_META,
-  COLORS,
   formatMoney,
+  getCategoryMeta,
+  getTransportModeMeta,
   MOOD_STICKERS,
-  SHADOWS,
+  ThemeColors,
+  ThemeShadows,
   TRANSPORT_MODE_META,
 } from '../theme/tokens';
 import {
@@ -183,6 +185,10 @@ export const TripDetailScreen: React.FC<Props> = ({
     setTripCoverPhoto,
     saveTripSharing,
   } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const categoryMeta = getCategoryMeta(isDark);
+  const transportMeta = getTransportModeMeta(isDark);
 
   const trip = trips.find((t) => t.id === tripId);
   const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
@@ -1624,7 +1630,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               >
                 <View style={styles.keepsakeIconCircle}>
                   {exportingKeepsakePdf ? (
-                    <ActivityIndicator size="small" color={COLORS.coralDark} />
+                    <ActivityIndicator size="small" color={colors.coralDark} />
                   ) : (
                     <Text style={{ fontSize: 18 }}>📖</Text>
                   )}
@@ -1900,7 +1906,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                   return (
                     <View key={`tl_f_${f.id}`} style={{ gap: 6 }}>
                       <View style={styles.timelineDateHeader}>
-                        <View style={[styles.timelineDot, { backgroundColor: COLORS.sky }]} />
+                        <View style={[styles.timelineDot, { backgroundColor: colors.sky }]} />
                         <Text style={styles.timelineDateText}>
                           {item.dateLabel}
                           {item.timeLabel ? ` • ${item.timeLabel}` : ''} • FLIGHT
@@ -1924,7 +1930,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                               activeOpacity={0.8}
                             >
                               {refreshingFlightId === f.id ? (
-                                <ActivityIndicator size="small" color="#15803D" />
+                                <ActivityIndicator size="small" color={colors.emeraldText} />
                               ) : (
                                 <Text style={styles.flightRefreshPillText}>↻ Gate / Status</Text>
                               )}
@@ -1945,7 +1951,7 @@ export const TripDetailScreen: React.FC<Props> = ({
 
                 if (item.kind === 'transport') {
                   const t = item.transport;
-                  const meta = TRANSPORT_MODE_META[t.mode];
+                  const meta = transportMeta[t.mode];
                   return (
                     <View key={`tl_t_${t.id}`} style={{ gap: 6 }}>
                       <View style={styles.timelineDateHeader}>
@@ -1977,7 +1983,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                             style={styles.subtleRemoveRow}
                             activeOpacity={0.75}
                           >
-                            <Text style={[styles.subtleRemoveText, { color: COLORS.indigo }]}>
+                            <Text style={[styles.subtleRemoveText, { color: colors.indigo }]}>
                               ✏️ Edit booking
                             </Text>
                           </TouchableOpacity>
@@ -2002,7 +2008,7 @@ export const TripDetailScreen: React.FC<Props> = ({
                 return (
                   <View key={`tl_s_${s.id}`} style={{ gap: 6 }}>
                     <View style={styles.timelineDateHeader}>
-                      <View style={[styles.timelineDot, { backgroundColor: COLORS.indigo }]} />
+                      <View style={[styles.timelineDot, { backgroundColor: colors.indigo }]} />
                       <Text style={styles.timelineDateText}>{item.dateLabel} • STAY CHECK-IN</Text>
                     </View>
                     <View style={styles.stayCard}>
@@ -2146,7 +2152,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               {/* Category Proportional Bar */}
               <View style={styles.catBar}>
                 {Object.entries(catTotals).map(([cat, amt]) => {
-                  const meta = CATEGORY_META[cat as ExpenseCategory] ?? CATEGORY_META.other;
+                  const meta = categoryMeta[cat as ExpenseCategory] ?? categoryMeta.other;
                   const pct = Math.max(6, Math.round((amt / grandTotal) * 100));
                   return (
                     <View
@@ -2159,7 +2165,7 @@ export const TripDetailScreen: React.FC<Props> = ({
 
               <View style={styles.catLegend}>
                 {Object.entries(catTotals).map(([cat, amt]) => {
-                  const meta = CATEGORY_META[cat as ExpenseCategory] ?? CATEGORY_META.other;
+                  const meta = categoryMeta[cat as ExpenseCategory] ?? categoryMeta.other;
                   return (
                     <View key={cat} style={styles.legendChip}>
                       <View style={[styles.legendDot, { backgroundColor: meta.color }]} />
@@ -2208,7 +2214,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               </View>
             ) : (
               visibleSpendItems.map((item) => {
-                const meta = CATEGORY_META[item.category] ?? CATEGORY_META.other;
+                const meta = categoryMeta[item.category] ?? categoryMeta.other;
                 const hasReceipt = Boolean(item.receiptUri || item.receiptRawText);
                 const drawerKey = `${item.source}_${item.id}`;
                 const isOpen = expandedReceiptId === drawerKey;
@@ -2242,14 +2248,34 @@ export const TripDetailScreen: React.FC<Props> = ({
                           {(showExpenseFilter || item.source !== 'expense' || isFxConverted) && (
                             <View style={styles.expBadgeRow}>
                               {item.source === 'transport' ? (
-                                <View style={[styles.expVisBadge, { backgroundColor: '#EDE9FE' }]}>
-                                  <Text style={[styles.expVisBadgeText, { color: '#5B21B6' }]}>
+                                <View
+                                  style={[
+                                    styles.expVisBadge,
+                                    { backgroundColor: isDark ? '#2B1B46' : '#EDE9FE' },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.expVisBadgeText,
+                                      { color: isDark ? '#D8B4FE' : '#5B21B6' },
+                                    ]}
+                                  >
                                     🚆 From Bookings
                                   </Text>
                                 </View>
                               ) : item.source === 'stay' ? (
-                                <View style={[styles.expVisBadge, { backgroundColor: '#FEF3C7' }]}>
-                                  <Text style={[styles.expVisBadgeText, { color: '#B45309' }]}>
+                                <View
+                                  style={[
+                                    styles.expVisBadge,
+                                    { backgroundColor: colors.amberSoft },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.expVisBadgeText,
+                                      { color: colors.amberText },
+                                    ]}
+                                  >
                                     🏨 From Bookings
                                   </Text>
                                 </View>
@@ -2286,8 +2312,10 @@ export const TripDetailScreen: React.FC<Props> = ({
                                     {
                                       backgroundColor:
                                         item.rateSource === 'live_pending'
-                                          ? '#FFF7ED'
-                                          : '#E0F2FE',
+                                          ? isDark
+                                            ? colors.coralSoft
+                                            : '#FFF7ED'
+                                          : colors.skySoft,
                                     },
                                   ]}
                                 >
@@ -2297,8 +2325,12 @@ export const TripDetailScreen: React.FC<Props> = ({
                                       {
                                         color:
                                           item.rateSource === 'live_pending'
-                                            ? '#C2410C'
-                                            : '#0369A1',
+                                            ? isDark
+                                              ? colors.coralDark
+                                              : '#C2410C'
+                                            : isDark
+                                              ? '#7DD3FC'
+                                              : '#0369A1',
                                       },
                                     ]}
                                   >
@@ -2400,7 +2432,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={editTitle}
           onChangeText={setEditTitle}
           placeholder="e.g. Kyoto Autumn Escape"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -2409,7 +2441,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={editDestination}
           onChangeText={setEditDestination}
           placeholder="e.g. Europe, Swiss Alps, Japan, Goa"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -2435,7 +2467,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editBudget}
               onChangeText={setEditBudget}
               placeholder="0"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               keyboardType="numeric"
               style={styles.input}
             />
@@ -2446,6 +2478,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editCurrency}
               onChangeText={(v) => setEditCurrency(v.toUpperCase())}
               placeholder="USD"
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               maxLength={3}
               style={[styles.input, { textAlign: 'center' }]}
@@ -2551,7 +2584,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={memTitle}
           onChangeText={setMemTitle}
           placeholder="Moment title (e.g. Sunset at Arashiyama)"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -2562,7 +2595,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={memPlace}
               onChangeText={setMemPlace}
               placeholder="Place name (optional)"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -2617,9 +2650,9 @@ export const TripDetailScreen: React.FC<Props> = ({
           })}
           <TouchableOpacity
             onPress={openAddStopModal}
-            style={[styles.moodChip, { borderStyle: 'dashed', borderColor: COLORS.coral }]}
+            style={[styles.moodChip, { borderStyle: 'dashed', borderColor: colors.coral }]}
           >
-            <Text style={[styles.moodChipText, { color: COLORS.coralDark }]}>+ Stop</Text>
+            <Text style={[styles.moodChipText, { color: colors.coralDark }]}>+ Stop</Text>
           </TouchableOpacity>
         </ScrollView>
 
@@ -2628,7 +2661,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={memNote}
           onChangeText={setMemNote}
           placeholder="How did it feel? Write your little story..."
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           multiline
           numberOfLines={3}
           style={[styles.input, { height: 78, textAlignVertical: 'top' }]}
@@ -2675,7 +2708,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={expMerchant}
           onChangeText={setExpMerchant}
           placeholder="Merchant (e.g. Ichiran Ramen)"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -2686,7 +2719,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={expAmount}
               onChangeText={setExpAmount}
               placeholder="0.00"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               keyboardType="decimal-pad"
               style={styles.input}
             />
@@ -2697,6 +2730,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={expCurrency}
               onChangeText={(v) => setExpCurrency(v.toUpperCase())}
               placeholder="USD"
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               maxLength={3}
               style={[styles.input, { textAlign: 'center' }]}
@@ -2748,8 +2782,8 @@ export const TripDetailScreen: React.FC<Props> = ({
 
         <Text style={styles.fieldLabel}>Category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
-          {(Object.keys(CATEGORY_META) as ExpenseCategory[]).map((cat) => {
-            const m = CATEGORY_META[cat];
+          {(Object.keys(categoryMeta) as ExpenseCategory[]).map((cat) => {
+            const m = categoryMeta[cat];
             const active = expCategory === cat;
             return (
               <TouchableOpacity
@@ -2826,10 +2860,10 @@ export const TripDetailScreen: React.FC<Props> = ({
                 value={inviteEmail}
                 onChangeText={setInviteEmail}
                 placeholder="friend@gmail.com"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                style={[styles.input, { flex: 1, backgroundColor: '#FFFFFF' }]}
+                style={[styles.input, { flex: 1, backgroundColor: colors.card }]}
               />
               <TouchableOpacity onPress={handleInviteBuddy} style={styles.inviteBtn}>
                 <Text style={styles.inviteBtnText}>Add</Text>
@@ -2838,7 +2872,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           </View>
         ) : (
           <View style={styles.shareCardSky}>
-            <Text style={[styles.shareCardHead, { color: '#0369A1' }]}>
+            <Text style={[styles.shareCardHead, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>
               {isViewer ? '👀 You have Viewer access' : '✏️ You have Editor access'}
             </Text>
             <Text style={styles.shareCardSub}>
@@ -2858,8 +2892,8 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.memberName} numberOfLines={1}>
               {isOwner ? `${profile?.displayName || 'You'} (Owner)` : 'Trip Owner'}
             </Text>
-            <View style={[styles.memberRoleBadge, { backgroundColor: '#FEF3C7' }]}>
-              <Text style={[styles.memberRoleBadgeText, { color: '#B45309' }]}>👑 Owner</Text>
+            <View style={[styles.memberRoleBadge, { backgroundColor: colors.amberSoft }]}>
+              <Text style={[styles.memberRoleBadgeText, { color: colors.amberText }]}>👑 Owner</Text>
             </View>
           </View>
 
@@ -2882,15 +2916,17 @@ export const TripDetailScreen: React.FC<Props> = ({
                       style={[
                         styles.memberRoleBadge,
                         role === 'viewer'
-                          ? { backgroundColor: COLORS.skySoft }
-                          : { backgroundColor: '#DCFCE7' },
+                          ? { backgroundColor: colors.skySoft }
+                          : { backgroundColor: colors.emeraldSoft },
                       ]}
                       activeOpacity={0.8}
                     >
                       <Text
                         style={[
                           styles.memberRoleBadgeText,
-                          role === 'viewer' ? { color: '#0369A1' } : { color: '#15803D' },
+                          role === 'viewer'
+                            ? { color: isDark ? '#7DD3FC' : '#0369A1' }
+                            : { color: colors.emeraldText },
                         ]}
                       >
                         {role === 'viewer' ? '👀 Viewer' : '✏️ Editor'}
@@ -3017,7 +3053,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={stopCity}
           onChangeText={setStopCity}
           placeholder="e.g. Lucerne, Kyoto, Coorg"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -3070,7 +3106,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltTime}
               onChangeText={(v) => setEditFltTime(formatTimeHmInput(v, editFltTime))}
               placeholder="e.g. 22:00"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               keyboardType="number-pad"
               maxLength={5}
               style={styles.input}
@@ -3085,7 +3121,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltNum}
               onChangeText={(v) => setEditFltNum(v.toUpperCase())}
               placeholder="e.g. EY 217"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               style={styles.input}
             />
@@ -3096,7 +3132,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltOrigin}
               onChangeText={(v) => setEditFltOrigin(v.toUpperCase().slice(0, 3))}
               placeholder="BLR"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               style={styles.input}
             />
@@ -3107,7 +3143,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltDest}
               onChangeText={(v) => setEditFltDest(v.toUpperCase().slice(0, 3))}
               placeholder="AUH"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               style={styles.input}
             />
@@ -3121,7 +3157,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltPnr}
               onChangeText={(v) => setEditFltPnr(v.toUpperCase())}
               placeholder="Optional"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               style={styles.input}
             />
@@ -3132,7 +3168,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltSeat}
               onChangeText={(v) => setEditFltSeat(v.toUpperCase())}
               placeholder="e.g. 14A"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
               style={styles.input}
             />
@@ -3143,7 +3179,7 @@ export const TripDetailScreen: React.FC<Props> = ({
               value={editFltCabin}
               onChangeText={setEditFltCabin}
               placeholder="Economy"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -3170,7 +3206,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={stayName}
           onChangeText={setStayName}
           placeholder="Hotel, Airbnb, or Resort name"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
         <ScrollView
@@ -3220,7 +3256,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={stayConf}
           onChangeText={setStayConf}
           placeholder="Confirmation # (opt)"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           autoCapitalize="characters"
           style={styles.input}
         />
@@ -3229,7 +3265,7 @@ export const TripDetailScreen: React.FC<Props> = ({
             value={stayCost}
             onChangeText={setStayCost}
             placeholder="Cash cost (opt)"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             keyboardType="decimal-pad"
             style={[styles.input, { flex: 1 }]}
           />
@@ -3237,6 +3273,7 @@ export const TripDetailScreen: React.FC<Props> = ({
             value={stayCurrency}
             onChangeText={(v) => setStayCurrency(v.toUpperCase())}
             placeholder="USD"
+            placeholderTextColor={colors.inkSoft}
             autoCapitalize="characters"
             maxLength={3}
             style={[styles.input, { width: 74, textAlign: 'center' }]}
@@ -3273,7 +3310,7 @@ export const TripDetailScreen: React.FC<Props> = ({
             value={stayPoints}
             onChangeText={setStayPoints}
             placeholder="Points redeemed (opt)"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             keyboardType="numeric"
             style={[styles.input, { flex: 1 }]}
           />
@@ -3281,7 +3318,7 @@ export const TripDetailScreen: React.FC<Props> = ({
             value={stayPointsProg}
             onChangeText={setStayPointsProg}
             placeholder="Program (e.g. Bonvoy)"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={[styles.input, { flex: 1 }]}
           />
         </View>
@@ -3289,7 +3326,7 @@ export const TripDetailScreen: React.FC<Props> = ({
           value={stayNotes}
           onChangeText={setStayNotes}
           placeholder="Notes (optional)"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
       </BottomSheetModal>
@@ -3392,869 +3429,873 @@ const TabPill = ({
   active: boolean;
   label: string;
   onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[styles.tabPill, active && styles.tabPillActive]}
-    activeOpacity={0.85}
-  >
-    <Text
-      style={[styles.tabPillText, active && styles.tabPillTextActive]}
-      numberOfLines={1}
-      adjustsFontSizeToFit
-      minimumFontScale={0.8}
+}) => {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.tabPill, active && styles.tabPillActive]}
+      activeOpacity={0.85}
     >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
+      <Text
+        style={[styles.tabPillText, active && styles.tabPillTextActive]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
-const styles = StyleSheet.create({
-  screenHost: { flex: 1, backgroundColor: COLORS.canvas, position: 'relative' },
-  offscreenPostcardHost: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 0,
-  },
-  root: { flex: 1, backgroundColor: COLORS.canvas, zIndex: 1 },
-  missingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
-  missingText: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
-  backBtn: { backgroundColor: COLORS.coralSoft, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 99 },
-  backBtnText: { color: COLORS.coralDark, fontWeight: '800' },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    screenHost: { flex: 1, backgroundColor: COLORS.canvas, position: 'relative' },
+    offscreenPostcardHost: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      zIndex: 0,
+    },
+    root: { flex: 1, backgroundColor: COLORS.canvas, zIndex: 1 },
+    missingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+    missingText: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
+    backBtn: { backgroundColor: COLORS.coralSoft, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 99 },
+    backBtnText: { color: COLORS.coralDark, fontWeight: '800' },
 
-  topHeader: { position: 'relative' },
-  headerNavRow: {
-    position: 'absolute',
-    top: 12,
-    left: 14,
-    right: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  glassBtn: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  iconGlassBtn: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  glassBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  shareGlassBtn: {
-    backgroundColor: COLORS.rose,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  shareGlassText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
-  headerBottomText: { position: 'absolute', bottom: 14, left: 16, right: 16 },
-  tripTitle: { fontSize: 21, fontWeight: '900', color: '#FFFFFF' },
-  tripDates: { fontSize: 12, color: '#FEF3C7', fontWeight: '700', marginTop: 3 },
+    topHeader: { position: 'relative' },
+    headerNavRow: {
+      position: 'absolute',
+      top: 12,
+      left: 14,
+      right: 14,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 8,
+    },
+    headerRightActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    glassBtn: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.82)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    iconGlassBtn: {
+      backgroundColor: isDark ? 'rgba(14,17,27,0.82)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    glassBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    shareGlassBtn: {
+      backgroundColor: COLORS.rose,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    shareGlassText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
+    headerBottomText: { position: 'absolute', bottom: 14, left: 16, right: 16 },
+    tripTitle: { fontSize: 21, fontWeight: '900', color: '#FFFFFF' },
+    tripDates: { fontSize: 12, color: '#FEF3C7', fontWeight: '700', marginTop: 3 },
 
-  tabsWrap: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 4,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  tabPill: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabPillActive: { backgroundColor: COLORS.coral },
-  tabPillText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, textAlign: 'center' },
-  tabPillTextActive: { color: '#FFFFFF' },
+    tabsWrap: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginTop: 12,
+      backgroundColor: COLORS.card,
+      borderRadius: 16,
+      padding: 4,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    tabPill: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabPillActive: { backgroundColor: COLORS.coral },
+    tabPillText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, textAlign: 'center' },
+    tabPillTextActive: { color: '#FFFFFF' },
 
-  scrollContent: { padding: 16, paddingBottom: 48 },
-  sectionGap: { gap: 14 },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  sectionHeaderLeft: {
-    flex: 1,
-    flexShrink: 1,
-  },
-  actionGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  subHeading: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
-  tinyNote: { fontSize: 11, color: COLORS.emerald, fontWeight: '700', marginTop: 2 },
-  actionPill: {
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  actionPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  actionPillSoft: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  actionPillSoftText: { color: COLORS.coralDark, fontSize: 12, fontWeight: '800' },
+    scrollContent: { padding: 16, paddingBottom: 48 },
+    sectionGap: { gap: 14 },
+    rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+    },
+    sectionHeaderLeft: {
+      flex: 1,
+      flexShrink: 1,
+    },
+    actionGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexShrink: 0,
+    },
+    subHeading: { fontSize: 15, fontWeight: '900', color: COLORS.ink },
+    tinyNote: { fontSize: 11, color: COLORS.emerald, fontWeight: '700', marginTop: 2 },
+    actionPill: {
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    actionPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+    actionPillSoft: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    actionPillSoftText: { color: COLORS.coralDark, fontSize: 12, fontWeight: '800' },
 
-  // Polaroid Memory Card
-  polaroidCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
-    paddingBottom: 16,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    marginTop: 6,
-    ...SHADOWS.polaroid,
-  },
-  tapeStrip: {
-    width: 64,
-    height: 14,
-    backgroundColor: 'rgba(253, 224, 71, 0.55)',
-    alignSelf: 'center',
-    marginTop: -20,
-    marginBottom: 10,
-    borderRadius: 3,
-  },
-  polaroidBody: { paddingTop: 10, gap: 6 },
-  polaroidTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flex: 1 },
-  polaroidDate: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '700' },
-  polaroidPlace: { fontSize: 12, color: COLORS.coralDark, fontWeight: '700' },
-  polaroidNote: { fontSize: 13, color: COLORS.inkMuted, lineHeight: 19 },
-  polaroidFooter: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 4,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-  },
-  memoryActionGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  moodTag: {
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  moodTagText: { fontSize: 11, fontWeight: '800', color: COLORS.coralDark },
-  authorTag: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '600' },
-  memEditPill: {
-    backgroundColor: COLORS.amberSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  memActionPill: {
-    backgroundColor: COLORS.indigoSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  memDeletePill: {
-    backgroundColor: COLORS.roseSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  editAction: { fontSize: 11, fontWeight: '800', color: '#92400E' },
-  coverAction: { fontSize: 11, fontWeight: '800', color: COLORS.indigo },
-  deleteAction: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
-  subtleRemoveRow: { alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 4 },
-  subtleRemoveText: { fontSize: 11, fontWeight: '700', color: COLORS.rose },
+    // Polaroid Memory Card
+    polaroidCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 18,
+      padding: 14,
+      paddingBottom: 16,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      marginTop: 6,
+      ...SHADOWS.polaroid,
+    },
+    tapeStrip: {
+      width: 64,
+      height: 14,
+      backgroundColor: isDark ? 'rgba(251, 191, 36, 0.35)' : 'rgba(253, 224, 71, 0.55)',
+      alignSelf: 'center',
+      marginTop: -20,
+      marginBottom: 10,
+      borderRadius: 3,
+    },
+    polaroidBody: { paddingTop: 10, gap: 6 },
+    polaroidTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, flex: 1 },
+    polaroidDate: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '700' },
+    polaroidPlace: { fontSize: 12, color: COLORS.coralDark, fontWeight: '700' },
+    polaroidNote: { fontSize: 13, color: COLORS.inkMuted, lineHeight: 19 },
+    polaroidFooter: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginTop: 4,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    memoryActionGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    moodTag: {
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    moodTagText: { fontSize: 11, fontWeight: '800', color: COLORS.coralDark },
+    authorTag: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '600' },
+    memEditPill: {
+      backgroundColor: COLORS.amberSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    memActionPill: {
+      backgroundColor: COLORS.indigoSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    memDeletePill: {
+      backgroundColor: COLORS.roseSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    editAction: { fontSize: 11, fontWeight: '800', color: COLORS.amberText },
+    coverAction: { fontSize: 11, fontWeight: '800', color: COLORS.indigo },
+    deleteAction: { fontSize: 11, fontWeight: '800', color: COLORS.rose },
+    subtleRemoveRow: { alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 4 },
+    subtleRemoveText: { fontSize: 11, fontWeight: '700', color: COLORS.rose },
 
-  // Stays
-  stayCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    padding: 16,
-    gap: 6,
-    ...SHADOWS.card,
-  },
-  stayBadge: {
-    backgroundColor: COLORS.emeraldSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  stayBadgeText: { fontSize: 10, fontWeight: '900', color: '#047857' },
-  confCode: { fontSize: 12, fontWeight: '800', color: COLORS.indigo },
-  stayName: { fontSize: 16, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
-  stayDates: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
-  stayAddr: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
-  stayLocationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 2,
-  },
-  stayMapsPill: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  stayMapsPillText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#047857',
-  },
-  stayCostBox: {
-    marginTop: 4,
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  stayCostText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  cppText: { fontSize: 12, fontWeight: '900', color: COLORS.coralDark },
+    // Stays
+    stayCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      padding: 16,
+      gap: 6,
+      ...SHADOWS.card,
+    },
+    stayBadge: {
+      backgroundColor: COLORS.emeraldSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    stayBadgeText: { fontSize: 10, fontWeight: '900', color: COLORS.emeraldText },
+    confCode: { fontSize: 12, fontWeight: '800', color: COLORS.indigo },
+    stayName: { fontSize: 16, fontWeight: '900', color: COLORS.ink, marginTop: 2 },
+    stayDates: { fontSize: 12, color: COLORS.inkMuted, fontWeight: '600' },
+    stayAddr: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
+    stayLocationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginTop: 2,
+    },
+    stayMapsPill: {
+      backgroundColor: isDark ? COLORS.emeraldSoft : '#ECFDF5',
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    stayMapsPillText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.emeraldText,
+    },
+    stayCostBox: {
+      marginTop: 4,
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    stayCostText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    cppText: { fontSize: 12, fontWeight: '900', color: COLORS.coralDark },
 
-  // Spend
-  spendSummaryCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  spendTotal: { fontSize: 14, fontWeight: '900', color: COLORS.coralDark },
-  catBar: {
-    height: 10,
-    borderRadius: 99,
-    backgroundColor: '#F5F5F4',
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  catLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  legendChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700' },
+    // Spend
+    spendSummaryCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 16,
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    spendTotal: { fontSize: 14, fontWeight: '900', color: COLORS.coralDark },
+    catBar: {
+      height: 10,
+      borderRadius: 99,
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#F5F5F4',
+      flexDirection: 'row',
+      overflow: 'hidden',
+    },
+    catLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    legendChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendText: { fontSize: 11, color: COLORS.inkMuted, fontWeight: '700' },
 
-  expenseCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    padding: 14,
-    gap: 10,
-  },
-  expLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  expIconBox: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  expMerchant: { fontSize: 14, fontWeight: '800', color: COLORS.ink },
-  expSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2 },
-  expHome: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  peekLink: { fontSize: 11, fontWeight: '800', color: COLORS.coral },
-  receiptDrawer: {
-    backgroundColor: '#FAFAF9',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#D6D3D1',
-    padding: 12,
-    gap: 8,
-  },
-  receiptPrivateBadge: { fontSize: 11, fontWeight: '800', color: '#047857' },
-  receiptImg: { width: '100%', height: 180, borderRadius: 8 },
-  receiptMono: { fontSize: 11, color: COLORS.inkMuted, fontFamily: 'monospace', lineHeight: 16 },
+    expenseCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      padding: 14,
+      gap: 10,
+    },
+    expLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    expIconBox: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    expMerchant: { fontSize: 14, fontWeight: '800', color: COLORS.ink },
+    expSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2 },
+    expHome: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+    peekLink: { fontSize: 11, fontWeight: '800', color: COLORS.coral },
+    receiptDrawer: {
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#FAFAF9',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: isDark ? COLORS.border : '#D6D3D1',
+      padding: 12,
+      gap: 8,
+    },
+    receiptPrivateBadge: { fontSize: 11, fontWeight: '800', color: COLORS.emeraldText },
+    receiptImg: { width: '100%', height: 180, borderRadius: 8 },
+    receiptMono: { fontSize: 11, color: COLORS.inkMuted, fontFamily: 'monospace', lineHeight: 16 },
 
-  // Empty
-  emptyBox: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: COLORS.border,
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
-  },
-  emptyTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
-  emptySub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
-  emptyBtn: {
-    marginTop: 6,
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 99,
-  },
-  emptyBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    // Empty
+    emptyBox: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: COLORS.border,
+      padding: 24,
+      alignItems: 'center',
+      gap: 8,
+    },
+    emptyTitle: { fontSize: 15, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
+    emptySub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
+    emptyBtn: {
+      marginTop: 6,
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 18,
+      paddingVertical: 11,
+      borderRadius: 99,
+    },
+    emptyBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
-  // Modals
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(28, 25, 23, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: COLORS.card,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 20,
-    paddingBottom: 28,
-    gap: 12,
-  },
-  modalTitle: { fontSize: 17, fontWeight: '900', color: COLORS.ink },
-  closeX: { fontSize: 18, fontWeight: '800', color: COLORS.inkMuted, padding: 6 },
-  fieldLabel: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginTop: 2 },
-  photoPickBtn: {
-    flex: 1,
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  photoPickText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 13 },
-  previewMemImg: { width: '100%', height: 150, borderRadius: 14 },
-  input: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: COLORS.ink,
-    fontWeight: '600',
-  },
-  vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  vibeChip: {
-    width: '31%',
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    gap: 3,
-  },
-  vibeChipActive: { backgroundColor: COLORS.coralSoft, borderColor: COLORS.coral, borderWidth: 2 },
-  vibeText: { fontSize: 11, fontWeight: '700', color: COLORS.inkMuted },
-  vibeTextActive: { color: COLORS.coralDark, fontWeight: '900' },
-  resetCoverBtn: {
-    backgroundColor: COLORS.amberSoft,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  resetCoverText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
-  moodChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  moodChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  moodChipText: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
-  modalPrimaryBtn: {
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  modalPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+    // Modals
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: COLORS.modalBackdrop,
+      justifyContent: 'flex-end',
+    },
+    modalSheet: {
+      backgroundColor: COLORS.card,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      padding: 20,
+      paddingBottom: 28,
+      gap: 12,
+    },
+    modalTitle: { fontSize: 17, fontWeight: '900', color: COLORS.ink },
+    closeX: { fontSize: 18, fontWeight: '800', color: COLORS.inkMuted, padding: 6 },
+    fieldLabel: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginTop: 2 },
+    photoPickBtn: {
+      flex: 1,
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      borderRadius: 14,
+      alignItems: 'center',
+    },
+    photoPickText: { color: COLORS.coralDark, fontWeight: '800', fontSize: 13 },
+    previewMemImg: { width: '100%', height: 150, borderRadius: 14 },
+    input: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 13,
+      color: COLORS.ink,
+      fontWeight: '600',
+    },
+    vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    vibeChip: {
+      width: '31%',
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      paddingVertical: 9,
+      paddingHorizontal: 6,
+      alignItems: 'center',
+      gap: 3,
+    },
+    vibeChipActive: { backgroundColor: COLORS.coralSoft, borderColor: COLORS.coral, borderWidth: 2 },
+    vibeText: { fontSize: 11, fontWeight: '700', color: COLORS.inkMuted },
+    vibeTextActive: { color: COLORS.coralDark, fontWeight: '900' },
+    resetCoverBtn: {
+      backgroundColor: COLORS.amberSoft,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    resetCoverText: { fontSize: 12, fontWeight: '800', color: COLORS.amberText },
+    moodChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    moodChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+    moodChipText: { fontSize: 12, fontWeight: '700', color: COLORS.ink },
+    modalPrimaryBtn: {
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      borderRadius: 16,
+      alignItems: 'center',
+    },
+    modalPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
 
-  // Share Modal Cards
-  shareCardWarm: {
-    backgroundColor: '#FFF7ED',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    padding: 15,
-    gap: 6,
-  },
-  shareCardSky: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    padding: 15,
-    gap: 8,
-  },
-  shareCardHead: { fontSize: 14, fontWeight: '900', color: COLORS.coralDark },
-  shareCardSub: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
-  inviteBtn: {
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    justifyContent: 'center',
-  },
-  inviteBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  coTravelerList: { fontSize: 11, fontWeight: '700', color: COLORS.coralDark, marginTop: 4 },
-  postcardShareBtn: {
-    backgroundColor: COLORS.sky,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  postcardShareText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
-  igBannerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 18,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    ...SHADOWS.card,
-  },
-  igLogoCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  igBannerTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-  igBannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600', marginTop: 1 },
-  igBannerArrow: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
-  igLockedHintBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#FDBA74',
-  },
-  igLockedHintTitle: { color: COLORS.ink, fontWeight: '900', fontSize: 13 },
-  igLockedHintSub: { color: COLORS.inkMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
-  igLockedHintArrow: { color: COLORS.coral, fontSize: 20, fontWeight: '900' },
+    // Share Modal Cards
+    shareCardWarm: {
+      backgroundColor: isDark ? COLORS.coralSoft : '#FFF7ED',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      padding: 15,
+      gap: 6,
+    },
+    shareCardSky: {
+      backgroundColor: isDark ? COLORS.skySoft : '#F0F9FF',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      padding: 15,
+      gap: 8,
+    },
+    shareCardHead: { fontSize: 14, fontWeight: '900', color: COLORS.coralDark },
+    shareCardSub: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
+    inviteBtn: {
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 12,
+      justifyContent: 'center',
+    },
+    inviteBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    coTravelerList: { fontSize: 11, fontWeight: '700', color: COLORS.coralDark, marginTop: 4 },
+    postcardShareBtn: {
+      backgroundColor: COLORS.sky,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+    },
+    postcardShareText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
+    igBannerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: 18,
+      paddingVertical: 13,
+      paddingHorizontal: 15,
+      ...SHADOWS.card,
+    },
+    igLogoCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    igBannerTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+    igBannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600', marginTop: 1 },
+    igBannerArrow: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+    igLockedHintBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: COLORS.coralBorder,
+    },
+    igLockedHintTitle: { color: COLORS.ink, fontWeight: '900', fontSize: 13 },
+    igLockedHintSub: { color: COLORS.inkMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+    igLockedHintArrow: { color: COLORS.coral, fontSize: 20, fontWeight: '900' },
 
-  // Multi-Hop Stops & Chronological Journey Timeline
-  stopFilterPill: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  stopFilterPillActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
-  stopFilterText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  stopFilterTextActive: {
-    color: '#FFFFFF',
-  },
-  polaroidMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 2,
-  },
-  stopTagBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#E0F2FE',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-    alignSelf: 'flex-start',
-    flexShrink: 0,
-  },
-  stopTagEmoji: {
-    fontSize: 11,
-    lineHeight: 15,
-    includeFontPadding: false,
-  },
-  stopTagBadgeText: {
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: '700',
-    color: '#0369A1',
-    includeFontPadding: false,
-  },
-  stopsCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  stopsTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.ink,
-  },
-  routeTrailBox: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  routeTrailText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.ink,
-    lineHeight: 18,
-  },
-  stopsChipsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  stopChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.indigoSoft,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 99,
-  },
-  stopChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.indigo,
-  },
-  stopChipX: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.indigo,
-    opacity: 0.7,
-  },
-  suggestLabel: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.coralDark,
-    letterSpacing: 0.5,
-  },
-  suggestChip: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#FDBA74',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 99,
-  },
-  suggestChipText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.coralDark,
-  },
-  timelineDateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingLeft: 4,
-    marginTop: 2,
-  },
-  timelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  timelineDateText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.inkMuted,
-    letterSpacing: 0.6,
-  },
-  flightCardActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-  },
-  flightEditPill: {
-    backgroundColor: COLORS.skySoft,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: 99,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-  },
-  flightEditPillText: {
-    fontSize: 11.5,
-    fontWeight: '800',
-    color: '#0369A1',
-  },
-  fieldMiniLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.inkSoft,
-    letterSpacing: 0.4,
-    paddingLeft: 2,
-  },
-  expenseFilterRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  expenseFilterPill: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 99,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  expenseFilterPillActive: {
-    backgroundColor: COLORS.ink,
-    borderColor: COLORS.ink,
-  },
-  expenseFilterText: {
-    fontSize: 11.5,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-  },
-  expenseFilterTextActive: {
-    color: '#FFFFFF',
-  },
-  perPersonHint: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#047857',
-    marginTop: 2,
-  },
-  expBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  expVisBadge: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 99,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  expVisBadgeShared: {
-    backgroundColor: '#DCFCE7',
-  },
-  expVisBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-  },
-  expVisBadgeTextShared: {
-    color: '#15803D',
-  },
-  expAuthorText: {
-    fontSize: 10.5,
-    color: COLORS.inkSoft,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  expToggleWrap: {
-    gap: 6,
-    marginTop: 2,
-  },
-  rolePillRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  rolePillBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  rolePillBtnActive: {
-    backgroundColor: COLORS.ink,
-    borderColor: COLORS.ink,
-  },
-  rolePillBtnSharedActive: {
-    backgroundColor: '#15803D',
-    borderColor: '#15803D',
-  },
-  rolePillBtnViewerActive: {
-    backgroundColor: '#0369A1',
-    borderColor: '#0369A1',
-  },
-  rolePillText: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  rolePillTextActive: {
-    color: '#FFFFFF',
-  },
-  roleHelperText: {
-    fontSize: 11,
-    color: COLORS.inkMuted,
-    lineHeight: 16,
-  },
-  memberSection: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    padding: 14,
-    gap: 10,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderSoft,
-  },
-  memberName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.ink,
-  },
-  memberRowActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  memberRoleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  memberRoleBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  memberRemoveBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberRemoveText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#DC2626',
-  },
-  memberEmptyHint: {
-    fontSize: 12,
-    color: COLORS.inkSoft,
-    fontStyle: 'italic',
-  },
-  keepsakeBannerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#FFF7ED',
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: '#FDBA74',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    ...SHADOWS.card,
-  },
-  keepsakeIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  keepsakeBannerTitle: {
-    fontSize: 13.5,
-    fontWeight: '900',
-    color: COLORS.ink,
-  },
-  keepsakeBannerSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.inkMuted,
-    marginTop: 1,
-  },
-  keepsakeBannerArrow: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.coralDark,
-  },
-  flightRefreshPill: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 99,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    minWidth: 96,
-    alignItems: 'center',
-  },
-  flightRefreshPillText: {
-    fontSize: 11.5,
-    fontWeight: '800',
-    color: '#15803D',
-  },
-});
+    // Multi-Hop Stops & Chronological Journey Timeline
+    stopFilterPill: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    stopFilterPillActive: {
+      backgroundColor: COLORS.navy,
+      borderColor: COLORS.navy,
+    },
+    stopFilterText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    stopFilterTextActive: {
+      color: '#FFFFFF',
+    },
+    polaroidMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 2,
+    },
+    stopTagBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: COLORS.skySoft,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+      alignSelf: 'flex-start',
+      flexShrink: 0,
+    },
+    stopTagEmoji: {
+      fontSize: 11,
+      lineHeight: 15,
+      includeFontPadding: false,
+    },
+    stopTagBadgeText: {
+      fontSize: 11,
+      lineHeight: 15,
+      fontWeight: '700',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+      includeFontPadding: false,
+    },
+    stopsCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 14,
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    stopsTitle: {
+      fontSize: 14,
+      fontWeight: '900',
+      color: COLORS.ink,
+    },
+    routeTrailBox: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    routeTrailText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.ink,
+      lineHeight: 18,
+    },
+    stopsChipsWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    stopChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: COLORS.indigoSoft,
+      borderWidth: 1,
+      borderColor: COLORS.indigoBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 99,
+    },
+    stopChipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.indigo,
+    },
+    stopChipX: {
+      fontSize: 10,
+      fontWeight: '900',
+      color: COLORS.indigo,
+      opacity: 0.7,
+    },
+    suggestLabel: {
+      fontSize: 9,
+      fontWeight: '900',
+      color: COLORS.coralDark,
+      letterSpacing: 0.5,
+    },
+    suggestChip: {
+      backgroundColor: isDark ? COLORS.coralSoft : '#FFF7ED',
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: COLORS.coralBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 99,
+    },
+    suggestChipText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.coralDark,
+    },
+    timelineDateHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingLeft: 4,
+      marginTop: 2,
+    },
+    timelineDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    timelineDateText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: COLORS.inkMuted,
+      letterSpacing: 0.6,
+    },
+    flightCardActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+    },
+    flightEditPill: {
+      backgroundColor: COLORS.skySoft,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      borderRadius: 99,
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+    },
+    flightEditPillText: {
+      fontSize: 11.5,
+      fontWeight: '800',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+    },
+    fieldMiniLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.inkSoft,
+      letterSpacing: 0.4,
+      paddingLeft: 2,
+    },
+    expenseFilterRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    expenseFilterPill: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 99,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+    },
+    expenseFilterPillActive: {
+      backgroundColor: isDark ? COLORS.coral : COLORS.ink,
+      borderColor: isDark ? COLORS.coral : COLORS.ink,
+    },
+    expenseFilterText: {
+      fontSize: 11.5,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+    },
+    expenseFilterTextActive: {
+      color: '#FFFFFF',
+    },
+    perPersonHint: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: COLORS.emeraldText,
+      marginTop: 2,
+    },
+    expBadgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 4,
+    },
+    expVisBadge: {
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#F3F4F6',
+      borderRadius: 99,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    expVisBadgeShared: {
+      backgroundColor: COLORS.emeraldSoft,
+    },
+    expVisBadgeText: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+    },
+    expVisBadgeTextShared: {
+      color: COLORS.emeraldText,
+    },
+    expAuthorText: {
+      fontSize: 10.5,
+      color: COLORS.inkSoft,
+      fontWeight: '600',
+      flexShrink: 1,
+    },
+    expToggleWrap: {
+      gap: 6,
+      marginTop: 2,
+    },
+    rolePillRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 4,
+    },
+    rolePillBtn: {
+      flex: 1,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: COLORS.card,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+    },
+    rolePillBtnActive: {
+      backgroundColor: isDark ? COLORS.coral : COLORS.ink,
+      borderColor: isDark ? COLORS.coral : COLORS.ink,
+    },
+    rolePillBtnSharedActive: {
+      backgroundColor: '#15803D',
+      borderColor: '#15803D',
+    },
+    rolePillBtnViewerActive: {
+      backgroundColor: '#0369A1',
+      borderColor: '#0369A1',
+    },
+    rolePillText: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    rolePillTextActive: {
+      color: '#FFFFFF',
+    },
+    roleHelperText: {
+      fontSize: 11,
+      color: COLORS.inkMuted,
+      lineHeight: 16,
+    },
+    memberSection: {
+      backgroundColor: COLORS.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+      padding: 14,
+      gap: 10,
+    },
+    memberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingVertical: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.borderSoft,
+    },
+    memberName: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.ink,
+    },
+    memberRowActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    memberRoleBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    memberRoleBadgeText: {
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    memberRemoveBtn: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: COLORS.roseSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memberRemoveText: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: COLORS.rose,
+    },
+    memberEmptyHint: {
+      fontSize: 12,
+      color: COLORS.inkSoft,
+      fontStyle: 'italic',
+    },
+    keepsakeBannerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: isDark ? COLORS.cardWarm : '#FFF7ED',
+      borderRadius: 18,
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      ...SHADOWS.card,
+    },
+    keepsakeIconCircle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    keepsakeBannerTitle: {
+      fontSize: 13.5,
+      fontWeight: '900',
+      color: COLORS.ink,
+    },
+    keepsakeBannerSub: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: COLORS.inkMuted,
+      marginTop: 1,
+    },
+    keepsakeBannerArrow: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: COLORS.coralDark,
+    },
+    flightRefreshPill: {
+      backgroundColor: isDark ? COLORS.emeraldSoft : '#F0FDF4',
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+      borderRadius: 99,
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      minWidth: 96,
+      alignItems: 'center',
+    },
+    flightRefreshPillText: {
+      fontSize: 11.5,
+      fontWeight: '800',
+      color: COLORS.emeraldText,
+    },
+  });

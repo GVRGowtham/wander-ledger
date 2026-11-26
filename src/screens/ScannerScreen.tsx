@@ -17,6 +17,7 @@ import { DatePickerField } from '../components/forms/DatePickerField';
 import { PlaceAddressHelper } from '../components/forms/PlaceAddressHelper';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   calculateDistanceMiles,
@@ -46,7 +47,13 @@ import {
   mergeOcrTexts,
   parseDocumentOcrText,
 } from '../services/ocrParser';
-import { CATEGORY_META, COLORS, formatMoney, SHADOWS, TRANSPORT_MODE_META } from '../theme/tokens';
+import {
+  CATEGORY_META,
+  formatMoney,
+  ThemeColors,
+  ThemeShadows,
+  TRANSPORT_MODE_META,
+} from '../theme/tokens';
 import {
   DistanceUnit,
   ExpenseCategory,
@@ -86,6 +93,8 @@ export const ScannerScreen: React.FC<Props> = ({
     addStay,
     addExpense,
   } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const keyboardHeight = useKeyboardHeight();
   const distanceUnit: DistanceUnit = profile?.distanceUnit ?? 'km';
 
@@ -1117,7 +1126,7 @@ export const ScannerScreen: React.FC<Props> = ({
 
             {processing && (
               <View style={styles.loadingBanner}>
-                <ActivityIndicator color={COLORS.coral} />
+                <ActivityIndicator color={colors.coral} />
                 <Text style={styles.loadingText}>
                   {statusMessage || 'Reading & extracting travel details…'}
                 </Text>
@@ -1268,7 +1277,7 @@ export const ScannerScreen: React.FC<Props> = ({
                     activeOpacity={0.85}
                   >
                     {aiCleaning ? (
-                      <ActivityIndicator size="small" color="#6D28D9" />
+                      <ActivityIndicator size="small" color={isDark ? '#E9D5FF' : '#6D28D9'} />
                     ) : (
                       <Text style={styles.aiCleanText}>🪄 AI Clean</Text>
                     )}
@@ -1982,7 +1991,7 @@ export const ScannerScreen: React.FC<Props> = ({
           onChangeText={setPastedText}
           multiline
           placeholder="Paste confirmation text here..."
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.pasteInput}
         />
         <View style={styles.pasteRowBtns}>
@@ -2006,14 +2015,17 @@ export const ScannerScreen: React.FC<Props> = ({
   );
 };
 
-const InfoPair = ({ label, value }: { label: string; value: string }) => (
-  <View style={styles.infoPair}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoVal} numberOfLines={2}>
-      {value}
-    </Text>
-  </View>
-);
+const InfoPair = ({ label, value }: { label: string; value: string }) => {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.infoPair}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoVal} numberOfLines={2}>
+        {value}
+      </Text>
+    </View>
+  );
+};
 
 const EditableField = ({
   label,
@@ -2029,20 +2041,24 @@ const EditableField = ({
   keyboardType?: 'default' | 'decimal-pad' | 'number-pad';
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   onChangeText: (val: string) => void;
-}) => (
-  <View style={styles.editField}>
-    <Text style={styles.editLabel}>{label}</Text>
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={COLORS.inkSoft}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize}
-      style={styles.editInput}
-    />
-  </View>
-);
+}) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.editField}>
+      <Text style={styles.editLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.inkSoft}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        style={styles.editInput}
+      />
+    </View>
+  );
+};
 
 const DecimalAmountField = ({
   label,
@@ -2093,6 +2109,7 @@ const DetectedAmountsBar = ({
   activeCurrency: string;
   onSelect: (candidate: DetectedMoneyCandidate) => void;
 }) => {
+  const styles = useThemedStyles(createStyles);
   if (candidates.length <= 1) return null;
   const currNorm = (activeCurrency || '').trim().toUpperCase();
   return (
@@ -2151,495 +2168,514 @@ function computeArrivalIso(departureIso: string, durationMinutes: number): strin
   return d.toISOString().slice(0, 19);
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  closeBtn: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  closeBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.ink,
-    flex: 1,
-    textAlign: 'center',
-  },
-  offlineTag: {
-    backgroundColor: COLORS.emeraldSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  offlineTagText: { fontSize: 10, fontWeight: '900', color: '#047857' },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    closeBtn: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    closeBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    headerTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: COLORS.ink,
+      flex: 1,
+      textAlign: 'center',
+    },
+    offlineTag: {
+      backgroundColor: COLORS.emeraldSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    offlineTagText: { fontSize: 10, fontWeight: '900', color: COLORS.emeraldText },
 
-  content: { paddingHorizontal: 16, paddingBottom: 48, gap: 12 },
+    content: { paddingHorizontal: 16, paddingBottom: 48, gap: 12 },
 
-  appendBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  appendBannerText: { flex: 1, fontSize: 12, fontWeight: '800', color: '#1E40AF', lineHeight: 16 },
-  appendCancel: { fontSize: 12, fontWeight: '900', color: COLORS.coralDark },
+    appendBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: COLORS.skySoft,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    appendBannerText: {
+      flex: 1,
+      fontSize: 12,
+      fontWeight: '800',
+      color: isDark ? '#93C5FD' : '#1E40AF',
+      lineHeight: 16,
+    },
+    appendCancel: { fontSize: 12, fontWeight: '900', color: COLORS.coralDark },
 
-  modeSwitchBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 4,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modePill: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modePillActive: { backgroundColor: COLORS.navy },
-  modePillText: { fontSize: 12.5, fontWeight: '800', color: COLORS.inkMuted },
-  modePillTextActive: { color: '#FFFFFF' },
+    modeSwitchBar: {
+      flexDirection: 'row',
+      backgroundColor: COLORS.card,
+      borderRadius: 16,
+      padding: 4,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    modePill: {
+      flex: 1,
+      paddingVertical: 9,
+      paddingHorizontal: 8,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modePillActive: { backgroundColor: COLORS.navy },
+    modePillText: { fontSize: 12.5, fontWeight: '800', color: COLORS.inkMuted },
+    modePillTextActive: { color: '#FFFFFF' },
 
-  cameraCard: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#FED7AA',
-    backgroundColor: '#1C1917',
-    ...SHADOWS.card,
-  },
-  cameraCardTall: { height: 390 },
-  cameraCardWide: { height: 248 },
-  camera: { flex: 1, position: 'relative' },
-  torchBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 4,
-    backgroundColor: 'rgba(15,23,42,0.68)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 99,
-  },
-  torchBtnActive: {
-    backgroundColor: '#F59E0B',
-    borderColor: '#FDE68A',
-  },
-  torchText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+    cameraCard: {
+      borderRadius: 24,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: COLORS.coralBorder,
+      backgroundColor: '#1C1917',
+      ...SHADOWS.card,
+    },
+    cameraCardTall: { height: 390 },
+    cameraCardWide: { height: 248 },
+    camera: { flex: 1, position: 'relative' },
+    torchBtn: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      zIndex: 4,
+      backgroundColor: 'rgba(15,23,42,0.68)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+      borderRadius: 99,
+    },
+    torchBtnActive: {
+      backgroundColor: '#F59E0B',
+      borderColor: '#FDE68A',
+    },
+    torchText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
 
-  reticleWrap: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 10,
-  },
-  docFrame: {
-    width: '86%',
-    flex: 1,
-    maxHeight: 300,
-    marginTop: 22,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.72)',
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(0,0,0,0.04)',
-  },
-  reticle: {
-    width: '88%',
-    height: 138,
-    borderRadius: 18,
-    borderWidth: 2.5,
-    borderColor: '#FDE047',
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(0,0,0,0.08)',
-  },
-  reticleHint: {
-    backgroundColor: 'rgba(28,25,23,0.78)',
-    color: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
+    reticleWrap: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16,
+      gap: 10,
+    },
+    docFrame: {
+      width: '86%',
+      flex: 1,
+      maxHeight: 300,
+      marginTop: 22,
+      borderRadius: 18,
+      borderWidth: 2,
+      borderColor: 'rgba(255, 255, 255, 0.72)',
+      borderStyle: 'dashed',
+      backgroundColor: 'rgba(0,0,0,0.04)',
+    },
+    reticle: {
+      width: '88%',
+      height: 138,
+      borderRadius: 18,
+      borderWidth: 2.5,
+      borderColor: '#FDE047',
+      borderStyle: 'dashed',
+      backgroundColor: 'rgba(0,0,0,0.08)',
+    },
+    reticleHint: {
+      backgroundColor: 'rgba(28,25,23,0.78)',
+      color: '#FFFFFF',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
 
-  permBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 8,
-    backgroundColor: '#FFF7ED',
-  },
-  permTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
-  permSub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
-  permBtn: {
-    backgroundColor: COLORS.coral,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
-    borderRadius: 99,
-    marginTop: 6,
-  },
-  permBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    permBox: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      gap: 8,
+      backgroundColor: COLORS.cardWarm,
+    },
+    permTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink, textAlign: 'center' },
+    permSub: { fontSize: 12, color: COLORS.inkMuted, textAlign: 'center', lineHeight: 18 },
+    permBtn: {
+      backgroundColor: COLORS.coral,
+      paddingHorizontal: 20,
+      paddingVertical: 11,
+      borderRadius: 99,
+      marginTop: 6,
+    },
+    permBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
-  snapPrimaryBtn: {
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.card,
-  },
-  snapPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14.5 },
+    snapPrimaryBtn: {
+      paddingVertical: 15,
+      paddingHorizontal: 16,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...SHADOWS.card,
+    },
+    snapPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14.5 },
 
-  loadingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: COLORS.amberSoft,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  loadingText: { fontSize: 12, fontWeight: '800', color: '#92400E', flexShrink: 1 },
+    loadingBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      backgroundColor: COLORS.amberSoft,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+    },
+    loadingText: { fontSize: 12, fontWeight: '800', color: COLORS.amberText, flexShrink: 1 },
 
-  importCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  importTitle: { fontSize: 12.5, fontWeight: '900', color: COLORS.ink },
-  importGrid: { flexDirection: 'row', gap: 8 },
-  importTile: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 15,
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    gap: 3,
-  },
-  importEmoji: { fontSize: 21 },
-  importLabel: { fontSize: 12, fontWeight: '900', color: COLORS.ink },
-  importSub: { fontSize: 10, fontWeight: '600', color: COLORS.inkSoft },
+    importCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 14,
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    importTitle: { fontSize: 12.5, fontWeight: '900', color: COLORS.ink },
+    importGrid: { flexDirection: 'row', gap: 8 },
+    importTile: {
+      flex: 1,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      borderRadius: 15,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      alignItems: 'center',
+      gap: 3,
+    },
+    importEmoji: { fontSize: 21 },
+    importLabel: { fontSize: 12, fontWeight: '900', color: COLORS.ink },
+    importSub: { fontSize: 10, fontWeight: '600', color: COLORS.inkSoft },
 
-  shareTipBox: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    borderRadius: 16,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-  },
-  shareTipText: { fontSize: 11.5, color: COLORS.inkMuted, lineHeight: 17 },
-  bold: { fontWeight: '800', color: COLORS.ink },
+    shareTipBox: {
+      backgroundColor: isDark ? COLORS.coralSoft : '#FFF7ED',
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      borderRadius: 16,
+      paddingHorizontal: 13,
+      paddingVertical: 11,
+    },
+    shareTipText: { fontSize: 11.5, color: COLORS.inkMuted, lineHeight: 17 },
+    bold: { fontWeight: '800', color: COLORS.ink },
 
-  reviewWrap: { gap: 14 },
-  detectedCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: '#A7F3D0',
-    padding: 16,
-    gap: 12,
-    ...SHADOWS.card,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  detectedBadge: { fontSize: 11, fontWeight: '900', color: '#047857', letterSpacing: 0.7 },
-  sourceChipText: { fontSize: 10, fontWeight: '800', color: COLORS.inkSoft },
-  reviewHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  addPageBtn: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  addPageBtnText: { fontSize: 11, fontWeight: '800', color: '#1D4ED8' },
-  rescanLink: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
+    reviewWrap: { gap: 14 },
+    detectedCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1.5,
+      borderColor: COLORS.emeraldBorder,
+      padding: 16,
+      gap: 12,
+      ...SHADOWS.card,
+    },
+    rowBetween: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 8,
+    },
+    detectedBadge: { fontSize: 11, fontWeight: '900', color: COLORS.emeraldText, letterSpacing: 0.7 },
+    sourceChipText: { fontSize: 10, fontWeight: '800', color: COLORS.inkSoft },
+    reviewHeaderBtns: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    addPageBtn: {
+      backgroundColor: COLORS.skySoft,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    addPageBtnText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: isDark ? '#93C5FD' : '#1D4ED8',
+    },
+    rescanLink: { fontSize: 12, fontWeight: '800', color: COLORS.coralDark },
 
-  typeSwitchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  typeSwitchChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 99,
-  },
-  typeSwitchChipActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
-  typeSwitchText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
-  aiCleanChip: {
-    marginLeft: 'auto',
-    backgroundColor: '#F3E8FF',
-    borderWidth: 1,
-    borderColor: '#D8B4FE',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 99,
-    minWidth: 78,
-    alignItems: 'center',
-  },
-  aiCleanText: { fontSize: 11, fontWeight: '900', color: '#6D28D9' },
+    typeSwitchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    typeSwitchChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 99,
+    },
+    typeSwitchChipActive: {
+      backgroundColor: COLORS.navy,
+      borderColor: COLORS.navy,
+    },
+    typeSwitchText: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted },
+    aiCleanChip: {
+      marginLeft: 'auto',
+      backgroundColor: isDark ? '#2B1B46' : '#F3E8FF',
+      borderWidth: 1,
+      borderColor: isDark ? '#6D28D9' : '#D8B4FE',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 99,
+      minWidth: 78,
+      alignItems: 'center',
+    },
+    aiCleanText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: isDark ? '#E9D5FF' : '#6D28D9',
+    },
 
-  detectedTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
-  editRow: { flexDirection: 'row', gap: 8 },
-  editField: { flex: 1, gap: 3 },
-  editLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.inkSoft,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  editInput: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.ink,
-  },
-  gridTwo: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  infoPair: {
-    width: '48%',
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  infoLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.inkSoft,
-    textTransform: 'uppercase',
-  },
-  infoVal: { fontSize: 13, fontWeight: '800', color: COLORS.ink, marginTop: 2 },
-  routeNoteBox: {
-    backgroundColor: COLORS.emeraldSoft,
-    padding: 10,
-    borderRadius: 12,
-  },
-  routeNoteText: { fontSize: 12, fontWeight: '700', color: '#065F46' },
-  rawToggle: { paddingVertical: 4 },
-  rawToggleText: { fontSize: 11, fontWeight: '800', color: COLORS.inkSoft },
-  rawBox: {
-    backgroundColor: '#F5F5F4',
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  rawText: { fontSize: 11, fontFamily: 'monospace', color: COLORS.inkMuted, lineHeight: 16 },
+    detectedTitle: { fontSize: 18, fontWeight: '900', color: COLORS.ink },
+    editRow: { flexDirection: 'row', gap: 8 },
+    editField: { flex: 1, gap: 3 },
+    editLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.inkSoft,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    editInput: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.ink,
+    },
+    gridTwo: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    infoPair: {
+      width: '48%',
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    infoLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: COLORS.inkSoft,
+      textTransform: 'uppercase',
+    },
+    infoVal: { fontSize: 13, fontWeight: '800', color: COLORS.ink, marginTop: 2 },
+    routeNoteBox: {
+      backgroundColor: COLORS.emeraldSoft,
+      padding: 10,
+      borderRadius: 12,
+    },
+    routeNoteText: { fontSize: 12, fontWeight: '700', color: COLORS.emeraldText },
+    rawToggle: { paddingVertical: 4 },
+    rawToggleText: { fontSize: 11, fontWeight: '800', color: COLORS.inkSoft },
+    rawBox: {
+      backgroundColor: isDark ? COLORS.surfaceMuted : '#F5F5F4',
+      borderRadius: 10,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    rawText: { fontSize: 11, fontFamily: 'monospace', color: COLORS.inkMuted, lineHeight: 16 },
 
-  destCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    gap: 10,
-    ...SHADOWS.card,
-  },
-  destHeader: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  choiceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: COLORS.canvas,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  choiceRowActive: {
-    backgroundColor: '#FFF7ED',
-    borderColor: COLORS.coral,
-  },
-  radio: { fontSize: 16, color: COLORS.coral, fontWeight: '900', marginTop: 1 },
-  choiceTitle: { fontSize: 14, fontWeight: '800', color: COLORS.ink },
-  choiceSub: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
-  tripChip: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  tripChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  tripChipText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    destCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 16,
+      gap: 10,
+      ...SHADOWS.card,
+    },
+    destHeader: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+    choiceRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      backgroundColor: COLORS.canvas,
+      borderRadius: 16,
+      padding: 12,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+    },
+    choiceRowActive: {
+      backgroundColor: isDark ? COLORS.coralSoft : '#FFF7ED',
+      borderColor: COLORS.coral,
+    },
+    radio: { fontSize: 16, color: COLORS.coral, fontWeight: '900', marginTop: 1 },
+    choiceTitle: { fontSize: 14, fontWeight: '800', color: COLORS.ink },
+    choiceSub: { fontSize: 12, color: COLORS.inkMuted, marginTop: 2 },
+    tripChip: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    tripChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+    tripChipText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
 
-  confirmBtn: {
-    borderRadius: 18,
-    paddingVertical: 16,
-    alignItems: 'center',
-    ...SHADOWS.fab,
-  },
-  confirmBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+    confirmBtn: {
+      borderRadius: 18,
+      paddingVertical: 16,
+      alignItems: 'center',
+      ...SHADOWS.fab,
+    },
+    confirmBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
 
-  pasteHint: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
-  pasteInput: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 12,
-    minHeight: 140,
-    textAlignVertical: 'top',
-    fontSize: 12.5,
-    color: COLORS.ink,
-    lineHeight: 18,
-  },
-  pasteRowBtns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  pasteHelperBtn: {
-    backgroundColor: COLORS.skySoft,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  pasteHelperText: { fontSize: 12, fontWeight: '800', color: '#0369A1' },
-  pasteClearBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  pasteClearText: { fontSize: 12, fontWeight: '800', color: COLORS.inkSoft },
-  pastePrimaryBtn: {
-    backgroundColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  pastePrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-  candWrap: {
-    gap: 5,
-    paddingTop: 2,
-  },
-  candLabel: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: COLORS.inkSoft,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  candChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 99,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  candChipActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
-  candChipText: {
-    fontSize: 11.5,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  legCard: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 10,
-    gap: 6,
-  },
-  legHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  legHeaderTitle: {
-    fontSize: 11.5,
-    fontWeight: '900',
-    color: COLORS.navy,
-    flex: 1,
-  },
-  legRemoveBtn: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  legRemoveText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.inkSoft,
-  },
-  addLegBtn: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: COLORS.coral,
-    backgroundColor: COLORS.coralSoft,
-    borderRadius: 12,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  addLegBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.coralDark,
-  },
-});
+    pasteHint: { fontSize: 12, color: COLORS.inkMuted, lineHeight: 17 },
+    pasteInput: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      padding: 12,
+      minHeight: 140,
+      textAlignVertical: 'top',
+      fontSize: 12.5,
+      color: COLORS.ink,
+      lineHeight: 18,
+    },
+    pasteRowBtns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    pasteHelperBtn: {
+      backgroundColor: COLORS.skySoft,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    pasteHelperText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: isDark ? '#7DD3FC' : '#0369A1',
+    },
+    pasteClearBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+    pasteClearText: { fontSize: 12, fontWeight: '800', color: COLORS.inkSoft },
+    pastePrimaryBtn: {
+      backgroundColor: COLORS.coral,
+      borderRadius: 14,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    pastePrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
+    candWrap: {
+      gap: 5,
+      paddingTop: 2,
+    },
+    candLabel: {
+      fontSize: 10.5,
+      fontWeight: '800',
+      color: COLORS.inkSoft,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    candChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 99,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    candChipActive: {
+      backgroundColor: COLORS.navy,
+      borderColor: COLORS.navy,
+    },
+    candChipText: {
+      fontSize: 11.5,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    legCard: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      padding: 10,
+      gap: 6,
+    },
+    legHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    legHeaderTitle: {
+      fontSize: 11.5,
+      fontWeight: '900',
+      color: COLORS.navyText,
+      flex: 1,
+    },
+    legRemoveBtn: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    legRemoveText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: COLORS.inkSoft,
+    },
+    addLegBtn: {
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: COLORS.coral,
+      backgroundColor: COLORS.coralSoft,
+      borderRadius: 12,
+      paddingVertical: 9,
+      alignItems: 'center',
+    },
+    addLegBtnText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.coralDark,
+    },
+  });

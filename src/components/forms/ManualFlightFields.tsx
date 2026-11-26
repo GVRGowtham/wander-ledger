@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTheme, useThemedStyles } from '../../context/ThemeContext';
 import {
   AirportInfo,
   calculateDistanceMiles,
@@ -19,7 +20,7 @@ import {
   searchAirports,
 } from '../../services/manualFlightBuilder';
 import { formatTimeHmInput } from '../../services/timeInputUtils';
-import { COLORS } from '../../theme/tokens';
+import { ThemeColors } from '../../theme/tokens';
 import { DatePickerField } from './DatePickerField';
 
 export interface ManualFlightDraft {
@@ -98,6 +99,8 @@ export const ManualFlightFields: React.FC<Props> = ({
   onChange,
   onDestinationAirportPicked,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [originFocused, setOriginFocused] = useState(false);
   const [destFocused, setDestFocused] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -172,7 +175,7 @@ export const ManualFlightFields: React.FC<Props> = ({
             value={draft.flightNumber}
             onChangeText={handleFlightNumberChange}
             placeholder="e.g. 6E 412, NH 105"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             autoCapitalize="characters"
             style={styles.input}
           />
@@ -183,7 +186,7 @@ export const ManualFlightFields: React.FC<Props> = ({
             value={draft.airlineName}
             onChangeText={(v) => patch({ airlineName: v })}
             placeholder="e.g. IndiGo, ANA, Delta"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -207,7 +210,7 @@ export const ManualFlightFields: React.FC<Props> = ({
             onFocus={() => setOriginFocused(true)}
             onBlur={() => setTimeout(() => setOriginFocused(false), 180)}
             placeholder="BLR, LAX, Bengaluru..."
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -228,7 +231,7 @@ export const ManualFlightFields: React.FC<Props> = ({
             onFocus={() => setDestFocused(true)}
             onBlur={() => setTimeout(() => setDestFocused(false), 180)}
             placeholder="GOI, HND, Tokyo..."
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             style={styles.input}
           />
         </View>
@@ -300,7 +303,7 @@ export const ManualFlightFields: React.FC<Props> = ({
               patch({ departureTimeHm: formatTimeHmInput(v, draft.departureTimeHm) })
             }
             placeholder="14:30"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             keyboardType="number-pad"
             maxLength={5}
             style={styles.input}
@@ -314,7 +317,7 @@ export const ManualFlightFields: React.FC<Props> = ({
               patch({ arrivalTimeHm: formatTimeHmInput(v, draft.arrivalTimeHm) })
             }
             placeholder="17:45"
-            placeholderTextColor={COLORS.inkSoft}
+            placeholderTextColor={colors.inkSoft}
             keyboardType="number-pad"
             maxLength={5}
             style={styles.input}
@@ -362,7 +365,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.seat}
                 onChangeText={(v) => patch({ seat: v })}
                 placeholder="e.g. 14A"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 style={styles.input}
               />
@@ -373,7 +376,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.pnr}
                 onChangeText={(v) => patch({ pnr: v })}
                 placeholder="e.g. 7X9K2P"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 style={styles.input}
               />
@@ -387,7 +390,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.terminal}
                 onChangeText={(v) => patch({ terminal: v })}
                 placeholder="e.g. T2"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 style={styles.input}
               />
             </View>
@@ -397,7 +400,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.gate}
                 onChangeText={(v) => patch({ gate: v })}
                 placeholder="e.g. B12"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 style={styles.input}
               />
@@ -408,7 +411,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.aircraft}
                 onChangeText={(v) => patch({ aircraft: v })}
                 placeholder="e.g. A320neo"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 style={styles.input}
               />
             </View>
@@ -423,7 +426,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 placeholder={
                   routePreview ? `${routePreview.miles} (auto)` : 'Auto / optional'
                 }
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 keyboardType="numeric"
                 style={styles.input}
               />
@@ -434,7 +437,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.frequentFlyerNumber}
                 onChangeText={(v) => patch({ frequentFlyerNumber: v })}
                 placeholder="Optional"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 style={styles.input}
               />
             </View>
@@ -447,7 +450,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.ticketPrice}
                 onChangeText={(v) => patch({ ticketPrice: v })}
                 placeholder="Optional, e.g. 420"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 keyboardType="decimal-pad"
                 style={styles.input}
               />
@@ -458,6 +461,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                 value={draft.ticketCurrency}
                 onChangeText={(v) => patch({ ticketCurrency: v.toUpperCase() })}
                 placeholder="USD"
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 maxLength={3}
                 style={[styles.input, { textAlign: 'center' }]}
@@ -477,8 +481,8 @@ export const ManualFlightFields: React.FC<Props> = ({
               <Switch
                 value={draft.addReturnFlight}
                 onValueChange={(val) => patch({ addReturnFlight: val })}
-                trackColor={{ false: '#D6D3D1', true: '#7DD3FC' }}
-                thumbColor={draft.addReturnFlight ? COLORS.sky : '#FFFFFF'}
+                trackColor={{ false: isDark ? '#3B4463' : '#D6D3D1', true: '#7DD3FC' }}
+                thumbColor={draft.addReturnFlight ? colors.sky : '#FFFFFF'}
               />
             </View>
 
@@ -490,7 +494,7 @@ export const ManualFlightFields: React.FC<Props> = ({
                     value={draft.returnDate}
                     onChange={(v) => patch({ returnDate: v })}
                     placeholder="Pick date"
-                    backgroundColor="#FFFFFF"
+                    backgroundColor={colors.card}
                     compact
                   />
                 </View>
@@ -500,9 +504,9 @@ export const ManualFlightFields: React.FC<Props> = ({
                     value={draft.returnFlightNumber}
                     onChangeText={(v) => patch({ returnFlightNumber: v })}
                     placeholder="Optional"
-                    placeholderTextColor={COLORS.inkSoft}
+                    placeholderTextColor={colors.inkSoft}
                     autoCapitalize="characters"
-                    style={[styles.input, { backgroundColor: '#FFFFFF' }]}
+                    style={[styles.input, { backgroundColor: colors.card }]}
                   />
                 </View>
               </View>
@@ -514,99 +518,100 @@ export const ManualFlightFields: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  wrap: { gap: 8 },
-  hint: { fontSize: 11, color: COLORS.inkMuted, lineHeight: 16 },
-  twoCol: { flexDirection: 'row', gap: 8 },
-  routeInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
-  swapBtn: {
-    width: 34,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: COLORS.skySoft,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  swapBtnText: { fontSize: 16, fontWeight: '900', color: '#0369A1' },
-  label: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginBottom: 4 },
-  input: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 13,
-    color: COLORS.ink,
-    fontWeight: '600',
-  },
-  detectedPill: {
-    backgroundColor: COLORS.emeraldSoft,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  detectedText: { fontSize: 11, fontWeight: '800', color: '#047857' },
-  suggestBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    overflow: 'hidden',
-  },
-  suggestItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  suggestText: { fontSize: 12, color: COLORS.ink, fontWeight: '600' },
-  suggestCode: { fontWeight: '900', color: '#0369A1' },
-  routeBadge: {
-    backgroundColor: COLORS.skySoft,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  routeBadgeText: { fontSize: 11, fontWeight: '800', color: '#0369A1' },
-  moreToggle: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.amberSoft,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  moreToggleText: { fontSize: 12, fontWeight: '800', color: '#92400E', textAlign: 'center', lineHeight: 17 },
-  moreSection: { gap: 10, paddingTop: 4 },
-  cabinRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cabinChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 99,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cabinChipActive: { backgroundColor: COLORS.sky, borderColor: COLORS.sky },
-  cabinText: { fontSize: 12, fontWeight: '700', color: COLORS.inkMuted },
-  cabinTextActive: { color: '#FFFFFF', fontWeight: '900' },
-  returnBox: {
-    backgroundColor: COLORS.skySoft,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    padding: 12,
-  },
-  returnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  returnTitle: { fontSize: 12, fontWeight: '800', color: '#0369A1' },
-  returnSub: { fontSize: 11, color: '#0C4A6E', marginTop: 2 },
-});
+const createStyles = (COLORS: ThemeColors, _SHADOWS: unknown, isDark: boolean) =>
+  StyleSheet.create({
+    wrap: { gap: 8 },
+    hint: { fontSize: 11, color: COLORS.inkMuted, lineHeight: 16 },
+    twoCol: { flexDirection: 'row', gap: 8 },
+    routeInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+    swapBtn: {
+      width: 34,
+      height: 40,
+      borderRadius: 10,
+      backgroundColor: COLORS.skySoft,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    swapBtnText: { fontSize: 16, fontWeight: '900', color: isDark ? '#7DD3FC' : '#0369A1' },
+    label: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginBottom: 4 },
+    input: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      fontSize: 13,
+      color: COLORS.ink,
+      fontWeight: '600',
+    },
+    detectedPill: {
+      backgroundColor: COLORS.emeraldSoft,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: COLORS.emeraldBorder,
+    },
+    detectedText: { fontSize: 11, fontWeight: '800', color: COLORS.emeraldText },
+    suggestBox: {
+      backgroundColor: COLORS.card,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      overflow: 'hidden',
+    },
+    suggestItem: {
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.borderSoft,
+    },
+    suggestText: { fontSize: 12, color: COLORS.ink, fontWeight: '600' },
+    suggestCode: { fontWeight: '900', color: isDark ? '#7DD3FC' : '#0369A1' },
+    routeBadge: {
+      backgroundColor: COLORS.skySoft,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+    },
+    routeBadgeText: { fontSize: 11, fontWeight: '800', color: isDark ? '#7DD3FC' : '#0369A1' },
+    moreToggle: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: COLORS.amberSoft,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    moreToggleText: { fontSize: 12, fontWeight: '800', color: COLORS.amberText, textAlign: 'center', lineHeight: 17 },
+    moreSection: { gap: 10, paddingTop: 4 },
+    cabinRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    cabinChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 99,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    cabinChipActive: { backgroundColor: COLORS.sky, borderColor: COLORS.sky },
+    cabinText: { fontSize: 12, fontWeight: '700', color: COLORS.inkMuted },
+    cabinTextActive: { color: '#FFFFFF', fontWeight: '900' },
+    returnBox: {
+      backgroundColor: COLORS.skySoft,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.skyBorder,
+      padding: 12,
+    },
+    returnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    returnTitle: { fontSize: 12, fontWeight: '800', color: isDark ? '#7DD3FC' : '#0369A1' },
+    returnSub: { fontSize: 11, color: isDark ? COLORS.inkMuted : '#0C4A6E', marginTop: 2 },
+  });

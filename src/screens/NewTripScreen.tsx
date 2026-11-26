@@ -24,6 +24,7 @@ import {
 } from '../components/forms/TransportFormFields';
 import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { AirportInfo, inferDestinationVibe } from '../db/airportsData';
 import { generateId } from '../db/database';
@@ -35,7 +36,7 @@ import {
   buildReturnFlight,
   resolveAirportOrCity,
 } from '../services/manualFlightBuilder';
-import { COLORS, SHADOWS, TRANSPORT_MODE_META } from '../theme/tokens';
+import { ThemeColors, ThemeShadows, TRANSPORT_MODE_META } from '../theme/tokens';
 import { DistanceUnit, Stay, TripVibe } from '../types/models';
 
 interface Props {
@@ -77,6 +78,8 @@ export const NewTripScreen: React.FC<Props> = ({
     addExpense,
     addMemory,
   } = useApp();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const keyboardHeight = useKeyboardHeight();
 
   const homeCurrency = profile?.homeCurrency || 'USD';
@@ -473,7 +476,7 @@ export const NewTripScreen: React.FC<Props> = ({
           value={destination}
           onChangeText={handleDestinationChange}
           placeholder="e.g. Europe, Swiss Alps, Japan, Goa"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -482,7 +485,7 @@ export const NewTripScreen: React.FC<Props> = ({
           value={title}
           onChangeText={setTitle}
           placeholder="e.g. Swiss Alps Loop, Goa Road Trip"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -491,7 +494,7 @@ export const NewTripScreen: React.FC<Props> = ({
           value={stopsInput}
           onChangeText={setStopsInput}
           placeholder="e.g. Zurich, Lucerne, Interlaken"
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           style={styles.input}
         />
 
@@ -559,7 +562,7 @@ export const NewTripScreen: React.FC<Props> = ({
               onChangeText={setBudget}
               keyboardType="numeric"
               placeholder="Optional"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
           </View>
@@ -570,7 +573,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={coTraveler}
                 onChangeText={setCoTraveler}
                 placeholder="Names or emails"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="none"
                 style={styles.input}
               />
@@ -677,7 +680,7 @@ export const NewTripScreen: React.FC<Props> = ({
               value={stayName}
               onChangeText={setStayName}
               placeholder="Hotel, Airbnb, or Resort name"
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.input}
             />
             <View style={styles.presetRow}>
@@ -701,7 +704,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={stayConf}
                 onChangeText={setStayConf}
                 placeholder="Confirmation # (opt)"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 style={[styles.input, { flex: 1 }]}
               />
@@ -709,7 +712,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={stayAddress}
                 onChangeText={setStayAddress}
                 placeholder="Neighborhood / address"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 style={[styles.input, { flex: 1.3 }]}
               />
             </View>
@@ -718,7 +721,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={stayCost}
                 onChangeText={setStayCost}
                 placeholder="Cash cost (opt)"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 keyboardType="decimal-pad"
                 style={[styles.input, { flex: 1 }]}
               />
@@ -726,6 +729,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={stayCurrency}
                 onChangeText={(v) => setStayCurrency(v.toUpperCase())}
                 placeholder="USD"
+                placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
                 maxLength={3}
                 style={[styles.input, { width: 72, textAlign: 'center' }]}
@@ -734,7 +738,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 value={stayPoints}
                 onChangeText={setStayPoints}
                 placeholder="Points (opt)"
-                placeholderTextColor={COLORS.inkSoft}
+                placeholderTextColor={colors.inkSoft}
                 keyboardType="numeric"
                 style={[styles.input, { flex: 1 }]}
               />
@@ -750,7 +754,7 @@ export const NewTripScreen: React.FC<Props> = ({
           value={tripNote}
           onChangeText={setTripNote}
           placeholder="Anything else you remember — restaurants, people, highlights..."
-          placeholderTextColor={COLORS.inkSoft}
+          placeholderTextColor={colors.inkSoft}
           multiline
           numberOfLines={3}
           style={[styles.input, { height: 74, textAlignVertical: 'top' }]}
@@ -764,119 +768,120 @@ export const NewTripScreen: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.canvas },
-  content: { padding: 16, paddingBottom: 56, gap: 14 },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  backBtn: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  backBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink, flex: 1, textAlign: 'center' },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.canvas },
+    content: { padding: 16, paddingBottom: 56, gap: 14 },
+    topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    backBtn: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    backBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink, flex: 1, textAlign: 'center' },
 
-  previewCard: {
-    borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    position: 'relative',
-    ...SHADOWS.card,
-  },
-  previewOverlay: {
-    position: 'absolute',
-    bottom: 10,
-    left: 14,
-    right: 14,
-    backgroundColor: 'rgba(28,25,23,0.52)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  previewLabel: { fontSize: 9, fontWeight: '900', color: '#FDE68A', letterSpacing: 0.8 },
-  previewTitle: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
+    previewCard: {
+      borderRadius: 22,
+      overflow: 'hidden',
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      position: 'relative',
+      ...SHADOWS.card,
+    },
+    previewOverlay: {
+      position: 'absolute',
+      bottom: 10,
+      left: 14,
+      right: 14,
+      backgroundColor: 'rgba(28,25,23,0.52)',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    previewLabel: { fontSize: 9, fontWeight: '900', color: '#FDE68A', letterSpacing: 0.8 },
+    previewTitle: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
 
-  scanShortcut: {
-    borderRadius: 20,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    ...SHADOWS.card,
-  },
-  scanTitle: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
-  scanSub: { fontSize: 11, color: '#FFEDD5', marginTop: 2, lineHeight: 15 },
-  scanArrow: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+    scanShortcut: {
+      borderRadius: 20,
+      padding: 15,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      ...SHADOWS.card,
+    },
+    scanTitle: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
+    scanSub: { fontSize: 11, color: '#FFEDD5', marginTop: 2, lineHeight: 15 },
+    scanArrow: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
 
-  formCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 18,
-    gap: 10,
-  },
-  accordionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  sectionHead: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  sectionSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2, lineHeight: 16 },
-  chevron: { fontSize: 12, fontWeight: '900', color: COLORS.inkMuted },
-  label: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginTop: 2 },
-  input: {
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: COLORS.ink,
-    fontWeight: '600',
-  },
-  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  presetChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 99,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  presetChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  presetText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
-  vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  vibeChip: {
-    width: '30.5%',
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    gap: 3,
-  },
-  vibeChipActive: { backgroundColor: COLORS.coralSoft, borderColor: COLORS.coral, borderWidth: 2 },
-  vibeEmoji: { fontSize: 18 },
-  vibeText: { fontSize: 11, fontWeight: '700', color: COLORS.inkMuted },
-  vibeTextActive: { color: COLORS.coralDark, fontWeight: '900' },
-  twoCol: { flexDirection: 'row', gap: 10 },
-  createBtn: {
-    backgroundColor: COLORS.navy,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.card,
-  },
-  createBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 15 },
-});
+    formCard: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 18,
+      gap: 10,
+    },
+    accordionHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    sectionHead: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+    sectionSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2, lineHeight: 16 },
+    chevron: { fontSize: 12, fontWeight: '900', color: COLORS.inkMuted },
+    label: { fontSize: 11, fontWeight: '800', color: COLORS.inkMuted, marginTop: 2 },
+    input: {
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 13,
+      color: COLORS.ink,
+      fontWeight: '600',
+    },
+    presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    presetChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 99,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    presetChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+    presetText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    vibeChip: {
+      width: '30.5%',
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 6,
+      alignItems: 'center',
+      gap: 3,
+    },
+    vibeChipActive: { backgroundColor: COLORS.coralSoft, borderColor: COLORS.coral, borderWidth: 2 },
+    vibeEmoji: { fontSize: 18 },
+    vibeText: { fontSize: 11, fontWeight: '700', color: COLORS.inkMuted },
+    vibeTextActive: { color: COLORS.coralDark, fontWeight: '900' },
+    twoCol: { flexDirection: 'row', gap: 10 },
+    createBtn: {
+      backgroundColor: COLORS.navy,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...SHADOWS.card,
+    },
+    createBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 15 },
+  });

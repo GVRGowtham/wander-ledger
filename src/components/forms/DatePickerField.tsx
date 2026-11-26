@@ -10,7 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, SHADOWS } from '../../theme/tokens';
+import { useThemedStyles } from '../../context/ThemeContext';
+import { ThemeColors, ThemeShadows } from '../../theme/tokens';
 
 const MONTH_NAMES = [
   'January',
@@ -88,6 +89,7 @@ export const DatePickerField: React.FC<Props> = ({
   compact = false,
   backgroundColor,
 }) => {
+  const styles = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [showYearGrid, setShowYearGrid] = useState(false);
@@ -344,218 +346,219 @@ export const DatePickerField: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  label: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-    marginBottom: 4,
-    marginTop: 2,
-  },
-  fieldBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: COLORS.canvas,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-  },
-  fieldBtnCompact: {
-    borderRadius: 10,
-    paddingHorizontal: 9,
-    paddingVertical: 9,
-    gap: 5,
-  },
-  calEmoji: {
-    fontSize: 14,
-  },
-  fieldText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.ink,
-    flex: 1,
-  },
-  fieldTextCompact: {
-    fontSize: 12,
-  },
-  placeholderText: {
-    color: COLORS.inkSoft,
-    fontWeight: '600',
-  },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows) =>
+  StyleSheet.create({
+    label: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+      marginBottom: 4,
+      marginTop: 2,
+    },
+    fieldBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      backgroundColor: COLORS.canvas,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 11,
+      paddingVertical: 10,
+    },
+    fieldBtnCompact: {
+      borderRadius: 10,
+      paddingHorizontal: 9,
+      paddingVertical: 9,
+      gap: 5,
+    },
+    calEmoji: {
+      fontSize: 14,
+    },
+    fieldText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.ink,
+      flex: 1,
+    },
+    fieldTextCompact: {
+      fontSize: 12,
+    },
+    placeholderText: {
+      color: COLORS.inkSoft,
+      fontWeight: '600',
+    },
 
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(28,25,23,0.52)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 18,
-    gap: 12,
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    ...SHADOWS.card,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  navArrowBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navArrowText: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: COLORS.ink,
-    lineHeight: 22,
-  },
-  monthYearBtn: {
-    flex: 1,
-    backgroundColor: COLORS.coralSoft,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  monthYearText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.coralDark,
-  },
+    backdrop: {
+      flex: 1,
+      backgroundColor: COLORS.modalBackdrop,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+    },
+    dialog: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: COLORS.card,
+      borderRadius: 24,
+      padding: 18,
+      gap: 12,
+      borderWidth: 1.5,
+      borderColor: COLORS.coralBorder,
+      ...SHADOWS.card,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    navArrowBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    navArrowText: {
+      fontSize: 20,
+      fontWeight: '900',
+      color: COLORS.ink,
+      lineHeight: 22,
+    },
+    monthYearBtn: {
+      flex: 1,
+      backgroundColor: COLORS.coralSoft,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    monthYearText: {
+      fontSize: 14,
+      fontWeight: '900',
+      color: COLORS.coralDark,
+    },
 
-  yearScroll: {
-    maxHeight: 230,
-  },
-  yearGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  yearCell: {
-    width: '30%',
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  yearCellActive: {
-    backgroundColor: COLORS.coral,
-    borderColor: COLORS.coral,
-  },
-  yearText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-  yearTextActive: {
-    color: '#FFFFFF',
-  },
+    yearScroll: {
+      maxHeight: 230,
+    },
+    yearGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      justifyContent: 'space-between',
+      paddingVertical: 4,
+    },
+    yearCell: {
+      width: '30%',
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+    },
+    yearCellActive: {
+      backgroundColor: COLORS.coral,
+      borderColor: COLORS.coral,
+    },
+    yearText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: COLORS.ink,
+    },
+    yearTextActive: {
+      color: '#FFFFFF',
+    },
 
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 2,
-  },
-  weekText: {
-    width: '14.28%',
-    textAlign: 'center',
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.inkSoft,
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  daySlot: {
-    width: '14.28%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 3,
-  },
-  dayCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayToday: {
-    borderWidth: 1.5,
-    borderColor: COLORS.coral,
-    backgroundColor: '#FFF7ED',
-  },
-  daySelected: {
-    backgroundColor: COLORS.coral,
-  },
-  dayText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.ink,
-  },
-  dayTodayText: {
-    color: COLORS.coralDark,
-    fontWeight: '900',
-  },
-  daySelectedText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-  },
+    weekRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingTop: 2,
+    },
+    weekText: {
+      width: '14.28%',
+      textAlign: 'center',
+      fontSize: 11,
+      fontWeight: '800',
+      color: COLORS.inkSoft,
+    },
+    daysGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    daySlot: {
+      width: '14.28%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 3,
+    },
+    dayCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dayToday: {
+      borderWidth: 1.5,
+      borderColor: COLORS.coral,
+      backgroundColor: COLORS.coralSoft,
+    },
+    daySelected: {
+      backgroundColor: COLORS.coral,
+    },
+    dayText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.ink,
+    },
+    dayTodayText: {
+      color: COLORS.coralDark,
+      fontWeight: '900',
+    },
+    daySelectedText: {
+      color: '#FFFFFF',
+      fontWeight: '900',
+    },
 
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderSoft,
-  },
-  todayBtn: {
-    backgroundColor: COLORS.amberSoft,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  todayBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#92400E',
-  },
-  cancelBtn: {
-    backgroundColor: COLORS.canvas,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.inkMuted,
-  },
-});
+    footerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+      paddingTop: 6,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.borderSoft,
+    },
+    todayBtn: {
+      backgroundColor: COLORS.amberSoft,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+    },
+    todayBtnText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.amberText,
+    },
+    cancelBtn: {
+      backgroundColor: COLORS.canvas,
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    cancelBtnText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: COLORS.inkMuted,
+    },
+  });

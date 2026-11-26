@@ -11,8 +11,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles } from '../../context/ThemeContext';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
-import { COLORS } from '../../theme/tokens';
+import { ThemeColors } from '../../theme/tokens';
 
 interface Props {
   visible: boolean;
@@ -35,6 +36,7 @@ export const BottomSheetModal: React.FC<Props> = ({
   children,
   footer,
 }) => {
+  const styles = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const [backdropHeight, setBackdropHeight] = useState<number>(
@@ -141,70 +143,73 @@ export const BottomSheetModal: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(28,25,23,0.52)',
-    justifyContent: 'flex-end',
-  },
-  dismissArea: {
-    flex: 1,
-  },
-  sheet: {
-    flexShrink: 1,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    marginHorizontal: 6,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    gap: 10,
-  },
-  scrollArea: {
-    flexShrink: 1,
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    borderRadius: 99,
-    backgroundColor: '#E7E5E4',
-    alignSelf: 'center',
-    marginBottom: 4,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: COLORS.ink,
-    flex: 1,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.canvas,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  closeX: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: COLORS.inkMuted,
-  },
-  scrollContent: {
-    gap: 10,
-    paddingBottom: 8,
-  },
-  footerWrap: {
-    paddingTop: 6,
-  },
-});
+const createStyles = (COLORS: ThemeColors) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: COLORS.modalBackdrop,
+      justifyContent: 'flex-end',
+    },
+    dismissArea: {
+      flex: 1,
+    },
+    sheet: {
+      flexShrink: 1,
+      backgroundColor: COLORS.card,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderBottomLeftRadius: 20,
+      borderBottomRightRadius: 20,
+      marginHorizontal: 6,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      gap: 10,
+      borderWidth: 1,
+      borderColor: COLORS.borderSoft,
+    },
+    scrollArea: {
+      flexShrink: 1,
+    },
+    handleBar: {
+      width: 40,
+      height: 4,
+      borderRadius: 99,
+      backgroundColor: COLORS.handleBar,
+      alignSelf: 'center',
+      marginBottom: 4,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    title: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: COLORS.ink,
+      flex: 1,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: COLORS.canvas,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    closeX: {
+      fontSize: 15,
+      fontWeight: '900',
+      color: COLORS.inkMuted,
+    },
+    scrollContent: {
+      gap: 10,
+      paddingBottom: 8,
+    },
+    footerWrap: {
+      paddingTop: 6,
+    },
+  });

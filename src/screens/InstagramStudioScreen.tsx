@@ -34,6 +34,7 @@ import {
 } from '../components/instagram/IgPostcardCanvas';
 import { PhotoReframeModal, SwapCandidate } from '../components/instagram/PhotoReframeModal';
 import { useApp } from '../context/AppContext';
+import { useTheme, useThemedStyles } from '../context/ThemeContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   CAPTION_TONES,
@@ -55,7 +56,7 @@ import {
   ROUTE_OVERLAY_OPTIONS,
   RouteOverlayMode,
 } from '../services/igStudioHelpers';
-import { COLORS, SHADOWS } from '../theme/tokens';
+import { ThemeColors, ThemeShadows } from '../theme/tokens';
 
 interface Props {
   tripId: string;
@@ -85,6 +86,8 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
     getTransportsForTrip,
     getStopsForTrip,
   } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const keyboardHeight = useKeyboardHeight();
   const { width: screenWidth } = useWindowDimensions();
 
@@ -884,7 +887,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
           {/* Export Progress Banner */}
           {exporting && (
             <View style={styles.progressBanner}>
-              <ActivityIndicator color={COLORS.coral} />
+              <ActivityIndicator color={colors.coral} />
               <Text style={styles.progressText}>
                 {exportStatus || 'Rendering crisp 1080p postcard…'}
               </Text>
@@ -1115,7 +1118,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                         <Text
                           style={[
                             styles.paletteLabel,
-                            active && { color: COLORS.coralDark },
+                            active && { color: colors.coralDark },
                           ]}
                         >
                           {p.label}
@@ -1139,8 +1142,11 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 <Switch
                   value={showPhotoLabels}
                   onValueChange={setShowPhotoLabels}
-                  trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-                  thumbColor={showPhotoLabels ? COLORS.coral : '#FFFFFF'}
+                  trackColor={{
+                    false: isDark ? '#3B4463' : '#D6D3D1',
+                    true: isDark ? '#9A3412' : '#FDBA74',
+                  }}
+                  thumbColor={showPhotoLabels ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
                 />
               </View>
             )}
@@ -1158,8 +1164,11 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                   <Switch
                     value={showPostcardNote}
                     onValueChange={setShowPostcardNote}
-                    trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-                    thumbColor={showPostcardNote ? COLORS.coral : '#FFFFFF'}
+                    trackColor={{
+                      false: isDark ? '#3B4463' : '#D6D3D1',
+                      true: isDark ? '#9A3412' : '#FDBA74',
+                    }}
+                    thumbColor={showPostcardNote ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
                   />
                 </View>
                 {showPostcardNote && (
@@ -1167,7 +1176,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                     value={postcardNote}
                     onChangeText={setPostcardNote}
                     placeholder={`Wishing you were here in ${trip.destinationCity} ✨`}
-                    placeholderTextColor={COLORS.inkSoft}
+                    placeholderTextColor={colors.inkSoft}
                     maxLength={90}
                     style={styles.noteInput}
                   />
@@ -1186,8 +1195,11 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
               <Switch
                 value={showWatermark}
                 onValueChange={setShowWatermark}
-                trackColor={{ false: '#D6D3D1', true: '#FDBA74' }}
-                thumbColor={showWatermark ? COLORS.coral : '#FFFFFF'}
+                trackColor={{
+                  false: isDark ? '#3B4463' : '#D6D3D1',
+                  true: isDark ? '#9A3412' : '#FDBA74',
+                }}
+                thumbColor={showWatermark ? colors.coral : isDark ? '#CBD5E1' : '#FFFFFF'}
               />
             </View>
           </View>
@@ -1197,7 +1209,12 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
             <View style={styles.rowBetween}>
               <Text style={styles.cardTitle}>✍️ Draft Instagram Caption</Text>
               <View style={[styles.badgePill, captionBadge === 'ai' && styles.badgePillAi]}>
-                <Text style={[styles.badgePillText, captionBadge === 'ai' && { color: '#6D28D9' }]}>
+                <Text
+                  style={[
+                    styles.badgePillText,
+                    captionBadge === 'ai' && { color: isDark ? '#E9D5FF' : '#6D28D9' },
+                  ]}
+                >
                   {captionBadge === 'ai' ? '✨ AI Polished' : '⚡ Instant Offline'}
                 </Text>
               </View>
@@ -1229,7 +1246,12 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 onPress={() => setIncludeHashtags(!includeHashtags)}
                 style={[styles.toneChip, includeHashtags && styles.hashtagChipActive]}
               >
-                <Text style={[styles.toneChipText, includeHashtags && { color: '#0369A1' }]}>
+                <Text
+                  style={[
+                    styles.toneChipText,
+                    includeHashtags && { color: isDark ? '#7DD3FC' : '#0369A1' },
+                  ]}
+                >
                   {includeHashtags ? '✓ #Hashtags' : '+ #Hashtags'}
                 </Text>
               </TouchableOpacity>
@@ -1240,7 +1262,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
               onChangeText={setCaption}
               multiline
               placeholder="Write or tweak your Instagram caption..."
-              placeholderTextColor={COLORS.inkSoft}
+              placeholderTextColor={colors.inkSoft}
               style={styles.captionInput}
             />
 
@@ -1262,7 +1284,7 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
                 activeOpacity={0.85}
               >
                 {polishing ? (
-                  <ActivityIndicator size="small" color="#6D28D9" />
+                  <ActivityIndicator size="small" color={isDark ? '#E9D5FF' : '#6D28D9'} />
                 ) : (
                   <Text
                     style={styles.aiBtnText}
@@ -1310,424 +1332,425 @@ export const InstagramStudioScreen: React.FC<Props> = ({ tripId, onBack }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  outerHost: { flex: 1, backgroundColor: COLORS.canvas, position: 'relative' },
-  offscreenExportHost: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 0,
-  },
-  root: { flex: 1, backgroundColor: COLORS.canvas, zIndex: 1 },
-  missingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
-  missingText: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
+const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolean) =>
+  StyleSheet.create({
+    outerHost: { flex: 1, backgroundColor: COLORS.canvas, position: 'relative' },
+    offscreenExportHost: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      zIndex: 0,
+    },
+    root: { flex: 1, backgroundColor: COLORS.canvas, zIndex: 1 },
+    missingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+    missingText: { fontSize: 16, fontWeight: '700', color: COLORS.ink },
 
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backBtn: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 99,
-  },
-  backBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
-  headerCenter: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
-  privacyBadge: {
-    backgroundColor: COLORS.emeraldSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  privacyBadgeText: { fontSize: 10, fontWeight: '900', color: '#047857' },
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    backBtn: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    backBtnText: { fontSize: 12, fontWeight: '800', color: COLORS.ink },
+    headerCenter: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    headerTitle: { fontSize: 16, fontWeight: '900', color: COLORS.ink },
+    privacyBadge: {
+      backgroundColor: COLORS.emeraldSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    privacyBadgeText: { fontSize: 10, fontWeight: '900', color: COLORS.emeraldText },
 
-  content: { paddingHorizontal: 16, paddingBottom: 48, gap: 13 },
+    content: { paddingHorizontal: 16, paddingBottom: 48, gap: 13 },
 
-  formatBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 4,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  formatPill: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  formatPillActive: { backgroundColor: COLORS.navy },
-  formatPillText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
-  formatPillTextActive: { color: '#FFFFFF' },
+    formatBar: {
+      flexDirection: 'row',
+      backgroundColor: COLORS.card,
+      borderRadius: 16,
+      padding: 4,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    formatPill: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    formatPillActive: { backgroundColor: COLORS.navy },
+    formatPillText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    formatPillTextActive: { color: '#FFFFFF' },
 
-  templateRow: { flexDirection: 'row', gap: 8 },
-  templateChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-  },
-  templateChipActive: {
-    backgroundColor: COLORS.coralSoft,
-    borderColor: COLORS.coral,
-    borderWidth: 1.5,
-  },
-  templateEmoji: { fontSize: 14 },
-  templateText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
-  templateTextActive: { color: COLORS.coralDark },
+    templateRow: { flexDirection: 'row', gap: 8 },
+    templateChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      paddingVertical: 9,
+      paddingHorizontal: 8,
+    },
+    templateChipActive: {
+      backgroundColor: COLORS.coralSoft,
+      borderColor: COLORS.coral,
+      borderWidth: 1.5,
+    },
+    templateEmoji: { fontSize: 14 },
+    templateText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    templateTextActive: { color: COLORS.coralDark },
 
-  slideChip: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  slideChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  slideChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    slideChip: {
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    slideChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
+    slideChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
 
-  microLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    color: COLORS.inkSoft,
-  },
-  subPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  subPillActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
-  subPillIcon: { fontSize: 13, color: COLORS.inkMuted },
-  subPillText: { fontSize: 11.5, fontWeight: '800', color: COLORS.inkMuted },
-  subPillTextActive: { color: '#FFFFFF' },
+    microLabel: {
+      fontSize: 10,
+      fontWeight: '900',
+      letterSpacing: 0.8,
+      color: COLORS.inkSoft,
+    },
+    subPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    subPillActive: {
+      backgroundColor: COLORS.navy,
+      borderColor: COLORS.navy,
+    },
+    subPillIcon: { fontSize: 13, color: COLORS.inkMuted },
+    subPillText: { fontSize: 11.5, fontWeight: '800', color: COLORS.inkMuted },
+    subPillTextActive: { color: '#FFFFFF' },
 
-  overlayRow: { flexDirection: 'row', gap: 6 },
-  overlayChip: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
+    overlayRow: { flexDirection: 'row', gap: 6 },
+    overlayChip: {
+      flex: 1,
+      backgroundColor: COLORS.card,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
 
-  stageWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-  },
-  shotFrame: {
-    borderRadius: 20,
-    ...SHADOWS.card,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 99,
-    backgroundColor: '#D6D3D1',
-  },
-  dotActive: {
-    width: 20,
-    backgroundColor: COLORS.coral,
-  },
-  reframeHintPill: {
-    alignSelf: 'center',
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 99,
-  },
-  reframeHintText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.coralDark,
-    textAlign: 'center',
-  },
+    stageWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 4,
+    },
+    shotFrame: {
+      borderRadius: 20,
+      ...SHADOWS.card,
+    },
+    dotsRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 6,
+    },
+    dot: {
+      width: 7,
+      height: 7,
+      borderRadius: 99,
+      backgroundColor: isDark ? '#3B4463' : '#D6D3D1',
+    },
+    dotActive: {
+      width: 20,
+      backgroundColor: COLORS.coral,
+    },
+    reframeHintPill: {
+      alignSelf: 'center',
+      backgroundColor: isDark ? COLORS.coralSoft : '#FFF7ED',
+      borderWidth: 1,
+      borderColor: COLORS.coralBorder,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    reframeHintText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.coralDark,
+      textAlign: 'center',
+    },
 
-  progressBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: COLORS.amberSoft,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  progressText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+    progressBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      backgroundColor: COLORS.amberSoft,
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.amberBorder,
+    },
+    progressText: { fontSize: 12, fontWeight: '800', color: COLORS.amberText },
 
-  exportRow: { flexDirection: 'row', gap: 10 },
-  saveBtn: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.card,
-  },
-  saveBtnText: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
-  igShareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    ...SHADOWS.card,
-  },
-  igShareBtnText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
+    exportRow: { flexDirection: 'row', gap: 10 },
+    saveBtn: {
+      flex: 1,
+      backgroundColor: COLORS.card,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      borderRadius: 16,
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...SHADOWS.card,
+    },
+    saveBtnText: { fontSize: 13, fontWeight: '900', color: COLORS.ink },
+    igShareBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      borderRadius: 16,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      ...SHADOWS.card,
+    },
+    igShareBtnText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
 
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 15,
-    gap: 12,
-    ...SHADOWS.card,
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  cardTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
-  cardHint: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft },
-  limitHint: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.coralDark,
-    backgroundColor: COLORS.coralSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
+    card: {
+      backgroundColor: COLORS.card,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 15,
+      gap: 12,
+      ...SHADOWS.card,
+    },
+    rowBetween: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    cardTitle: { fontSize: 14, fontWeight: '900', color: COLORS.ink },
+    cardHint: { fontSize: 11, fontWeight: '700', color: COLORS.inkSoft },
+    limitHint: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.coralDark,
+      backgroundColor: COLORS.coralSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+    },
 
-  memPickCol: { alignItems: 'center', gap: 5 },
-  memPickCard: {
-    width: 82,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.canvas,
-    padding: 4,
-    gap: 4,
-    position: 'relative',
-  },
-  memPickCardActive: {
-    borderColor: COLORS.coral,
-    backgroundColor: COLORS.coralSoft,
-  },
-  memPickImg: { width: '100%', height: 58, borderRadius: 10 },
-  memPickFallback: {
-    width: '100%',
-    height: 58,
-    borderRadius: 10,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memPickTitle: { fontSize: 10, fontWeight: '800', color: COLORS.ink, textAlign: 'center' },
-  orderBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    width: 21,
-    height: 21,
-    borderRadius: 99,
-    backgroundColor: COLORS.coral,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  orderBadgeText: { fontSize: 10, fontWeight: '900', color: '#FFFFFF' },
+    memPickCol: { alignItems: 'center', gap: 5 },
+    memPickCard: {
+      width: 82,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.canvas,
+      padding: 4,
+      gap: 4,
+      position: 'relative',
+    },
+    memPickCardActive: {
+      borderColor: COLORS.coral,
+      backgroundColor: COLORS.coralSoft,
+    },
+    memPickImg: { width: '100%', height: 58, borderRadius: 10 },
+    memPickFallback: {
+      width: '100%',
+      height: 58,
+      borderRadius: 10,
+      backgroundColor: COLORS.amberSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memPickTitle: { fontSize: 10, fontWeight: '800', color: COLORS.ink, textAlign: 'center' },
+    orderBadge: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      width: 21,
+      height: 21,
+      borderRadius: 99,
+      backgroundColor: COLORS.coral,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: COLORS.card,
+    },
+    orderBadgeText: { fontSize: 10, fontWeight: '900', color: '#FFFFFF' },
 
-  reorderMiniRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  miniArrowBtn: {
-    width: 24,
-    height: 22,
-    borderRadius: 7,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniArrowText: { fontSize: 11, fontWeight: '900', color: COLORS.ink },
-  miniStarBtn: {
-    width: 24,
-    height: 22,
-    borderRadius: 7,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniStarBtnActive: {
-    backgroundColor: COLORS.coral,
-    borderColor: COLORS.coral,
-  },
-  miniStarText: { fontSize: 11, fontWeight: '900', color: COLORS.inkMuted },
+    reorderMiniRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    miniArrowBtn: {
+      width: 24,
+      height: 22,
+      borderRadius: 7,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    miniArrowText: { fontSize: 11, fontWeight: '900', color: COLORS.ink },
+    miniStarBtn: {
+      width: 24,
+      height: 22,
+      borderRadius: 7,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    miniStarBtnActive: {
+      backgroundColor: COLORS.coral,
+      borderColor: COLORS.coral,
+    },
+    miniStarText: { fontSize: 11, fontWeight: '900', color: COLORS.inkMuted },
 
-  paletteRow: { flexDirection: 'row', gap: 7 },
-  paletteChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-  },
-  paletteChipActive: {
-    borderColor: COLORS.coral,
-    backgroundColor: COLORS.coralSoft,
-  },
-  paletteDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 99,
-    borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.18)',
-  },
-  paletteLabel: { fontSize: 11, fontWeight: '800', color: COLORS.ink },
+    paletteRow: { flexDirection: 'row', gap: 7 },
+    paletteChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+    },
+    paletteChipActive: {
+      borderColor: COLORS.coral,
+      backgroundColor: COLORS.coralSoft,
+    },
+    paletteDot: {
+      width: 14,
+      height: 14,
+      borderRadius: 99,
+      borderWidth: 1.5,
+      borderColor: 'rgba(0,0,0,0.18)',
+    },
+    paletteLabel: { fontSize: 11, fontWeight: '800', color: COLORS.ink },
 
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingTop: 2,
-  },
-  toggleTitle: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
-  toggleSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 1, lineHeight: 15 },
-  noteInput: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 12.5,
-    color: COLORS.ink,
-  },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingTop: 2,
+    },
+    toggleTitle: { fontSize: 13, fontWeight: '800', color: COLORS.ink },
+    toggleSub: { fontSize: 11, color: COLORS.inkMuted, marginTop: 1, lineHeight: 15 },
+    noteInput: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      fontSize: 12.5,
+      color: COLORS.ink,
+    },
 
-  badgePill: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  badgePillAi: { backgroundColor: '#EDE9FE' },
-  badgePillText: { fontSize: 10, fontWeight: '900', color: '#92400E' },
+    badgePill: {
+      backgroundColor: COLORS.amberSoft,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 99,
+    },
+    badgePillAi: { backgroundColor: isDark ? '#2B1B46' : '#EDE9FE' },
+    badgePillText: { fontSize: 10, fontWeight: '900', color: COLORS.amberText },
 
-  toneChip: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 99,
-  },
-  toneChipActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
-  hashtagChipActive: { backgroundColor: '#E0F2FE', borderColor: '#7DD3FC' },
-  toneChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
+    toneChip: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 99,
+    },
+    toneChipActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+    hashtagChipActive: { backgroundColor: COLORS.skySoft, borderColor: COLORS.skyBorder },
+    toneChipText: { fontSize: 12, fontWeight: '800', color: COLORS.inkMuted },
 
-  captionInput: {
-    backgroundColor: COLORS.canvas,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 12,
-    minHeight: 108,
-    textAlignVertical: 'top',
-    fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.ink,
-  },
-  captionActionsRow: { flexDirection: 'row', gap: 10 },
-  copyBtn: {
-    flex: 1,
-    backgroundColor: COLORS.navy,
-    borderRadius: 13,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  copyBtnText: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
-  aiBtn: {
-    flex: 1,
-    backgroundColor: '#F3E8FF',
-    borderWidth: 1,
-    borderColor: '#D8B4FE',
-    borderRadius: 13,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiBtnText: { fontSize: 12, fontWeight: '900', color: '#6D28D9' },
-});
+    captionInput: {
+      backgroundColor: COLORS.canvas,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 14,
+      padding: 12,
+      minHeight: 108,
+      textAlignVertical: 'top',
+      fontSize: 13,
+      lineHeight: 19,
+      color: COLORS.ink,
+    },
+    captionActionsRow: { flexDirection: 'row', gap: 10 },
+    copyBtn: {
+      flex: 1,
+      backgroundColor: COLORS.navy,
+      borderRadius: 13,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    copyBtnText: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
+    aiBtn: {
+      flex: 1,
+      backgroundColor: isDark ? '#2B1B46' : '#F3E8FF',
+      borderWidth: 1,
+      borderColor: isDark ? '#6D28D9' : '#D8B4FE',
+      borderRadius: 13,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    aiBtnText: { fontSize: 12, fontWeight: '900', color: isDark ? '#E9D5FF' : '#6D28D9' },
+  });
