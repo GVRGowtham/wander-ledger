@@ -20,34 +20,110 @@ import {
   ScanResult,
 } from '../types/models';
 
+/**
+ * Repairs common thermal-receipt OCR glitches inside 4-digit years
+ * (e.g. "27/11/202€" where "6" was misread as "€", or "27-11-202©").
+ */
+export function sanitizeOcrDateGlitches(text: string): string {
+  return text.replace(/(\b\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\/.-]\s*20[123])[€©G]/g, '$16');
+}
+
+const SHORT_CURRENCY_TOKEN_MAP: Record<string, string> = {
+  '¥': 'JPY', JPY: 'JPY',
+  '€': 'EUR', EUR: 'EUR',
+  '£': 'GBP', GBP: 'GBP',
+  '₹': 'INR', INR: 'INR', RS: 'INR', 'RS.': 'INR',
+  CHF: 'CHF', SFR: 'CHF', 'SFR.': 'CHF',
+  '₩': 'KRW', KRW: 'KRW',
+  '฿': 'THB', THB: 'THB',
+  'S$': 'SGD', SGD: 'SGD',
+  'A$': 'AUD', AUD: 'AUD',
+  'C$': 'CAD', CAD: 'CAD',
+  'NZ$': 'NZD', NZD: 'NZD',
+  'HK$': 'HKD', HKD: 'HKD',
+  AED: 'AED', DHS: 'AED', 'DHS.': 'AED',
+  QAR: 'QAR', SAR: 'SAR',
+  MYR: 'MYR', RM: 'MYR',
+  MXN: 'MXN',
+  PLN: 'PLN', 'ZŁ': 'PLN', ZL: 'PLN',
+  CZK: 'CZK', HUF: 'HUF', SEK: 'SEK', NOK: 'NOK', DKK: 'DKK',
+  TRY: 'TRY', '₺': 'TRY',
+  IDR: 'IDR', VND: 'VND', PHP: 'PHP', CNY: 'CNY', TWD: 'TWD',
+  ZAR: 'ZAR', BRL: 'BRL',
+  '$': 'USD', USD: 'USD',
+};
+
+// Strict patterns for full-document scanning: currency symbols must sit next to a plausible
+// monetary number (not glued onto a date slash like "/202€" or stray punctuation).
 const CURRENCY_PATTERNS: Array<{ regex: RegExp; code: string }> = [
-  { regex: /¥|\bJPY(?=\b|\d)/i, code: 'JPY' },
-  { regex: /€|\bEUR(?=\b|\d)/i, code: 'EUR' },
-  { regex: /£|\bGBP(?=\b|\d)/i, code: 'GBP' },
-  { regex: /₹|\bINR(?=\b|\d)|\bRS\.?\s*\d/i, code: 'INR' },
+  { regex: /(?:¥\s*\d|(?<![\/.-]\d{1,4})\d[\d.,]*\s*¥|\bJPY(?=\b|\d))/i, code: 'JPY' },
+  { regex: /(?:€\s*\d|(?<![\/.-]\d{1,4})\d[\d.,]*\s*€|\bEUR(?=\b|\d))/i, code: 'EUR' },
+  { regex: /(?:£\s*\d|(?<![\/.-]\d{1,4})\d[\d.,]*\s*£|\bGBP(?=\b|\d))/i, code: 'GBP' },
+  { regex: /(?:₹\s*\d|(?<![\/.-]\d{1,4})\d[\d.,]*\s*₹|\bINR(?=\b|\d)|\bRS\.?\s*\d)/i, code: 'INR' },
   { regex: /\bCHF(?=\b|\d)|\bSFr\.?/i, code: 'CHF' },
-  { regex: /₩|\bKRW(?=\b|\d)/i, code: 'KRW' },
-  { regex: /฿|\bTHB(?=\b|\d)/i, code: 'THB' },
-  { regex: /S\$|\bSGD(?=\b|\d)/i, code: 'SGD' },
-  { regex: /A\$|\bAUD(?=\b|\d)/i, code: 'AUD' },
-  { regex: /C\$|\bCAD(?=\b|\d)/i, code: 'CAD' },
-  { regex: /NZ\$|\bNZD(?=\b|\d)/i, code: 'NZD' },
-  { regex: /HK\$|\bHKD(?=\b|\d)/i, code: 'HKD' },
+  { regex: /\bPLN(?=\b|\d)|\d[\d.,]*\s*z[łl]\b/i, code: 'PLN' },
+  { regex: /(?:₩\s*\d|\bKRW(?=\b|\d))/i, code: 'KRW' },
+  { regex: /(?:฿\s*\d|\bTHB(?=\b|\d))/i, code: 'THB' },
+  { regex: /(?:S\$\s*\d|\bSGD(?=\b|\d))/i, code: 'SGD' },
+  { regex: /(?:A\$\s*\d|\bAUD(?=\b|\d))/i, code: 'AUD' },
+  { regex: /(?:C\$\s*\d|\bCAD(?=\b|\d))/i, code: 'CAD' },
+  { regex: /(?:NZ\$\s*\d|\bNZD(?=\b|\d))/i, code: 'NZD' },
+  { regex: /(?:HK\$\s*\d|\bHKD(?=\b|\d))/i, code: 'HKD' },
   { regex: /\bAED(?=\b|\d)|\bDHS\.?\s*\d/i, code: 'AED' },
   { regex: /\bQAR(?=\b|\d)/i, code: 'QAR' },
   { regex: /\bSAR(?=\b|\d)/i, code: 'SAR' },
   { regex: /\bMYR(?=\b|\d)|\bRM\s*\d/i, code: 'MYR' },
   { regex: /\bMXN(?=\b|\d)/i, code: 'MXN' },
-  { regex: /\$|\bUSD(?=\b|\d)/i, code: 'USD' },
+  { regex: /\bCZK(?=\b|\d)/i, code: 'CZK' },
+  { regex: /\bHUF(?=\b|\d)/i, code: 'HUF' },
+  { regex: /\bSEK(?=\b|\d)/i, code: 'SEK' },
+  { regex: /\bNOK(?=\b|\d)/i, code: 'NOK' },
+  { regex: /\bDKK(?=\b|\d)/i, code: 'DKK' },
+  { regex: /(?:₺\s*\d|\bTRY(?=\b|\d))/i, code: 'TRY' },
+  { regex: /\bIDR(?=\b|\d)|\bRp\.?\s*\d/i, code: 'IDR' },
+  { regex: /\bVND(?=\b|\d)/i, code: 'VND' },
+  { regex: /\bCNY(?=\b|\d)/i, code: 'CNY' },
+  { regex: /\bZAR(?=\b|\d)/i, code: 'ZAR' },
+  { regex: /\bBRL(?=\b|\d)|R\$\s*\d/i, code: 'BRL' },
+  { regex: /(?:(?<![A-Z])\$\s*\d|\bUSD(?=\b|\d))/i, code: 'USD' },
 ];
 
-export function detectCurrency(text: string, fallback = 'USD'): string {
+// Unambiguous domestic tax/billing identifiers when thermal receipts omit currency symbols
+const DOMESTIC_BILLING_CURRENCY_CUES: Array<{ regex: RegExp; code: string }> = [
+  { regex: /\b(?:GSTIN|CGST|SGST|IGST|UTGST)\b/i, code: 'INR' },
+  { regex: /\b(?:NIP\s*[:#]?\s*\d{3}[\s-]?\d{3}|\bPARAGON\s+FISKALNY\b|\bSUMA\s+PLN\b)/i, code: 'PLN' },
+];
+
+export function detectCurrencyWithConfidence(text: string): {
+  currency: string | null;
+  confident: boolean;
+} {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { currency: null, confident: false };
+
+  // Direct symbol/code token lookup (used by matchAmountOnLine on captured currency groups like "€", "₹", "INR")
+  const direct = SHORT_CURRENCY_TOKEN_MAP[trimmed.toUpperCase()];
+  if (direct) {
+    return { currency: direct, confident: true };
+  }
+
+  const cleaned = sanitizeOcrDateGlitches(trimmed);
   for (const item of CURRENCY_PATTERNS) {
-    if (item.regex.test(text)) {
-      return item.code;
+    if (item.regex.test(cleaned)) {
+      return { currency: item.code, confident: true };
     }
   }
-  return fallback;
+  for (const cue of DOMESTIC_BILLING_CURRENCY_CUES) {
+    if (cue.regex.test(cleaned)) {
+      return { currency: cue.code, confident: true };
+    }
+  }
+  return { currency: null, confident: false };
+}
+
+export function detectCurrency(text: string, fallback = 'USD'): string {
+  const { currency } = detectCurrencyWithConfidence(text);
+  return currency ?? fallback;
 }
 
 /**
@@ -157,25 +233,43 @@ function matchStandaloneMoneyLine(line: string): { amount: number; currency: str
 export interface DetectedMoneyCandidate {
   amount: number;
   currency: string;
+  label?: string;
+}
+
+function inferMoneyLabelFromLine(line: string): string | undefined {
+  if (/\bgrand\s*total\b/i.test(line)) return 'Grand Total';
+  if (/\bfinal\s*total\b/i.test(line)) return 'Final Total';
+  if (/\bnet\s*(?:payable|amt|amount|total|bill)\b/i.test(line)) return 'Net';
+  if (/^\s*net\b/i.test(line) || /\bnet\s*[:=-]?\s*[\d₹€£$¥]/i.test(line)) return 'Net';
+  if (/\bsub[\s-]?total\b/i.test(line)) return 'Subtotal';
+  if (/\bbase\s*fare\b/i.test(line)) return 'Base Fare';
+  if (/\b(?:total\s*(?:calculated\s*)?fare|calculated\s*fare|fare\s*total|airfare\s*total|ticket\s*total)\b/i.test(line)) return 'Total Fare';
+  if (/\b(?:amount\s*paid|total\s*(?:amount\s*)?paid|paid)\b/i.test(line)) return 'Paid';
+  if (/\b(?:payable|to\s*pay|balance\s*due|total\s*due)\b/i.test(line)) return 'Payable';
+  if (/\bbill\s*(?:amt|amount|total)\b/i.test(line)) return 'Bill Total';
+  if (/\btender(?:ed)?\b/i.test(line)) return 'Tendered';
+  if (/\btotal\b/i.test(line)) return 'Total';
+  return undefined;
 }
 
 export function extractTotalWithCurrency(
   text: string,
   defaultCurrency = 'USD'
-): { amount: number; currency: string } {
-  const lines = text
+): { amount: number; currency: string; label?: string } {
+  const cleanedText = sanitizeOcrDateGlitches(text);
+  const lines = cleanedText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const fallbackCurrency = detectCurrency(text, defaultCurrency);
+  const fallbackCurrency = detectCurrency(cleanedText, defaultCurrency);
 
   // 1. High-priority explicit monetary total labels (checked bottom-up)
   const strongTotalLabels =
-    'grand\\s*total|final\\s*total|total\\s*(?:calculated\\s*)?fare(?:\\s*paid)?|calculated\\s*fare|fare\\s*total|total\\s*airfare|airfare\\s*total|total\\s*ticket(?:\\s*price|\\s*cost|\\s*fare)?|ticket\\s*total|total\\s*(?:amount\\s*)?paid|total\\s*payment|total\\s*price|total\\s*cost|total\\s*charges|total\\s*stay|total\\s*due|total\\s*charged|total\\s*billed|amount\\s*paid|amount\\s*charged|total\\s*amount(?:\\s*paid)?|net\\s*payable|balance\\s*due|total\\s*\\(?tax\\s*incl\\.?\\)?|total\\s*incl\\.?[^\\d]*|total\\s*ttc|gesamt(?:betrag)?|合計';
+    'grand\\s*total|final\\s*total|net\\s*(?:payable|amt|amount|total|bill)|\\bnet\\b|bill\\s*(?:amt|amount|total)|to\\s*pay|total\\s*(?:calculated\\s*)?fare(?:\\s*paid)?|calculated\\s*fare|fare\\s*total|total\\s*airfare|airfare\\s*total|total\\s*ticket(?:\\s*price|\\s*cost|\\s*fare)?|ticket\\s*total|total\\s*(?:amount\\s*)?paid|total\\s*payment|total\\s*price|total\\s*cost|total\\s*charges|total\\s*stay|total\\s*due|total\\s*charged|total\\s*billed|amount\\s*paid|amount\\s*charged|total\\s*amount(?:\\s*paid)?|balance\\s*due|payable(?:\\s*(?:amt|amount))?|total\\s*\\(?tax\\s*incl\\.?\\)?|total\\s*incl\\.?[^\\d]*|total\\s*ttc|gesamt(?:betrag)?|合計';
 
   const strongHeaderOnlyRx =
-    /^(?:grand\s*total|final\s*total|total\s*(?:calculated\s*)?fare(?:\s*paid)?|calculated\s*fare|fare\s*total|total\s*airfare|ticket\s*total|total\s*(?:amount\s*)?paid|total\s*payment|total\s*price|total\s*cost|total\s*charges|total\s*stay|total\s*due|amount\s*paid|total\s*amount(?:\s*paid)?|net\s*payable|balance\s*due|total\s*ttc|gesamt(?:betrag)?)(?:\s*\([^)]*\))?[:\s-]*$/i;
+    /^(?:grand\s*total|final\s*total|net\s*(?:payable|amt|amount|total|bill)|net|bill\s*(?:amt|amount|total)|to\s*pay|total\s*(?:calculated\s*)?fare(?:\s*paid)?|calculated\s*fare|fare\s*total|total\s*airfare|ticket\s*total|total\s*(?:amount\s*)?paid|total\s*payment|total\s*price|total\s*cost|total\s*charges|total\s*stay|total\s*due|amount\s*paid|total\s*amount(?:\s*paid)?|balance\s*due|payable(?:\s*(?:amt|amount))?|total\s*ttc|gesamt(?:betrag)?)(?:\s*\([^)]*\))?[:\s-]*$/i;
 
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
@@ -185,7 +279,11 @@ export function extractTotalWithCurrency(
 
     const hit = matchAmountOnLine(line, strongTotalLabels);
     if (hit) {
-      return { amount: hit.amount, currency: hit.currency ?? fallbackCurrency };
+      return {
+        amount: hit.amount,
+        currency: hit.currency ?? fallbackCurrency,
+        label: inferMoneyLabelFromLine(line),
+      };
     }
 
     // Two-column PDF / Booking.com screenshot layout: label on line i, amount on line i+1 (or i+2 if a parenthetical subtitle sits in between)
@@ -201,6 +299,7 @@ export function extractTotalWithCurrency(
           return {
             amount: nextHit.amount,
             currency: nextHit.currency ?? (detectCurrency(line, '') || fallbackCurrency),
+            label: inferMoneyLabelFromLine(line),
           };
         }
       }
@@ -216,7 +315,11 @@ export function extractTotalWithCurrency(
 
     const hit = matchAmountOnLine(line, '\\btotal\\b|\\bsum\\b');
     if (hit) {
-      return { amount: hit.amount, currency: hit.currency ?? fallbackCurrency };
+      return {
+        amount: hit.amount,
+        currency: hit.currency ?? fallbackCurrency,
+        label: inferMoneyLabelFromLine(line) ?? 'Total',
+      };
     }
 
     if (i + 1 < lines.length && genericTotalHeaderRx.test(line)) {
@@ -227,6 +330,7 @@ export function extractTotalWithCurrency(
           return {
             amount: nextHit.amount,
             currency: nextHit.currency ?? (detectCurrency(line, '') || fallbackCurrency),
+            label: inferMoneyLabelFromLine(line) ?? 'Total',
           };
         }
       }
@@ -240,6 +344,7 @@ export function extractTotalWithCurrency(
   );
   let maxVal = 0;
   let maxCurrency: string | null = null;
+  let maxLabel: string | undefined;
 
   for (const skipTax of [true, false]) {
     for (const line of lines) {
@@ -255,6 +360,7 @@ export function extractTotalWithCurrency(
           maxVal = val;
           const currStr = m[1] || m[2] || m[5] || '';
           maxCurrency = detectCurrency(currStr, '') || null;
+          maxLabel = inferMoneyLabelFromLine(line);
         }
       }
     }
@@ -264,56 +370,66 @@ export function extractTotalWithCurrency(
   return {
     amount: maxVal,
     currency: maxCurrency ?? fallbackCurrency,
+    label: maxLabel,
   };
 }
 
 /**
- * Extracts up to 4 distinct plausible monetary amounts from OCR text so users can
- * 1-tap swap the detected fare/total on multi-number airline e-tickets & hotel folios.
+ * Extracts up to 4 distinct plausible monetary amounts (with crisp labels like
+ * "Net", "Total", "Subtotal", "Base Fare") from OCR text so users can 1-tap swap
+ * totals on restaurant bills, hotel folios, and multi-number airline e-tickets.
  */
 export function extractMoneyCandidates(
   text: string,
   defaultCurrency = 'USD',
   maxCount = 4
 ): DetectedMoneyCandidate[] {
-  const lines = text
+  const cleanedText = sanitizeOcrDateGlitches(text);
+  const lines = cleanedText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  const fallbackCurrency = detectCurrency(text, defaultCurrency);
+  const fallbackCurrency = detectCurrency(cleanedText, defaultCurrency);
 
   const results: DetectedMoneyCandidate[] = [];
   const seen = new Set<string>();
 
-  const pushCandidate = (amount: number, currency: string) => {
+  const pushCandidate = (amount: number, currency: string, label?: string) => {
     if (!(amount > 0)) return;
     const rounded = Math.round(amount * 100) / 100;
     const curr = (currency || fallbackCurrency).toUpperCase();
     const key = `${curr}:${rounded}`;
     if (seen.has(key)) return;
     seen.add(key);
-    results.push({ amount: rounded, currency: curr });
+    results.push({ amount: rounded, currency: curr, label });
   };
 
   // Primary auto-detected total goes first
-  const primary = extractTotalWithCurrency(text, defaultCurrency);
+  const primary = extractTotalWithCurrency(cleanedText, defaultCurrency);
   if (primary.amount > 0) {
-    pushCandidate(primary.amount, primary.currency);
+    pushCandidate(primary.amount, primary.currency, primary.label);
   }
 
-  // Scan currency-tagged and total/fare labeled lines (preferring non-tax lines first)
+  // Scan currency-tagged and summary-labeled lines (preferring non-tax lines first)
   const moneyRegex = new RegExp(
     `(?:(?:([¥$€£₹₩฿])|(${CURRENCY_TOKEN}))\\s*${AMOUNT_TOKEN}|${AMOUNT_TOKEN}\\s*(${CURRENCY_TOKEN}))`,
     'gi'
   );
+  const summaryLabelRx =
+    /\b(?:grand\s*total|final\s*total|net\s*(?:payable|amt|amount|total|bill)|net|sub[\s-]?total|subtotal|base\s*fare|bill\s*(?:amt|amount|total)|to\s*pay|total|fare|paid|amount|price|payable|balance|tender(?:ed)?)\b/i;
+  const summaryLabelPattern =
+    '\\b(?:grand\\s*total|final\\s*total|net\\s*(?:payable|amt|amount|total|bill)|net|sub[\\s-]?total|subtotal|base\\s*fare|bill\\s*(?:amt|amount|total)|to\\s*pay|total|fare|paid|amount|price|payable|balance|tender(?:ed)?)\\b';
 
   for (const allowTaxLines of [false, true]) {
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
       if (NON_MONEY_LINE_RX.test(line) && !MONETARY_HINT_RX.test(line)) continue;
       if (FEE_PENALTY_LINE_RX.test(line)) continue;
+      // Never suggest pure tax lines (CGST 15, SGST 15, Cess 0) as the bill total
+      if (/\b(?:cgst|sgst|igst|utgst|cess)\b/i.test(line)) continue;
       if (!allowTaxLines && isTaxOrSubtotalOnlyLine(line)) continue;
 
+      const label = inferMoneyLabelFromLine(line);
       let foundTagged = false;
       for (const m of line.matchAll(moneyRegex)) {
         const rawNum = m[3] || m[4];
@@ -322,18 +438,15 @@ export function extractMoneyCandidates(
         if (!isPlausibleMoneyToken(rawNum, line.slice(matchEnd))) continue;
         const currStr = m[1] || m[2] || m[5] || '';
         const curr = detectCurrency(currStr, '') || fallbackCurrency;
-        pushCandidate(parseNumber(rawNum), curr);
+        pushCandidate(parseNumber(rawNum), curr, label);
         foundTagged = true;
         if (results.length >= maxCount) return results;
       }
 
-      if (!foundTagged && /\b(?:total|fare|paid|amount|price|payable|balance)\b/i.test(line)) {
-        const unlabeled = matchAmountOnLine(
-          line,
-          '\\b(?:total|fare|paid|amount|price|payable|balance)\\b'
-        );
+      if (!foundTagged && summaryLabelRx.test(line)) {
+        const unlabeled = matchAmountOnLine(line, summaryLabelPattern);
         if (unlabeled) {
-          pushCandidate(unlabeled.amount, unlabeled.currency ?? fallbackCurrency);
+          pushCandidate(unlabeled.amount, unlabeled.currency ?? fallbackCurrency, label);
           if (results.length >= maxCount) return results;
         }
       }
@@ -1554,11 +1667,12 @@ function parseFlightConfirmationOcr(
 }
 
 export function parseDocumentOcrText(
-  rawText: string,
+  inputText: string,
   defaultCurrency = 'USD',
   imageUri?: string,
   forceKind?: 'flight' | 'transport' | 'hotel' | 'receipt'
 ): ScanResult {
+  const rawText = sanitizeOcrDateGlitches(inputText);
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.trim())

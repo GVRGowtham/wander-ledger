@@ -36,10 +36,16 @@ import {
   renderPdfPagesToJpegs,
   runMultiImageOcrAndSave,
 } from '../services/documentImportService';
+import { CurrencySuggestionsBar } from '../components/forms/CurrencyField';
+import {
+  resolveSmartScanCurrency,
+  resolveTripCurrencies,
+} from '../services/currencyDirectory';
 import { enrichFlightDetails, FlightEnrichmentResult } from '../services/flightEnricher';
 import { formatFlightDistance } from '../services/distanceUtils';
 import { convertCurrency } from '../services/fxService';
 import {
+  detectCurrencyWithConfidence,
   DetectedMoneyCandidate,
   extractMoneyCandidates,
   formatFlightItinerarySummary,
@@ -92,6 +98,9 @@ export const ScannerScreen: React.FC<Props> = ({
     addTransport,
     addStay,
     addExpense,
+    getFlightsForTrip,
+    getTransportsForTrip,
+    getStopsForTrip,
   } = useApp();
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -120,6 +129,8 @@ export const ScannerScreen: React.FC<Props> = ({
   const [aiCleanedBadge, setAiCleanedBadge] = useState(false);
   const [showRawText, setShowRawText] = useState(false);
   const [enrichment, setEnrichment] = useState<FlightEnrichmentResult | null>(null);
+  const [ocrCurrencyConfident, setOcrCurrencyConfident] = useState(true);
+  const [userEditedCurrency, setUserEditedCurrency] = useState(false);
 
   // Paste Email / Confirmation Text Modal
   const [pasteModal, setPasteModal] = useState(false);
@@ -140,6 +151,32 @@ export const ScannerScreen: React.FC<Props> = ({
 
   const homeCurrency = profile?.homeCurrency || 'USD';
 
+  const getTripCurrenciesById = (tripId?: string | null): string[] => {
+    if (!tripId) return [];
+    const target = trips.find((t) => t.id === tripId);
+    if (!target) return [];
+    return resolveTripCurrencies(
+      target,
+      getFlightsForTrip(target.id),
+      getTransportsForTrip(target.id),
+      getStopsForTrip(target.id)
+    );
+  };
+
+  const selectedTripCurrencies = useMemo(() => {
+    if (destinationChoice !== 'existing' || !selectedTripId) return [];
+    return getTripCurrenciesById(selectedTripId);
+  }, [destinationChoice, selectedTripId, trips]);
+
+  const applyCurrencyToScanResult = (result: ScanResult, currency: string): ScanResult => {
+    if (result.kind === 'boarding_pass') {
+      return result.ticketAmount && result.ticketAmount > 0
+        ? { ...result, ticketCurrency: currency }
+        : result;
+    }
+    return { ...result, currency };
+  };
+
   const setBusy = (val: boolean, msg = '') => {
     processingRef.current = val;
     setProcessing(val);
@@ -151,7 +188,7 @@ export const ScannerScreen: React.FC<Props> = ({
     return exact ?? trips[0];
   };
 
-  const applyDestinationSuggestion = (isoDate: string) => {
+  const applyDestinationSuggestion = (isoDate: string): Trip | undefined => {
     const best = findBestMatchingTrip(isoDate);
     if (best) {
       setSelectedTripId(best.id);
@@ -159,6 +196,7 @@ export const ScannerScreen: React.FC<Props> = ({
     } else {
       setDestinationChoice('new');
     }
+    return best;
   };
 
   const applyParsedText = async (
@@ -168,6 +206,7 @@ export const ScannerScreen: React.FC<Props> = ({
     pageCount: number
   ) => {
     setStatusMessage('Extracting booking & spend details…');
+    const { currency: ocrCurr, confident } = detectCurrencyWithConfidence(text);
     const parsed = parseDocumentOcrText(text, homeCurrency, savedUri);
     setLastRawOcrText(text);
     setLastImageUri(savedUri);
@@ -176,12 +215,21 @@ export const ScannerScreen: React.FC<Props> = ({
     setAiCleanedBadge(false);
     setAppendingPage(false);
     setShowRawText(false);
+    setOcrCurrencyConfident(confident);
+    setUserEditedCurrency(false);
 
     if (parsed.kind === 'boarding_pass') {
-      applyDestinationSuggestion(parsed.flightDate);
+      const bestTrip = applyDestinationSuggestion(parsed.flightDate);
+      const tripCurrencies = bestTrip ? getTripCurrenciesById(bestTrip.id) : [];
+      const resolved = resolveSmartScanCurrency({
+        ocrCurrency: ocrCurr,
+        ocrConfident: confident,
+        tripCurrencies,
+        homeCurrency,
+      });
       const enriched = await enrichFlightDetails(parsed);
       setEnrichment(enriched);
-      setScanResult(parsed);
+      setScanResult(applyCurrencyToScanResult(parsed, resolved.currency));
     } else {
       const scanDate =
         parsed.kind === 'hotel'
@@ -189,9 +237,16 @@ export const ScannerScreen: React.FC<Props> = ({
           : parsed.kind === 'transport'
           ? parsed.startDate
           : parsed.date;
-      applyDestinationSuggestion(scanDate);
+      const bestTrip = applyDestinationSuggestion(scanDate);
+      const tripCurrencies = bestTrip ? getTripCurrenciesById(bestTrip.id) : [];
+      const resolved = resolveSmartScanCurrency({
+        ocrCurrency: ocrCurr,
+        ocrConfident: confident,
+        tripCurrencies,
+        homeCurrency,
+      });
       setEnrichment(null);
-      setScanResult(parsed);
+      setScanResult(applyCurrencyToScanResult(parsed, resolved.currency));
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -445,15 +500,24 @@ export const ScannerScreen: React.FC<Props> = ({
 
   const handleSwitchParsedKind = async (kind: 'flight' | 'transport' | 'hotel' | 'receipt') => {
     if (!lastRawOcrText) return;
+    const { currency: ocrCurr, confident } = detectCurrencyWithConfidence(lastRawOcrText);
     const reparsed = parseDocumentOcrText(lastRawOcrText, homeCurrency, lastImageUri, kind);
+    const resolved = resolveSmartScanCurrency({
+      ocrCurrency: ocrCurr,
+      ocrConfident: confident,
+      tripCurrencies: selectedTripCurrencies,
+      homeCurrency,
+    });
     if (reparsed.kind === 'boarding_pass') {
       const enriched = await enrichFlightDetails(reparsed);
       setEnrichment(enriched);
     } else {
       setEnrichment(null);
     }
+    setOcrCurrencyConfident(confident);
+    setUserEditedCurrency(false);
     setAiCleanedBadge(false);
-    setScanResult(reparsed);
+    setScanResult(applyCurrencyToScanResult(reparsed, resolved.currency));
     Haptics.selectionAsync().catch(() => {});
   };
 
@@ -722,6 +786,29 @@ export const ScannerScreen: React.FC<Props> = ({
   const handleConfirmSave = () => {
     if (!scanResult) return;
 
+    // Require an explicit 3-letter currency whenever a monetary amount is being saved
+    // (especially when left blank on a multi-currency trip due to low OCR confidence).
+    const activeAmountForValidation =
+      scanResult.kind === 'boarding_pass'
+        ? scanResult.ticketAmount ?? 0
+        : scanResult.kind === 'receipt'
+        ? scanResult.amount
+        : scanResult.totalAmount;
+    const activeCurrencyForValidation =
+      scanResult.kind === 'boarding_pass'
+        ? (scanResult.ticketCurrency || '').trim().toUpperCase()
+        : (scanResult.currency || '').trim().toUpperCase();
+    if (
+      activeAmountForValidation > 0 &&
+      !/^[A-Z]{3}$/.test(activeCurrencyForValidation)
+    ) {
+      Alert.alert(
+        'Pick a Currency',
+        'We could not detect the currency with confidence for this multi-currency trip. Please tap a currency chip or enter a 3-letter code (e.g. INR, EUR, PLN) before saving.'
+      );
+      return;
+    }
+
     let finalTripId = selectedTripId;
     const now = new Date().toISOString();
 
@@ -930,10 +1017,16 @@ export const ScannerScreen: React.FC<Props> = ({
   };
 
   const autoSuggestion = getAutoTripSuggestion();
+  const candidateFallbackCurrency =
+    selectedTripCurrencies.length === 1 ? selectedTripCurrencies[0] : homeCurrency;
   const moneyCandidates = useMemo(
-    () => (lastRawOcrText ? extractMoneyCandidates(lastRawOcrText, homeCurrency, 4) : []),
-    [lastRawOcrText, homeCurrency]
+    () =>
+      lastRawOcrText
+        ? extractMoneyCandidates(lastRawOcrText, candidateFallbackCurrency, 4)
+        : [],
+    [lastRawOcrText, candidateFallbackCurrency]
   );
+  const needsCurrencyPick = !ocrCurrencyConfident && selectedTripCurrencies.length > 1;
   const showCameraStage = !scanResult || appendingPage;
 
   return (
@@ -1462,30 +1555,48 @@ export const ScannerScreen: React.FC<Props> = ({
                             ticketAmount: amt > 0 ? amt : undefined,
                             ticketCurrency:
                               amt > 0
-                                ? scanResult.ticketCurrency || homeCurrency
+                                ? scanResult.ticketCurrency ??
+                                  (needsCurrencyPick ? '' : candidateFallbackCurrency)
                                 : scanResult.ticketCurrency,
                           })
                         }
                       />
                       <EditableField
-                        label="Currency"
-                        value={scanResult.ticketCurrency ?? homeCurrency}
-                        placeholder={homeCurrency}
+                        label={needsCurrencyPick && !(scanResult.ticketCurrency || '').trim() ? 'Currency *' : 'Currency'}
+                        value={scanResult.ticketCurrency ?? ''}
+                        placeholder={needsCurrencyPick ? 'Pick' : candidateFallbackCurrency}
                         autoCapitalize="characters"
-                        onChangeText={(v) =>
+                        onChangeText={(v) => {
+                          setUserEditedCurrency(true);
                           updateFlightField({
-                            ticketCurrency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
-                          })
-                        }
+                            ticketCurrency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12),
+                          });
+                        }}
                       />
                     </View>
+
+                    <CurrencySuggestionsBar
+                      value={scanResult.ticketCurrency ?? ''}
+                      onSelect={(code) => {
+                        setUserEditedCurrency(true);
+                        updateFlightField({ ticketCurrency: code });
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
+                      tripCurrencies={selectedTripCurrencies}
+                      homeCurrency={homeCurrency}
+                      needsPick={needsCurrencyPick && Boolean(scanResult.ticketAmount)}
+                    />
 
                     <DetectedAmountsBar
                       candidates={moneyCandidates}
                       activeAmount={scanResult.ticketAmount}
-                      activeCurrency={scanResult.ticketCurrency ?? homeCurrency}
+                      activeCurrency={scanResult.ticketCurrency ?? ''}
+                      currencyKnown={ocrCurrencyConfident || (scanResult.ticketCurrency ?? '').length === 3}
                       onSelect={(c) => {
-                        updateFlightField({ ticketAmount: c.amount, ticketCurrency: c.currency });
+                        updateFlightField({
+                          ticketAmount: c.amount,
+                          ...(ocrCurrencyConfident ? { ticketCurrency: c.currency } : {}),
+                        });
                         Haptics.selectionAsync().catch(() => {});
                       }}
                     />
@@ -1610,14 +1721,16 @@ export const ScannerScreen: React.FC<Props> = ({
                       onChangeValue={(amt) => updateTransportField({ totalAmount: amt })}
                     />
                     <EditableField
-                      label="Currency"
+                      label={needsCurrencyPick && !scanResult.currency.trim() ? 'Currency *' : 'Currency'}
                       value={scanResult.currency}
+                      placeholder={needsCurrencyPick ? 'Pick' : candidateFallbackCurrency}
                       autoCapitalize="characters"
-                      onChangeText={(v) =>
+                      onChangeText={(v) => {
+                        setUserEditedCurrency(true);
                         updateTransportField({
-                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
-                        })
-                      }
+                          currency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12),
+                        });
+                      }}
                     />
                     <EditableField
                       label="PNR / Ref"
@@ -1630,12 +1743,28 @@ export const ScannerScreen: React.FC<Props> = ({
                     />
                   </View>
 
+                  <CurrencySuggestionsBar
+                    value={scanResult.currency}
+                    onSelect={(code) => {
+                      setUserEditedCurrency(true);
+                      updateTransportField({ currency: code });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                    tripCurrencies={selectedTripCurrencies}
+                    homeCurrency={homeCurrency}
+                    needsPick={needsCurrencyPick && scanResult.totalAmount > 0}
+                  />
+
                   <DetectedAmountsBar
                     candidates={moneyCandidates}
                     activeAmount={scanResult.totalAmount}
                     activeCurrency={scanResult.currency}
+                    currencyKnown={ocrCurrencyConfident || scanResult.currency.length === 3}
                     onSelect={(c) => {
-                      updateTransportField({ totalAmount: c.amount, currency: c.currency });
+                      updateTransportField({
+                        totalAmount: c.amount,
+                        ...(ocrCurrencyConfident ? { currency: c.currency } : {}),
+                      });
                       Haptics.selectionAsync().catch(() => {});
                     }}
                   />
@@ -1669,22 +1798,39 @@ export const ScannerScreen: React.FC<Props> = ({
                       onChangeValue={(amt) => updateReceiptField({ amount: amt })}
                     />
                     <EditableField
-                      label="Currency"
+                      label={needsCurrencyPick && !scanResult.currency.trim() ? 'Currency *' : 'Currency'}
                       value={scanResult.currency}
+                      placeholder={needsCurrencyPick ? 'Pick' : candidateFallbackCurrency}
                       autoCapitalize="characters"
-                      onChangeText={(v) =>
+                      onChangeText={(v) => {
+                        setUserEditedCurrency(true);
                         updateReceiptField({
-                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
-                        })
-                      }
+                          currency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12),
+                        });
+                      }}
                     />
                   </View>
+                  <CurrencySuggestionsBar
+                    value={scanResult.currency}
+                    onSelect={(code) => {
+                      setUserEditedCurrency(true);
+                      updateReceiptField({ currency: code });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                    tripCurrencies={selectedTripCurrencies}
+                    homeCurrency={homeCurrency}
+                    needsPick={needsCurrencyPick}
+                  />
                   <DetectedAmountsBar
                     candidates={moneyCandidates}
                     activeAmount={scanResult.amount}
                     activeCurrency={scanResult.currency}
+                    currencyKnown={ocrCurrencyConfident || scanResult.currency.length === 3}
                     onSelect={(c) => {
-                      updateReceiptField({ amount: c.amount, currency: c.currency });
+                      updateReceiptField({
+                        amount: c.amount,
+                        ...(ocrCurrencyConfident ? { currency: c.currency } : {}),
+                      });
                       Haptics.selectionAsync().catch(() => {});
                     }}
                   />
@@ -1697,15 +1843,19 @@ export const ScannerScreen: React.FC<Props> = ({
                   <View style={styles.gridTwo}>
                     <InfoPair
                       label={`In ${homeCurrency}`}
-                      value={formatMoney(
-                        convertCurrency(
-                          scanResult.amount,
-                          scanResult.currency.length === 3 ? scanResult.currency : homeCurrency,
-                          homeCurrency,
-                          fxRates
-                        ).converted,
-                        homeCurrency
-                      )}
+                      value={
+                        /^[A-Z]{3}$/.test(scanResult.currency.trim())
+                          ? formatMoney(
+                              convertCurrency(
+                                scanResult.amount,
+                                scanResult.currency.trim(),
+                                homeCurrency,
+                                fxRates
+                              ).converted,
+                              homeCurrency
+                            )
+                          : 'Pick currency'
+                      }
                     />
                     <InfoPair
                       label="Category"
@@ -1830,14 +1980,16 @@ export const ScannerScreen: React.FC<Props> = ({
                       onChangeValue={(amt) => updateHotelField({ totalAmount: amt })}
                     />
                     <EditableField
-                      label="Currency"
+                      label={needsCurrencyPick && !scanResult.currency.trim() ? 'Currency *' : 'Currency'}
                       value={scanResult.currency}
+                      placeholder={needsCurrencyPick ? 'Pick' : candidateFallbackCurrency}
                       autoCapitalize="characters"
-                      onChangeText={(v) =>
+                      onChangeText={(v) => {
+                        setUserEditedCurrency(true);
                         updateHotelField({
-                          currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3),
-                        })
-                      }
+                          currency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12),
+                        });
+                      }}
                     />
                     <EditableField
                       label="Conf #"
@@ -1847,12 +1999,27 @@ export const ScannerScreen: React.FC<Props> = ({
                       onChangeText={(v) => updateHotelField({ confirmationCode: v })}
                     />
                   </View>
+                  <CurrencySuggestionsBar
+                    value={scanResult.currency}
+                    onSelect={(code) => {
+                      setUserEditedCurrency(true);
+                      updateHotelField({ currency: code });
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                    tripCurrencies={selectedTripCurrencies}
+                    homeCurrency={homeCurrency}
+                    needsPick={needsCurrencyPick && scanResult.totalAmount > 0}
+                  />
                   <DetectedAmountsBar
                     candidates={moneyCandidates}
                     activeAmount={scanResult.totalAmount}
                     activeCurrency={scanResult.currency}
+                    currencyKnown={ocrCurrencyConfident || scanResult.currency.length === 3}
                     onSelect={(c) => {
-                      updateHotelField({ totalAmount: c.amount, currency: c.currency });
+                      updateHotelField({
+                        totalAmount: c.amount,
+                        ...(ocrCurrencyConfident ? { currency: c.currency } : {}),
+                      });
                       Haptics.selectionAsync().catch(() => {});
                     }}
                   />
@@ -1917,6 +2084,16 @@ export const ScannerScreen: React.FC<Props> = ({
                             onPress={() => {
                               setSelectedTripId(t.id);
                               setDestinationChoice('existing');
+                              if (!ocrCurrencyConfident && !userEditedCurrency && scanResult) {
+                                const nextTripCurrs = getTripCurrenciesById(t.id);
+                                const resolved = resolveSmartScanCurrency({
+                                  ocrCurrency: null,
+                                  ocrConfident: false,
+                                  tripCurrencies: nextTripCurrs,
+                                  homeCurrency,
+                                });
+                                setScanResult(applyCurrencyToScanResult(scanResult, resolved.currency));
+                              }
                             }}
                             style={[styles.tripChip, active && styles.tripChipActive]}
                           >
@@ -2102,21 +2279,25 @@ const DetectedAmountsBar = ({
   candidates,
   activeAmount,
   activeCurrency,
+  currencyKnown = true,
   onSelect,
 }: {
   candidates: DetectedMoneyCandidate[];
   activeAmount: number | undefined;
   activeCurrency: string;
+  currencyKnown?: boolean;
   onSelect: (candidate: DetectedMoneyCandidate) => void;
 }) => {
   const styles = useThemedStyles(createStyles);
   if (candidates.length <= 1) return null;
   const currNorm = (activeCurrency || '').trim().toUpperCase();
+  const hasValidCurr = /^[A-Z]{3}$/.test(currNorm);
   return (
     <View style={styles.candWrap}>
       <Text style={styles.candLabel}>Tap detected amount:</Text>
       <ScrollView
         horizontal
+        keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: 6 }}
       >
@@ -2124,7 +2305,12 @@ const DetectedAmountsBar = ({
           const isActive =
             Boolean(activeAmount) &&
             Math.abs((activeAmount ?? 0) - c.amount) < 0.01 &&
-            currNorm === c.currency;
+            (!hasValidCurr || !currencyKnown || currNorm === c.currency || true);
+          const displayCurr = hasValidCurr ? currNorm : c.currency;
+          const amountText = currencyKnown
+            ? formatMoney(c.amount, displayCurr)
+            : c.amount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+          const chipLabel = c.label ? `${c.label} · ${amountText}` : amountText;
           return (
             <TouchableOpacity
               key={`${c.currency}-${c.amount}-${idx}`}
@@ -2133,7 +2319,7 @@ const DetectedAmountsBar = ({
               activeOpacity={0.85}
             >
               <Text style={[styles.candChipText, isActive && { color: '#FFFFFF' }]}>
-                {formatMoney(c.amount, c.currency)}
+                {chipLabel}
               </Text>
             </TouchableOpacity>
           );

@@ -20,6 +20,8 @@ import { BoardingPassCard } from '../components/cards/BoardingPassCard';
 import { MemoryIllustration } from '../components/cards/MemoryIllustration';
 import { TransportCard } from '../components/cards/TransportCard';
 import { DatePickerField } from '../components/forms/DatePickerField';
+import { CurrencySuggestionsBar } from '../components/forms/CurrencyField';
+import { resolveTripCurrencies } from '../services/currencyDirectory';
 import {
   createEmptyFlightDraft,
   hasAnyFlightDraftData,
@@ -384,6 +386,13 @@ export const TripDetailScreen: React.FC<Props> = ({
   const routeTrail = buildJourneyRouteTrail(flights, transports, stops);
   const suggestedStops = suggestStopsFromBookings(flights, transports, stays, stops);
   const tripGeo = deriveTripGeography(trip, flights, transports, stops);
+  const tripCurrencies = resolveTripCurrencies(trip, flights, transports, stops);
+  const defaultManualCurrency =
+    tripCurrencies.length === 1
+      ? tripCurrencies[0]
+      : tripCurrencies.length > 1
+        ? ''
+        : preferredCurrency;
 
   // Personal vs Shared expense filtering (Option A: full bill amounts + subtle per-person reference on Shared)
   const personalSpendItems = fullSpendLedger.items.filter(
@@ -687,7 +696,7 @@ export const TripDetailScreen: React.FC<Props> = ({
   const openExpenseModal = (presetCategory: ExpenseCategory = 'dining') => {
     setExpMerchant('');
     setExpAmount('');
-    setExpCurrency(preferredCurrency);
+    setExpCurrency(defaultManualCurrency);
     setExpDate(new Date().toISOString().slice(0, 10));
     setExpCategory(presetCategory);
     setExpIsShared(false);
@@ -700,15 +709,20 @@ export const TripDetailScreen: React.FC<Props> = ({
       Alert.alert('Check expense', 'Enter a merchant name and valid amount.');
       return;
     }
+    const cleanCurr = expCurrency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(cleanCurr)) {
+      Alert.alert('Pick a Currency', 'Tap a currency chip or enter a 3-letter code (e.g. INR, EUR, PLN).');
+      return;
+    }
     const cleanExpDate = expDate.trim() || new Date().toISOString().slice(0, 10);
-    const { converted, rate } = convertCurrency(amt, expCurrency, preferredCurrency, fxRates);
+    const { converted, rate } = convertCurrency(amt, cleanCurr, preferredCurrency, fxRates);
     addExpense({
       id: generateId('exp'),
       tripId: trip.id,
       merchant: expMerchant.trim(),
       category: expCategory,
       localAmount: amt,
-      localCurrency: expCurrency.toUpperCase(),
+      localCurrency: cleanCurr,
       homeAmount: converted,
       homeCurrency: preferredCurrency,
       fxRateUsed: rate,
@@ -2522,15 +2536,20 @@ export const TripDetailScreen: React.FC<Props> = ({
             <Text style={styles.fieldLabel}>Currency</Text>
             <TextInput
               value={editCurrency}
-              onChangeText={(v) => setEditCurrency(v.toUpperCase())}
+              onChangeText={(v) => setEditCurrency(v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12))}
               placeholder="USD"
               placeholderTextColor={colors.inkSoft}
               autoCapitalize="characters"
-              maxLength={3}
               style={[styles.input, { textAlign: 'center' }]}
             />
           </View>
         </View>
+        <CurrencySuggestionsBar
+          value={editCurrency}
+          onSelect={setEditCurrency}
+          tripCurrencies={tripCurrencies}
+          homeCurrency={preferredCurrency}
+        />
 
         <Text style={styles.fieldLabel}>Postcard Banner Vibe</Text>
         <View style={styles.vibeGrid}>
@@ -2770,19 +2789,27 @@ export const TripDetailScreen: React.FC<Props> = ({
               style={styles.input}
             />
           </View>
-          <View style={{ width: 84 }}>
-            <Text style={styles.fieldLabel}>Currency</Text>
+          <View style={{ width: 92 }}>
+            <Text style={styles.fieldLabel}>
+              {tripCurrencies.length > 1 && !expCurrency.trim() ? 'Currency *' : 'Currency'}
+            </Text>
             <TextInput
               value={expCurrency}
-              onChangeText={(v) => setExpCurrency(v.toUpperCase())}
-              placeholder="USD"
-              placeholderTextColor={colors.inkSoft}
+              onChangeText={(v) => setExpCurrency(v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12))}
+              placeholder={tripCurrencies.length > 1 ? 'Pick' : preferredCurrency}
+              placeholderTextColor={tripCurrencies.length > 1 && !expCurrency.trim() ? colors.coral : colors.inkSoft}
               autoCapitalize="characters"
-              maxLength={3}
               style={[styles.input, { textAlign: 'center' }]}
             />
           </View>
         </View>
+        <CurrencySuggestionsBar
+          value={expCurrency}
+          onSelect={setExpCurrency}
+          tripCurrencies={tripCurrencies}
+          homeCurrency={preferredCurrency}
+          needsPick={tripCurrencies.length > 1}
+        />
 
         <DatePickerField
           label="Expense Date"
@@ -3076,6 +3103,8 @@ export const TripDetailScreen: React.FC<Props> = ({
             draft={transportDraft}
             onChange={(patch) => setTransportDraft((prev) => ({ ...prev, ...patch }))}
             distanceUnit={distanceUnit}
+            tripCurrencies={tripCurrencies}
+            homeCurrency={preferredCurrency}
           />
         )}
       </BottomSheetModal>
@@ -3322,14 +3351,20 @@ export const TripDetailScreen: React.FC<Props> = ({
           />
           <TextInput
             value={stayCurrency}
-            onChangeText={(v) => setStayCurrency(v.toUpperCase())}
-            placeholder="USD"
-            placeholderTextColor={colors.inkSoft}
+            onChangeText={(v) => setStayCurrency(v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12))}
+            placeholder={tripCurrencies.length > 1 ? 'Pick' : preferredCurrency}
+            placeholderTextColor={tripCurrencies.length > 1 && !stayCurrency.trim() ? colors.coral : colors.inkSoft}
             autoCapitalize="characters"
-            maxLength={3}
-            style={[styles.input, { width: 74, textAlign: 'center' }]}
+            style={[styles.input, { width: 84, textAlign: 'center' }]}
           />
         </View>
+        <CurrencySuggestionsBar
+          value={stayCurrency}
+          onSelect={setStayCurrency}
+          tripCurrencies={tripCurrencies}
+          homeCurrency={preferredCurrency}
+          needsPick={tripCurrencies.length > 1 && parseFloat(stayCost) > 0}
+        />
         {parseFloat(stayCost) > 0 &&
           stayCheckIn.trim().slice(0, 10) > new Date().toISOString().slice(0, 10) && (
             <View style={{ gap: 6 }}>

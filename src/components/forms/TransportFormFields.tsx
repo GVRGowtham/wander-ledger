@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 import { useTheme, useThemedStyles } from '../../context/ThemeContext';
 import { ThemeColors, TRANSPORT_MODE_META } from '../../theme/tokens';
 import { DistanceUnit, TransportMode } from '../../types/models';
+import { CurrencySuggestionsBar } from './CurrencyField';
 
 export interface TransportDraft {
   mode: TransportMode;
@@ -25,6 +26,8 @@ interface Props {
   draft: TransportDraft;
   onChange: (patch: Partial<TransportDraft>) => void;
   distanceUnit: DistanceUnit;
+  tripCurrencies?: string[];
+  homeCurrency?: string;
 }
 
 const MODES: TransportMode[] = ['train', 'bus', 'ferry', 'rental_car', 'own_car'];
@@ -33,6 +36,8 @@ export const TransportFormFields: React.FC<Props> = ({
   draft,
   onChange,
   distanceUnit,
+  tripCurrencies = [],
+  homeCurrency,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -158,42 +163,51 @@ export const TransportFormFields: React.FC<Props> = ({
       </View>
 
       {!isOwnCar && (
-        <View style={styles.row}>
-          <View style={{ flex: 1.2 }}>
-            <Text style={styles.label}>TICKET / RENTAL COST (OPT.)</Text>
-            <TextInput
-              value={draft.costAmount}
-              onChangeText={(v) => onChange({ costAmount: v })}
-              placeholder="e.g. 145"
-              keyboardType="decimal-pad"
-              placeholderTextColor={colors.inkSoft}
-              style={styles.input}
-            />
+        <>
+          <View style={styles.row}>
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.label}>TICKET / RENTAL COST (OPT.)</Text>
+              <TextInput
+                value={draft.costAmount}
+                onChangeText={(v) => onChange({ costAmount: v })}
+                placeholder="e.g. 145"
+                keyboardType="decimal-pad"
+                placeholderTextColor={colors.inkSoft}
+                style={styles.input}
+              />
+            </View>
+            <View style={{ flex: 0.8 }}>
+              <Text style={styles.label}>CURRENCY</Text>
+              <TextInput
+                value={draft.currency}
+                onChangeText={(v) =>
+                  onChange({ currency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12) })
+                }
+                autoCapitalize="characters"
+                placeholder={tripCurrencies[0] || homeCurrency || 'CHF'}
+                placeholderTextColor={colors.inkSoft}
+                style={styles.input}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>PNR / REF</Text>
+              <TextInput
+                value={draft.referenceCode}
+                onChangeText={(v) => onChange({ referenceCode: v })}
+                autoCapitalize="characters"
+                placeholder="Optional"
+                placeholderTextColor={colors.inkSoft}
+                style={styles.input}
+              />
+            </View>
           </View>
-          <View style={{ flex: 0.8 }}>
-            <Text style={styles.label}>CURRENCY</Text>
-            <TextInput
-              value={draft.currency}
-              onChangeText={(v) => onChange({ currency: v.toUpperCase() })}
-              autoCapitalize="characters"
-              maxLength={4}
-              placeholder="CHF"
-              placeholderTextColor={colors.inkSoft}
-              style={styles.input}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>PNR / REF</Text>
-            <TextInput
-              value={draft.referenceCode}
-              onChangeText={(v) => onChange({ referenceCode: v })}
-              autoCapitalize="characters"
-              placeholder="Optional"
-              placeholderTextColor={colors.inkSoft}
-              style={styles.input}
-            />
-          </View>
-        </View>
+          <CurrencySuggestionsBar
+            value={draft.currency}
+            onSelect={(code) => onChange({ currency: code })}
+            tripCurrencies={tripCurrencies}
+            homeCurrency={homeCurrency}
+          />
+        </>
       )}
 
       {!isOwnCar &&

@@ -9,8 +9,14 @@ import {
   parseIataBcbp,
   SAMPLE_BCBP_STRINGS,
 } from '../services/bcbpParser';
+import {
+  buildSuggestedCurrencies,
+  resolveSmartScanCurrency,
+  searchCurrencies,
+} from '../services/currencyDirectory';
 import { convertCurrency, DEFAULT_USD_RATES } from '../services/fxService';
 import {
+  detectCurrencyWithConfidence,
   parseClockTimeHm,
   parseDocumentOcrText,
   SAMPLE_OCR_TEXTS,
@@ -998,7 +1004,7 @@ describe('v0.4.3 Spatial Table Row Reconstruction & Tax-vs-Total Fare Accuracy',
     }
 
     const candidates = extractMoneyCandidates(spatialText, 'INR', 4);
-    expect(candidates[0]).toEqual({ amount: 69422, currency: 'INR' });
+    expect(candidates[0]).toEqual({ amount: 69422, currency: 'INR', label: 'Total Fare' });
     expect(candidates.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -2438,7 +2444,103 @@ describe('v0.6.9 Passport Stamp Formatting & Last-Visited Tracking', () => {
     expect(geo.visitedCountries.some((c) => c.code === 'FR')).toBe(true);
     expect(geo.visitedCountries.some((c) => c.code === 'AE')).toBe(true);
   });
+
+  it('handles Mysore thermal restaurant bill with 27/11/202€ glitch, picks Net 630 INR over Total 600, and returns labeled candidates', () => {
+    const mysoreBill = `CLASSIC RESTAURANT
+Mysore-571103
+Hunsur Main Road ,Mallinathapura
+Mysore-571 103
+GSTIN : 29ADHPP0529K2Z7
+Bill No 12307 Table No A1
+Date 27/11/202€ Counter None
+Waiter NISTHAR Section Normai
+Customer:
+Particulars QTY Rate T% Amount
+BUTTER ROTI 2.0 50.00 5 100.00
+DAL FRY HALF 1.0 80.00 5 80.00
+JEERA RICE-FULL 1.0 170.00 5 170.00
+MUSHROOM KADAI - HALF 1.0 130.00 5 130.00
+SWEET LASSI 2.0 60.00 5 120.00
+Total 600.00
+01:35 PM Other Add. 0.00
+CGST 15.00
+SGST 15.00
+Cess 0.00
+Net 630.00
+Tender`;
+
+    // 1. Confident INR via GSTIN/CGST/SGST — NOT fooled by 27/11/202€!
+    const currHit = detectCurrencyWithConfidence(mysoreBill);
+    expect(currHit).toEqual({ currency: 'INR', confident: true });
+
+    // 2. Picks Net 630.00 INR and repairs date 27/11/202€ -> 2026-11-27
+    const parsed = parseDocumentOcrText(mysoreBill, 'USD');
+    expect(parsed.kind).toBe('receipt');
+    if (parsed.kind === 'receipt') {
+      expect(parsed.currency).toBe('INR');
+      expect(parsed.amount).toBe(630);
+      expect(parsed.date).toBe('2026-11-27');
+    }
+
+    // 3. Returns labeled 1-tap candidates: Net (630) and Total (600) — excluding CGST/SGST tax lines
+    const cands = extractMoneyCandidates(mysoreBill, 'INR', 4);
+    expect(cands.length).toBeGreaterThanOrEqual(2);
+    expect(cands[0]).toEqual({ amount: 630, currency: 'INR', label: 'Net' });
+    expect(cands[1]).toEqual({ amount: 600, currency: 'INR', label: 'Total' });
+    expect(cands.some((c) => c.amount === 15)).toBe(false);
+  });
+
+  it('resolves smart currency fallback for single-currency vs. multi-currency trips and supports live currency search', () => {
+    // Unlabeled generic receipt with no currency symbol or tax cue
+    const genericReceipt = `CAFE CORNER
+Coffee 4.50
+Croissant 3.50
+Total 8.00`;
+    expect(detectCurrencyWithConfidence(genericReceipt)).toEqual({
+      currency: null,
+      confident: false,
+    });
+
+    // Single-currency India trip -> auto-fills INR
+    expect(
+      resolveSmartScanCurrency({
+        ocrCurrency: null,
+        ocrConfident: false,
+        tripCurrencies: ['INR'],
+        homeCurrency: 'USD',
+      })
+    ).toEqual({ currency: 'INR', needsManualPick: false });
+
+    // Multi-currency Europe trip (EUR + PLN + CHF) + unconfident OCR -> leaves blank & prompts user!
+    expect(
+      resolveSmartScanCurrency({
+        ocrCurrency: null,
+        ocrConfident: false,
+        tripCurrencies: ['EUR', 'PLN', 'CHF'],
+        homeCurrency: 'INR',
+      })
+    ).toEqual({ currency: '', needsManualPick: true });
+
+    // Confident OCR currency on multi-currency trip -> keeps OCR currency
+    expect(
+      resolveSmartScanCurrency({
+        ocrCurrency: 'PLN',
+        ocrConfident: true,
+        tripCurrencies: ['EUR', 'PLN', 'CHF'],
+        homeCurrency: 'INR',
+      })
+    ).toEqual({ currency: 'PLN', needsManualPick: false });
+
+    // Ranked 1-tap chips put trip currencies first, then home currency
+    const chips = buildSuggestedCurrencies(['EUR', 'PLN', 'CHF'], 'INR', 5);
+    expect(chips.slice(0, 4).map((c) => c.code)).toEqual(['EUR', 'PLN', 'CHF', 'INR']);
+
+    // Live search matches country/currency keywords
+    expect(searchCurrencies('pol', ['EUR', 'PLN']).map((c) => c.code)).toContain('PLN');
+    expect(searchCurrencies('baht').map((c) => c.code)).toContain('THB');
+  });
 });
+
 
 
 
