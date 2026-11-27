@@ -226,7 +226,7 @@ const createStyles = (COLORS: ThemeColors) =>
       backgroundColor: COLORS.coralSoft,
     },
     chipActive: {
-      backgroundColor: COLORS.indigo,
+      backgroundColor: COLORS.navy,
       borderColor: COLORS.indigo,
     },
     chipText: {
