@@ -94,8 +94,8 @@ const EARLY_ACCESS_CONFIG = {
           'Pulls out real property names and locations without email clutter, ready for one-click Google Maps navigation.',
         ],
         [
-          'Quick Fare Picker & Easy Time Entry',
-          'Switch between Base Fare and Grand Total in one tap, and type 4 digits like 0915 to auto-format departure times cleanly.',
+          'One-Tap Amount & Currency Picker',
+          'Switch between labeled totals like Net vs. Subtotal or Base Fare vs. Grand Total in one tap, with smart trip currency chips and live search across 44 currencies.',
         ],
       ],
     },
@@ -146,19 +146,19 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger multi-currency spend ledger locked to payment date exchange rates",
       heading: 'Private multi-currency spend, locked to the day you paid.',
       summary:
-        'Log meals, trains, hotels, and tickets in CHF, EUR, JPY, USD, or INR. Wanderer’s Ledger converts everything into your Home Currency using the exchange rate from the day you paid — saved right on your phone.',
+        'Log meals, trains, hotels, and tickets across 44 global currencies with 1-tap trip currency chips and live search. Wanderer’s Ledger converts everything into your Home Currency using the exchange rate from the day you paid — saved right on your phone.',
       points: [
         [
-          'Bookings Auto-Sync With Zero Duplication',
-          'Priced trains, buses, ferries, rentals, and hotel stays logged in Bookings automatically flow into Spend.',
+          'Full-Screen Zoomable Bill Viewer & 1-Tap Share',
+          'Tap any saved receipt in Spend → Peek to inspect the full bill with pinch & double-tap zoom, pan, scanned bill text view, and 1-tap sharing.',
         ],
         [
           'Date-Locked Rates & Optional Pay Later',
-          'Prepaid bookings lock to their payment date; toggle Pay Later on check-in hotels to track live rates until arrival.',
+          'Prepaid bookings lock to their payment date; toggle Pay Later on check-in hotels to track live rates until arrival — with automatic Bookings sync.',
         ],
         [
-          'Instant Currency Switch & CSV Export',
-          'Change your Home Currency in Passport to recalculate every trip live, or export clean CSV spreadsheets anytime.',
+          'Smart Multi-Currency Chips & CSV Export',
+          'Trip currencies stay one tap away across scanning and manual entry, change Home Currency anytime to recalculate live, or export clean CSV spreadsheets.',
         ],
       ],
     },
@@ -167,15 +167,15 @@ const EARLY_ACCESS_CONFIG = {
       alt: "Wanderer's Ledger chronological Bookings timeline with editable trains and Google Maps",
       heading: 'Every flight, train, drive & hotel in one editable timeline.',
       summary:
-        'See your entire journey unfold chronologically from departure to return — with connecting flights grouped cleanly together, editable trains, buses, cars, and stays, and one-click Google Maps navigation.',
+        'See your entire journey unfold chronologically from departure to return — with date-aware connecting flights and return stopovers, editable trip stops, trains, buses, cars, and stays, plus one-click Google Maps navigation.',
       points: [
         [
-          'Smart Connecting & Multi-City Routes',
-          'Connecting layovers stay neatly grouped (BOM → ZRH via DXB) while multi-city loops keep every stop in exact travel order.',
+          'Smart Connecting Flights & Multi-Date Stopovers',
+          'Connecting layovers stay neatly grouped (BOM → ZRH via DXB), and round trips passing through the same hub on different dates keep each stopover separate.',
         ],
         [
-          'Editable Trains, Buses, Cars & Stays',
-          'Tap Edit on any transport or hotel card to adjust dates, routes, or cost (with instant Spend sync) plus built-in hotel address search.',
+          'Editable Trip Stops, Transport & Stays',
+          'Tap any Trip Stop, train, bus, car, or hotel card to adjust dates, routes, or costs (with instant Spend sync) plus built-in hotel address search.',
         ],
         [
           'One-Click Google Maps Navigation',
