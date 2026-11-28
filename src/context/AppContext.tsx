@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import * as Network from 'expo-network';
+import { APP_VERSION } from '../config/appVersion';
 import {
   clearProfile,
   getSupabaseClient,
@@ -678,7 +679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setDriveRemoteBackup({
             exists: true,
             updatedAt: res.updatedAt,
-            appVersion: '0.8.2',
+            appVersion: APP_VERSION,
             tripsCount: res.tripsCount ?? 0,
             flightsCount: allFlights.length,
             memoriesCount: res.memoriesCount ?? 0,

@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
+import { APP_BUILD, APP_VERSION } from '../config/appVersion';
 import { useApp } from '../context/AppContext';
 import { ThemePreference, useTheme, useThemedStyles } from '../context/ThemeContext';
 import { DriveBackupMetadata, formatBytes } from '../services/driveBackupHelpers';
@@ -882,6 +883,10 @@ export const PassportScreen: React.FC<Props> = ({ onOpenWelcome }) => {
             </TouchableOpacity>
           </View>
         </View>
+
+        <Text style={styles.versionFooter}>
+          Wanderer&apos;s Ledger · v{APP_VERSION} (Build {APP_BUILD})
+        </Text>
       </View>
 
       {/* Personalize Passport Name Modal */}
@@ -1291,5 +1296,13 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
       fontSize: 12,
       fontWeight: '800',
       color: COLORS.inkMuted,
+    },
+    versionFooter: {
+      textAlign: 'center',
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.inkSoft,
+      marginTop: 6,
+      letterSpacing: 0.3,
     },
   });

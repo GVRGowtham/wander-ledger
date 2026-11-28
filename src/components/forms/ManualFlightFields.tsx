@@ -22,6 +22,7 @@ import {
 import { formatTimeHmInput } from '../../services/timeInputUtils';
 import { ThemeColors } from '../../theme/tokens';
 import { DatePickerField } from './DatePickerField';
+import { CurrencySuggestionsBar } from './CurrencyField';
 
 export interface ManualFlightDraft {
   flightNumber: string;
@@ -92,12 +93,16 @@ interface Props {
   draft: ManualFlightDraft;
   onChange: (next: ManualFlightDraft) => void;
   onDestinationAirportPicked?: (ap: AirportInfo) => void;
+  tripCurrencies?: string[];
+  homeCurrency?: string;
 }
 
 export const ManualFlightFields: React.FC<Props> = ({
   draft,
   onChange,
   onDestinationAirportPicked,
+  tripCurrencies = [],
+  homeCurrency,
 }) => {
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -459,15 +464,24 @@ export const ManualFlightFields: React.FC<Props> = ({
               <Text style={styles.label}>Currency</Text>
               <TextInput
                 value={draft.ticketCurrency}
-                onChangeText={(v) => patch({ ticketCurrency: v.toUpperCase() })}
-                placeholder="USD"
+                onChangeText={(v) =>
+                  patch({
+                    ticketCurrency: v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12),
+                  })
+                }
+                placeholder={homeCurrency || 'USD'}
                 placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
-                maxLength={3}
                 style={[styles.input, { textAlign: 'center' }]}
               />
             </View>
           </View>
+          <CurrencySuggestionsBar
+            value={draft.ticketCurrency}
+            onSelect={(code) => patch({ ticketCurrency: code })}
+            tripCurrencies={tripCurrencies}
+            homeCurrency={homeCurrency}
+          />
 
           {/* Return Flight Toggle */}
           <View style={styles.returnBox}>

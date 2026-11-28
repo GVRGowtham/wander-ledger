@@ -38,6 +38,10 @@ import {
   IgSingleCanvas,
 } from '../components/instagram/IgPostcardCanvas';
 import { BottomSheetModal } from '../components/layout/BottomSheetModal';
+import {
+  ReceiptLightboxItem,
+  ReceiptLightboxModal,
+} from '../components/modals/ReceiptLightboxModal';
 import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useApp } from '../context/AppContext';
 import { useTheme, useThemedStyles } from '../context/ThemeContext';
@@ -303,6 +307,9 @@ export const TripDetailScreen: React.FC<Props> = ({
   const [fxEditItem, setFxEditItem] = useState<SpendLedgerItem | null>(null);
   const [fxEditDate, setFxEditDate] = useState(new Date().toISOString().slice(0, 10));
   const [fxEditPayLater, setFxEditPayLater] = useState(false);
+
+  // Full-screen zoomable receipt lightbox
+  const [lightboxReceipt, setLightboxReceipt] = useState<ReceiptLightboxItem | null>(null);
 
   // Co-Travelers Modal & Instant One-Off Postcard Export
   const [shareModal, setShareModal] = useState(false);
@@ -2457,11 +2464,31 @@ export const TripDetailScreen: React.FC<Props> = ({
                             : '🔒 Private Receipt (Visible only to you • Excluded from Studio & Postcards)'}
                         </Text>
                         {item.receiptUri && (
-                          <Image
-                            source={{ uri: item.receiptUri }}
-                            style={styles.receiptImg}
-                            resizeMode="contain"
-                          />
+                          <TouchableOpacity
+                            onPress={() =>
+                              setLightboxReceipt({
+                                title: item.title,
+                                date: item.date,
+                                amountLabel: isFxConverted
+                                  ? `${formatMoney(item.originalAmount, item.originalCurrency)} (${formatMoney(item.convertedAmount, preferredCurrency)})`
+                                  : formatMoney(item.originalAmount, item.originalCurrency),
+                                receiptUri: item.receiptUri!,
+                                receiptRawText: item.receiptRawText,
+                              })
+                            }
+                            activeOpacity={0.88}
+                            style={styles.receiptImgWrap}
+                            accessibilityLabel={`View full size receipt for ${item.title}`}
+                          >
+                            <Image
+                              source={{ uri: item.receiptUri }}
+                              style={styles.receiptImg}
+                              resizeMode="contain"
+                            />
+                            <View style={styles.receiptExpandBadge}>
+                              <Text style={styles.receiptExpandBadgeText}>🔍 Full size</Text>
+                            </View>
+                          </TouchableOpacity>
                         )}
                         {item.receiptRawText && (
                           <Text style={styles.receiptMono}>{item.receiptRawText}</Text>
@@ -3097,7 +3124,12 @@ export const TripDetailScreen: React.FC<Props> = ({
         )}
 
         {travelModalMode === 'flight' && !editingTransport ? (
-          <ManualFlightFields draft={flightDraft} onChange={setFlightDraft} />
+          <ManualFlightFields
+            draft={flightDraft}
+            onChange={setFlightDraft}
+            tripCurrencies={tripCurrencies}
+            homeCurrency={preferredCurrency}
+          />
         ) : (
           <TransportFormFields
             draft={transportDraft}
@@ -3502,6 +3534,12 @@ export const TripDetailScreen: React.FC<Props> = ({
         onClose={() => setKeepsakeStudioOpen(false)}
         onExport={handleExportKeepsakePdf}
       />
+
+      {/* FULL-SCREEN ZOOMABLE RECEIPT / BILL LIGHTBOX */}
+      <ReceiptLightboxModal
+        item={lightboxReceipt}
+        onClose={() => setLightboxReceipt(null)}
+      />
       </View>
     </View>
   );
@@ -3824,7 +3862,30 @@ const createStyles = (COLORS: ThemeColors, SHADOWS: ThemeShadows, isDark: boolea
       gap: 8,
     },
     receiptPrivateBadge: { fontSize: 11, fontWeight: '800', color: COLORS.emeraldText },
+    receiptImgWrap: {
+      position: 'relative',
+      width: '100%',
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: isDark ? 'rgba(0,0,0,0.28)' : 'rgba(15,23,42,0.04)',
+    },
     receiptImg: { width: '100%', height: 180, borderRadius: 8 },
+    receiptExpandBadge: {
+      position: 'absolute',
+      right: 8,
+      bottom: 8,
+      backgroundColor: 'rgba(15, 23, 42, 0.82)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.18)',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 99,
+    },
+    receiptExpandBadgeText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
     receiptMono: { fontSize: 11, color: COLORS.inkMuted, fontFamily: 'monospace', lineHeight: 16 },
 
     // Empty

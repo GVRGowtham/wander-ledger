@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { DestinationBanner } from '../components/banners/DestinationBanner';
 import { DatePickerField } from '../components/forms/DatePickerField';
+import { CurrencySuggestionsBar } from '../components/forms/CurrencyField';
 import {
   createEmptyFlightDraft,
   hasAnyFlightDraftData,
@@ -644,6 +645,7 @@ export const NewTripScreen: React.FC<Props> = ({
                 draft={flightDraft}
                 onChange={setFlightDraft}
                 onDestinationAirportPicked={handleDestinationAirportPicked}
+                homeCurrency={homeCurrency}
               />
             ) : (
               <TransportFormFields
@@ -652,6 +654,7 @@ export const NewTripScreen: React.FC<Props> = ({
                   setTransportDraft((prev) => ({ ...prev, ...patch }))
                 }
                 distanceUnit={distanceUnit}
+                homeCurrency={homeCurrency}
               />
             )}
           </View>
@@ -727,12 +730,13 @@ export const NewTripScreen: React.FC<Props> = ({
               />
               <TextInput
                 value={stayCurrency}
-                onChangeText={(v) => setStayCurrency(v.toUpperCase())}
-                placeholder="USD"
+                onChangeText={(v) =>
+                  setStayCurrency(v.toUpperCase().replace(/[^A-Z ]/g, '').slice(0, 12))
+                }
+                placeholder={homeCurrency || 'USD'}
                 placeholderTextColor={colors.inkSoft}
                 autoCapitalize="characters"
-                maxLength={3}
-                style={[styles.input, { width: 72, textAlign: 'center' }]}
+                style={[styles.input, { width: 78, textAlign: 'center' }]}
               />
               <TextInput
                 value={stayPoints}
@@ -743,6 +747,11 @@ export const NewTripScreen: React.FC<Props> = ({
                 style={[styles.input, { flex: 1 }]}
               />
             </View>
+            <CurrencySuggestionsBar
+              value={stayCurrency}
+              onSelect={setStayCurrency}
+              homeCurrency={homeCurrency}
+            />
           </View>
         )}
       </View>
